@@ -23,3 +23,9 @@ mac:
   gatekeeperAssess: false
 dmg:
   title: B站下载器 ${version}
+  # 背景自动取 build/background.png（含 @2x），由 npm run icons 从 build/dmg-background.svg 生成
+  # 坐标是图标中心，要和背景里的托盘、箭头对齐
+  iconSize: 96
+  contents:
+    - { x: 140, y: 148, type: file }
+    - { x: 400, y: 148, type: link, path: /Applications, name: 应用程序 }
