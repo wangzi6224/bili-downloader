@@ -1,4 +1,4 @@
-import type { CodecPref, PowerMode } from '@shared/types'
+import type { CodecPref, PowerMode, ThemeMode } from '@shared/types'
 import { api, updateSettings, useStore } from '../store'
 import { Button, Modal } from './Modal'
 
@@ -31,9 +31,9 @@ export function SettingsPanel() {
   const set = useStore((st) => st.set)
 
   return (
-    <Modal onClose={() => set({ settingsOpen: false })}>
-      <div className="p-6">
-        <div className="text-lg font-semibold">设置</div>
+    <Modal onClose={() => set({ settingsOpen: false })} className="flex max-h-[88vh] max-w-xl flex-col">
+      <div className="px-6 pt-6 text-lg font-semibold">设置</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6">
         <div className="mt-2 divide-y divide-neutral-100 dark:divide-neutral-800">
           <Row label="下载目录">
             <div className="flex items-center gap-2">
@@ -48,6 +48,38 @@ export function SettingsPanel() {
               {[1, 2, 3, 4, 5].map((n) => (
                 <option key={n} value={n}>
                   {n} 个
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row label="分段下载" hint="每个文件拆成几段同时下载，网速受单连接限制时能明显提速；太多容易触发风控">
+            <select className={selectCls} value={s.threads} onChange={(e) => updateSettings({ threads: Number(e.target.value) })}>
+              {[1, 2, 4, 6, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? '不分段' : `${n} 段`}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row label="限速" hint="所有任务共享，0 表示不限速">
+            <div className="flex items-center gap-2 text-sm">
+              <input
+                type="number"
+                min={0}
+                step={512}
+                className={`${selectCls} w-28`}
+                value={s.speedLimit}
+                onChange={(e) => updateSettings({ speedLimit: Number(e.target.value) || 0 })}
+              />
+              KB/s
+              {s.speedLimit > 0 && <span className="text-xs text-neutral-500">≈ {(s.speedLimit / 1024).toFixed(1)} MB/s</span>}
+            </div>
+          </Row>
+          <Row label="自动重试" hint="只针对断网、超时等网络错误；间隔从 30 秒开始逐次加长，最长 5 分钟">
+            <select className={selectCls} value={s.autoRetry} onChange={(e) => updateSettings({ autoRetry: Number(e.target.value) })}>
+              {[0, 3, 5, 10, 20].map((n) => (
+                <option key={n} value={n}>
+                  {n === 0 ? '关闭' : `最多 ${n} 次`}
                 </option>
               ))}
             </select>
@@ -142,6 +174,24 @@ export function SettingsPanel() {
               <option value="display">保持屏幕常亮</option>
             </select>
           </Row>
+          <Row label="完成通知">
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                className="accent-bili"
+                checked={s.notify}
+                onChange={(e) => updateSettings({ notify: e.target.checked })}
+              />
+              队列全部结束后发系统通知
+            </label>
+          </Row>
+          <Row label="外观">
+            <select className={selectCls} value={s.theme} onChange={(e) => updateSettings({ theme: e.target.value as ThemeMode })}>
+              <option value="system">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </Row>
           <Row label="剪贴板检测">
             <label className="flex items-center gap-1.5 text-sm">
               <input
@@ -154,11 +204,11 @@ export function SettingsPanel() {
             </label>
           </Row>
         </div>
-        <div className="mt-4 flex justify-end">
-          <Button variant="primary" onClick={() => set({ settingsOpen: false })}>
-            完成
-          </Button>
-        </div>
+      </div>
+      <div className="flex justify-end border-t border-neutral-100 px-6 py-4 dark:border-neutral-800">
+        <Button variant="primary" onClick={() => set({ settingsOpen: false })}>
+          完成
+        </Button>
       </div>
     </Modal>
   )

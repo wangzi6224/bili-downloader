@@ -38,6 +38,7 @@ const api: BiliApi = {
     resumeAll: () => invoke('dl:resumeAll'),
     cancel: (id) => invoke('dl:cancel', id),
     retry: (id) => invoke('dl:retry', id),
+    redownload: (id) => invoke('dl:redownload', id),
     clearFinished: () => invoke('dl:clearFinished'),
     onUpdate: on('dl:update')
   },

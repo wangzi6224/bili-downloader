@@ -3,9 +3,10 @@ import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { EnqueueRequest, Settings, TaskInfo } from '@shared/types'
-import { AuthExpiredError, UnsupportedError } from '../bili/http'
+import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { readJson, writeJson } from '../store'
+import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
 import { writeExtras } from './extras'
 import { fetchFile } from './fetchFile'
 import { buildRelBase, uniquePath } from './filename'
@@ -40,13 +41,17 @@ function speedMeter(): (bytes: number) => number {
  * 下载队列。事件：
  * - update(tasks)：任务列表变化（节流）
  * - active(boolean)：是否有任务在运行，用于防休眠
+ * - idle({ done, failed })：队列从忙到全部结束，用于完成通知
  */
 export class DownloadManager extends EventEmitter {
   private tasks: TaskInfo[]
   private running = new Map<string, AbortController>()
   private canceled = new Set<string>()
+  private retryTimers = new Map<string, NodeJS.Timeout>()
   private authBlocked = false
   private wasActive = false
+  /** 本轮（从空闲到再次空闲）完成和失败的任务数 */
+  private batch = { done: 0, failed: 0 }
   private emitTimer?: NodeJS.Timeout
   private saveTimer?: NodeJS.Timeout
 
@@ -60,6 +65,7 @@ export class DownloadManager extends EventEmitter {
     this.tasks = (readJson<TaskInfo[]>(stateFile) ?? []).map((t) => ({
       ...t,
       speed: 0,
+      retryAt: undefined,
       status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
     }))
   }
@@ -81,6 +87,7 @@ export class DownloadManager extends EventEmitter {
         item,
         options: req.options,
         relBase: buildRelBase(req.title, item, multi, maxIndex),
+        dir: this.settings().downloadDir,
         status: 'queued',
         downloaded: 0,
         total: 0,
@@ -95,25 +102,58 @@ export class DownloadManager extends EventEmitter {
   pause(id: string): void {
     const t = this.find(id)
     if (!t || SETTLED.has(t.status)) return
+    this.clearRetry(t)
     this.running.get(id)?.abort()
     this.patch(t, { status: 'paused', speed: 0 })
   }
 
+  /** 手动继续/重试：重置自动重试计数 */
   resume(id: string): void {
     const t = this.find(id)
     if (!t || t.status === 'done' || RUNNING.has(t.status)) return
-    this.patch(t, { status: 'queued', error: undefined })
+    this.clearRetry(t)
+    this.patch(t, { status: 'queued', error: undefined, retries: 0 })
     this.schedule()
   }
 
   resumeAll(): void {
     for (const t of this.tasks) {
-      if (t.status === 'paused' || t.status === 'error') this.patch(t, { status: 'queued', error: undefined })
+      if (t.status === 'paused' || t.status === 'error') {
+        this.clearRetry(t)
+        this.patch(t, { status: 'queued', error: undefined, retries: 0 })
+      }
     }
     this.schedule()
   }
 
+  /** 删除已下载的分片，从头开始（坏分片导致合并必然失败时用） */
+  redownload(id: string): void {
+    const t = this.find(id)
+    if (!t || t.status === 'unsupported') return
+    this.clearRetry(t)
+    const ac = this.running.get(id)
+    if (ac) {
+      this.canceled.add(id)
+      ac.abort()
+    } else {
+      rmSync(join(this.tmpRoot, id), { recursive: true, force: true })
+    }
+    this.patch(t, {
+      status: 'queued',
+      error: undefined,
+      note: undefined,
+      outputPath: undefined,
+      downloaded: 0,
+      total: 0,
+      retries: 0
+    })
+    // 正在运行的那次结束后会清掉临时目录并重新调度
+    if (!ac) this.schedule()
+  }
+
   cancel(id: string): void {
+    const t = this.find(id)
+    if (t) this.clearRetry(t)
     const ac = this.running.get(id)
     if (ac) {
       this.canceled.add(id)
@@ -152,6 +192,31 @@ export class DownloadManager extends EventEmitter {
     this.emitActive()
   }
 
+  private clearRetry(t: TaskInfo): void {
+    clearTimeout(this.retryTimers.get(t.id))
+    this.retryTimers.delete(t.id)
+    t.retryAt = undefined
+  }
+
+  /** 网络类错误：按 30 秒起翻倍（最长 5 分钟）的间隔自动重新排队 */
+  private scheduleRetry(t: TaskInfo, message: string): boolean {
+    const max = this.settings().autoRetry
+    const n = t.retries ?? 0
+    if (n >= max) return false
+    const retryAt = Date.now() + retryDelay(n)
+    this.patch(t, { status: 'error', error: message, speed: 0, retryAt })
+    this.retryTimers.set(
+      t.id,
+      setTimeout(() => {
+        this.retryTimers.delete(t.id)
+        if (t.status !== 'error' || t.retryAt !== retryAt) return
+        this.patch(t, { status: 'queued', retries: n + 1, retryAt: undefined })
+        this.schedule()
+      }, retryAt - Date.now())
+    )
+    return true
+  }
+
   private find(id: string): TaskInfo | undefined {
     return this.tasks.find((t) => t.id === id)
   }
@@ -186,6 +251,11 @@ export class DownloadManager extends EventEmitter {
     if (active !== this.wasActive) {
       this.wasActive = active
       this.emit('active', active)
+      const waiting = this.tasks.some((t) => t.status === 'queued' || (t.status === 'error' && t.retryAt))
+      if (!active && !waiting && this.batch.done + this.batch.failed > 0) {
+        this.emit('idle', this.batch)
+        this.batch = { done: 0, failed: 0 }
+      }
     }
   }
 
@@ -196,7 +266,7 @@ export class DownloadManager extends EventEmitter {
     const tmp = join(this.tmpRoot, t.id)
     // 暂停/取消后不能再改写状态
     const check = (): void => {
-      if (ac.signal.aborted) throw new Error('aborted')
+      if (ac.signal.aborted) throw new AbortError()
     }
     try {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0 })
@@ -218,36 +288,44 @@ export class DownloadManager extends EventEmitter {
         this.patch(t, { downloaded: sum, total: sizes.reduce((a, b) => a + b, 0), speed: meter(sum) })
       }
 
-      for (const [i, [name, stream]] of parts.entries()) {
-        const dest = join(tmp, name)
-        if (existsSync(dest)) {
-          done[i] = sizes[i] = statSync(dest).size
-          continue
-        }
-        await fetchFile({
-          urls: streamUrls(stream),
-          dest,
-          fingerprint: `${stream.id}-${stream.codecs}-${stream.bandwidth}`,
-          signal: ac.signal,
-          onProgress: (d, total) => {
-            done[i] = d
-            if (total) sizes[i] = total
-            report()
+      // 音视频两个文件同时下载，各自再分段
+      const threads = this.settings().threads
+      await Promise.all(
+        parts.map(async ([name, stream], i) => {
+          const dest = join(tmp, name)
+          if (!existsSync(dest)) {
+            await fetchFile({
+              urls: streamUrls(stream),
+              dest,
+              fingerprint: `${stream.id}-${stream.codecs}-${stream.bandwidth}`,
+              threads,
+              headers: BASE_HEADERS,
+              signal: ac.signal,
+              onProgress: (d, total) => {
+                done[i] = d
+                if (total) sizes[i] = total
+                report()
+              }
+            })
           }
+          done[i] = sizes[i] = statSync(dest).size
+          report()
         })
-        done[i] = sizes[i] = statSync(dest).size
-        report()
-      }
+      )
 
       check()
       this.patch(t, { status: 'merging', speed: 0 })
-      const base = join(this.settings().downloadDir, t.relBase)
-      mkdirSync(dirname(base), { recursive: true })
+      const base = join(t.dir ?? this.settings().downloadDir, t.relBase)
+      try {
+        mkdirSync(dirname(base), { recursive: true })
+      } catch (e) {
+        throw toDiskError(e, dirname(base))
+      }
       let out: string
       if (t.options.audioOnly) {
         const flac = pick.audioKind === 'flac'
         out = uniquePath(base, flac ? '.flac' : '.m4a')
-        await remuxAudio(join(tmp, 'audio.m4s'), `${out}.tmp`, t.title, flac ? 'flac' : 'ipod', ac.signal)
+        await remuxAudio(join(tmp, 'audio.m4s'), `${out}.tmp`, t.title, flac ? 'flac' : 'm4a', ac.signal)
       } else {
         out = uniquePath(base, '.mp4')
         await muxVideo(
@@ -270,17 +348,21 @@ export class DownloadManager extends EventEmitter {
       const note = await writeExtras(t.item, t.options, out.replace(/\.[^./]+$/, ''), this.settings())
       rmSync(tmp, { recursive: true, force: true })
       const size = statSync(out).size
-      this.patch(t, { status: 'done', outputPath: out, note, speed: 0, downloaded: size, total: size })
+      this.batch.done++
+      this.patch(t, { status: 'done', outputPath: out, note, speed: 0, downloaded: size, total: size, retries: 0 })
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
       if (ac.signal.aborted) {
         // 暂停/取消：状态已由调用方设置
       } else if (e instanceof AuthExpiredError) {
         this.authBlocked = true
         this.patch(t, { status: 'waitingAuth', speed: 0 })
       } else if (e instanceof UnsupportedError) {
-        this.patch(t, { status: 'unsupported', error: e.message, speed: 0 })
-      } else {
-        this.patch(t, { status: 'error', error: e instanceof Error ? e.message : String(e), speed: 0 })
+        this.batch.failed++
+        this.patch(t, { status: 'unsupported', error: message, speed: 0 })
+      } else if (!(isRetryable(e) && this.scheduleRetry(t, message))) {
+        this.batch.failed++
+        this.patch(t, { status: 'error', error: message, speed: 0 })
       }
     } finally {
       this.running.delete(t.id)

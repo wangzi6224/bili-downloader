@@ -16,6 +16,14 @@ export function fmtDuration(sec?: number): string {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
 
+/** 剩余时间：超过一天的不显示，避免刚开始测速时出现离谱的数字 */
+export function fmtEta(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0 || sec > 86400) return ''
+  if (sec < 60) return `${Math.ceil(sec)} 秒`
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分 ${Math.floor(sec % 60)} 秒`
+  return `${Math.floor(sec / 3600)} 小时 ${Math.floor((sec % 3600) / 60)} 分`
+}
+
 /** B站图片加尺寸参数，减小缩略图体积 */
 export const thumb = (url: string | undefined, w: number): string | undefined =>
   url ? `${url.replace(/^http:/, 'https:')}@${w}w.webp` : undefined
