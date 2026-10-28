@@ -1,4 +1,4 @@
-import type { CodecPref, MediaItem, QualityOption } from '@shared/types'
+import type { AudioPref, CodecPref, Container, MediaItem, OutputKind, QualityOption, StreamInfo } from '@shared/types'
 import { api, BiliError, UnsupportedError } from './http'
 
 export interface DashStream {
@@ -91,14 +91,40 @@ export function qualitiesFromInfo(info: PlayInfo): QualityOption[] {
   const formats: SupportFormat[] =
     info.support_formats ??
     (info.accept_quality ?? []).map((q, i) => ({ quality: q, new_description: info.accept_description?.[i] }))
+  const videos = info.dash?.video ?? []
   return formats
     .map((f) => ({
       qn: f.quality,
       label: f.new_description || f.display_desc || String(f.quality),
       needVip: f.need_vip ?? VIP_QN.has(f.quality),
-      needLogin: f.need_login ?? false
+      needLogin: f.need_login ?? false,
+      codecs: [...new Set(videos.filter((v) => v.id === f.quality).map(codecOf))].filter(
+        (c): c is CodecPref => Boolean(c)
+      )
     }))
     .sort((a, b) => b.qn - a.qn)
+}
+
+/** dash 音轨的 id */
+const AAC_ID: Record<string, number> = { '192k': 30280, '132k': 30232, '64k': 30216 }
+
+export function streamInfoFromPlay(info: PlayInfo): StreamInfo {
+  const dash = info.dash
+  const aacIds = new Set((dash?.audio ?? []).map((a) => a.id))
+  const flac = Boolean(dash?.flac?.audio)
+  const dolby = Boolean(dash?.dolby?.audio?.length)
+  return {
+    qualities: qualitiesFromInfo(info),
+    hasAudio: aacIds.size > 0 || flac || dolby,
+    audios: [
+      { id: 'best', label: '最佳', available: true },
+      { id: 'flac', label: 'Hi-Res 无损', available: flac },
+      { id: 'dolby', label: '杜比全景声', available: dolby },
+      { id: '192k', label: '192K', available: aacIds.has(AAC_ID['192k']) },
+      { id: '132k', label: '132K', available: aacIds.has(AAC_ID['132k']) },
+      { id: '64k', label: '64K', available: aacIds.has(AAC_ID['64k']) }
+    ]
+  }
 }
 
 export interface Picked {
@@ -106,38 +132,90 @@ export interface Picked {
   audio?: DashStream
   audioKind: 'aac' | 'eac3' | 'flac'
   qualityLabel: string
+  /** 画质、编码文字，用于命名 */
+  quality: string
+  codec: string
+  container: Container
+  notes: string[]
 }
 
-/** 按“不高于目标清晰度的最高档 + 编码偏好”选流 */
-export function pickStreams(info: PlayInfo, qn: number, codec: CodecPref, audioOnly: boolean): Picked {
-  const dash = info.dash
-  if (!dash) throw new UnsupportedError('该视频只有旧版 FLV 格式，暂不支持')
+export interface PickOptions {
+  qn: number
+  codecOrder: CodecPref[]
+  audio: AudioPref
+  output: OutputKind
+  container: Container
+}
 
-  const audios = [...(dash.audio ?? [])].sort((a, b) => b.bandwidth - a.bandwidth)
+/** 按音质偏好选音轨；拿不到指定档位时取不高于它的最高档 */
+function pickAudio(dash: NonNullable<PlayInfo['dash']>, pref: AudioPref, output: OutputKind, container: Container) {
+  const aac = [...(dash.audio ?? [])].sort((a, b) => b.bandwidth - a.bandwidth)
   const flac = dash.flac?.audio ?? undefined
   const dolby = dash.dolby?.audio?.[0]
+  const asAac = (s?: DashStream) => (s ? { audio: s, kind: 'aac' as const } : undefined)
+  if (pref === 'flac' && flac) return { audio: flac, kind: 'flac' as const }
+  if (pref === 'dolby' && dolby) return { audio: dolby, kind: 'eac3' as const }
+  if (pref in AAC_ID) {
+    // 指定档位没有时依次降档：192K → 132K → 64K
+    const ladder = [AAC_ID['192k'], AAC_ID['132k'], AAC_ID['64k']]
+    const want = ladder
+      .slice(ladder.indexOf(AAC_ID[pref]))
+      .map((id) => dash.audio?.find((s) => s.id === id))
+      .find(Boolean)
+    return asAac(want ?? aac[0])
+  }
+  // best：仅音频优先无损；视频里 MKV 优先无损，MP4 优先杜比（QuickTime 能播）
+  if (pref === 'best') {
+    if (output === 'audio') return flac ? { audio: flac, kind: 'flac' as const } : asAac(aac[0])
+    if (container === 'mkv' && flac) return { audio: flac, kind: 'flac' as const }
+    if (dolby) return { audio: dolby, kind: 'eac3' as const }
+  }
+  return asAac(aac[0])
+}
 
-  if (audioOnly) {
-    const audio = flac ?? audios[0]
-    if (!audio) throw new UnsupportedError('该视频没有音轨')
-    return { audio, audioKind: flac ? 'flac' : 'aac', qualityLabel: flac ? 'Hi-Res 无损' : '音频' }
+const CODEC_LABEL: Record<CodecPref, string> = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' }
+
+/** 按“不高于目标清晰度的最高档 + 编码优先级 + 音质偏好”选流 */
+export function pickStreams(info: PlayInfo, o: PickOptions): Picked {
+  const dash = info.dash
+  if (!dash) throw new UnsupportedError('该视频只有旧版 FLV 格式，暂不支持')
+  const notes: string[] = []
+  let container = o.container
+
+  const a = o.output === 'video' ? undefined : pickAudio(dash, o.audio, o.output, container)
+  if (o.output === 'audio') {
+    if (!a) throw new UnsupportedError('该视频没有独立音轨')
+    const label = a.kind === 'flac' ? 'Hi-Res 无损' : a.kind === 'eac3' ? '杜比全景声' : `音频 ${Math.round(a.audio.bandwidth / 1000)}K`
+    return { audio: a.audio, audioKind: a.kind, qualityLabel: label, quality: label, codec: '', container, notes }
   }
 
-  const levels = [...new Set(dash.video.map((v) => v.id))].sort((a, b) => b - a)
+  const levels = [...new Set(dash.video.map((v) => v.id))].sort((x, y) => y - x)
   if (!levels.length) throw new UnsupportedError('没有可用的视频流')
-  const target = levels.find((q) => q <= qn) ?? levels[levels.length - 1]
+  const target = levels.find((q) => q <= o.qn) ?? levels[levels.length - 1]
   const candidates = dash.video.filter((v) => v.id === target)
-  const order: CodecPref[] = [codec, 'avc', 'hevc', 'av1']
-  const video = order.map((c) => candidates.find((v) => codecOf(v) === c)).find(Boolean) ?? candidates[0]
+  const video = o.codecOrder.map((c) => candidates.find((v) => codecOf(v) === c)).find(Boolean) ?? candidates[0]
+  const codec = codecOf(video)
+  if (codec && codec !== o.codecOrder[0]) {
+    notes.push(`该清晰度没有 ${CODEC_LABEL[o.codecOrder[0]]}，已改用 ${CODEC_LABEL[codec]}`)
+  }
 
-  // 视频里优先用杜比（E-AC-3，QuickTime 能播），FLAC 放进 mp4 兼容性差，只在仅音频模式下使用
-  const audio = dolby ?? audios[0]
-  const label = qualitiesFromInfo(info).find((q) => q.qn === target)?.label ?? String(target)
+  if (o.output === 'full' && !a) notes.push('该视频没有独立音轨')
+  if (a?.kind === 'flac' && container === 'mp4') {
+    container = 'mkv'
+    notes.push('Hi-Res 无损音轨放进 MP4 兼容性差，已改用 MKV')
+  }
+
+  const quality = qualitiesFromInfo(info).find((q) => q.qn === target)?.label ?? String(target)
+  const codecText = codec ? CODEC_LABEL[codec] : video.codecs
   return {
     video,
-    audio,
-    audioKind: dolby ? 'eac3' : 'aac',
-    qualityLabel: `${label} · ${(codecOf(video) ?? video.codecs).toUpperCase()}`
+    audio: a?.audio,
+    audioKind: a?.kind ?? 'aac',
+    qualityLabel: `${quality} · ${codecText}${o.output === 'video' ? ' · 无声' : ''}`,
+    quality,
+    codec: codecText,
+    container,
+    notes
   }
 }
 

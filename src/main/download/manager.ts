@@ -2,15 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { renderTemplate, type NamingValues } from '@shared/naming'
+import { normalizeOptions } from '@shared/options'
 import type { EnqueueRequest, Settings, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { readJson, writeJson } from '../store'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
-import { writeExtras } from './extras'
+import { placeSidecars, prepareExtras } from './extras'
 import { fetchFile } from './fetchFile'
-import { buildRelBase, uniquePath } from './filename'
-import { muxVideo, remuxAudio } from './mux'
+import { uniquePath } from './filename'
+import { mux, type OutFormat } from './mux'
 
 const RUNNING = new Set(['fetching', 'downloading', 'merging', 'extras'])
 const SETTLED = new Set(['done', 'unsupported'])
@@ -42,6 +44,7 @@ function speedMeter(): (bytes: number) => number {
  * - update(tasks)：任务列表变化（节流）
  * - active(boolean)：是否有任务在运行，用于防休眠
  * - idle({ done, failed })：队列从忙到全部结束，用于完成通知
+ * - done(task)：单个任务完成，用于记录下载历史
  */
 export class DownloadManager extends EventEmitter {
   private tasks: TaskInfo[]
@@ -64,6 +67,7 @@ export class DownloadManager extends EventEmitter {
     // 重启后不自动开跑，未完成的任务一律改为暂停，由用户点“全部继续”
     this.tasks = (readJson<TaskInfo[]>(stateFile) ?? []).map((t) => ({
       ...t,
+      options: normalizeOptions(t.options),
       speed: 0,
       retryAt: undefined,
       status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
@@ -75,19 +79,42 @@ export class DownloadManager extends EventEmitter {
   }
 
   enqueue(req: EnqueueRequest): void {
+    const settings = this.settings()
     const multi = req.items.length > 1
-    const maxIndex = Math.max(...req.items.map((i) => i.index))
+    // 只下一个用 single 模板；一次下多个按番剧 / 普通合集区分
+    const template = !multi ? settings.naming.single : req.kind === 'pgc' ? settings.naming.pgc : settings.naming.multi
+    const now = Math.floor(Date.now() / 1000)
     for (const item of req.items) {
       const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
       if (dup) continue
+      const nameValues: NamingValues = {
+        title: item.title,
+        // 单个视频的标题和总标题相同，series 留空，可选段会自动去掉
+        series: multi || item.title !== req.title ? req.title : '',
+        index: item.index,
+        owner: req.meta?.owner,
+        owner_mid: req.meta?.ownerMid,
+        pubdate: item.pubdate ?? req.meta?.pubdate,
+        date: now,
+        bvid: item.bvid,
+        aid: item.aid,
+        cid: item.cid,
+        ep_id: item.epId,
+        type: req.kind === 'pgc' ? '番剧影视' : '视频'
+      }
       this.tasks.push({
         id: randomUUID(),
         title: item.title,
         groupTitle: req.title,
         item,
-        options: req.options,
-        relBase: buildRelBase(req.title, item, multi, maxIndex),
-        dir: this.settings().downloadDir,
+        options: normalizeOptions(req.options),
+        relBase: renderTemplate(template, nameValues),
+        template,
+        nameValues,
+        meta: req.meta,
+        series: req.kind === 'pgc' && multi,
+        seriesCover: req.cover,
+        dir: settings.downloadDir,
         status: 'queued',
         downloaded: 0,
         total: 0,
@@ -272,7 +299,7 @@ export class DownloadManager extends EventEmitter {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0 })
       const info = await getPlayInfo(t.item, t.options.qn)
       check()
-      const pick = pickStreams(info, t.options.qn, t.options.codec, t.options.audioOnly)
+      const pick = pickStreams(info, t.options)
       this.patch(t, { status: 'downloading', qualityLabel: pick.qualityLabel })
       mkdirSync(tmp, { recursive: true })
 
@@ -314,42 +341,56 @@ export class DownloadManager extends EventEmitter {
       )
 
       check()
-      this.patch(t, { status: 'merging', speed: 0 })
-      const base = join(t.dir ?? this.settings().downloadDir, t.relBase)
+      this.patch(t, { status: 'extras', speed: 0 })
+      const extras = await prepareExtras(t, tmp, this.settings())
+
+      check()
+      this.patch(t, { status: 'merging' })
+      // 按实际拿到的画质、编码重新套一次命名模板
+      const relBase = t.template
+        ? renderTemplate(t.template, { ...t.nameValues, quality: pick.quality, codec: pick.codec })
+        : t.relBase
+      const base = join(t.dir ?? this.settings().downloadDir, relBase)
       try {
         mkdirSync(dirname(base), { recursive: true })
       } catch (e) {
         throw toDiskError(e, dirname(base))
       }
-      let out: string
-      if (t.options.audioOnly) {
-        const flac = pick.audioKind === 'flac'
-        out = uniquePath(base, flac ? '.flac' : '.m4a')
-        await remuxAudio(join(tmp, 'audio.m4s'), `${out}.tmp`, t.title, flac ? 'flac' : 'm4a', ac.signal)
-      } else {
-        out = uniquePath(base, '.mp4')
-        await muxVideo(
-          {
-            video: join(tmp, 'video.m4s'),
-            audio: pick.audio ? join(tmp, 'audio.m4s') : undefined,
-            out: `${out}.tmp`,
-            title: t.title,
-            hevc: isHevc(pick.video!),
-            dolbyVision: isDolbyVision(pick.video!)
-          },
-          ac.signal
-        )
-      }
+      const format: OutFormat = pick.video ? pick.container : pick.audioKind === 'flac' ? 'flac' : 'm4a'
+      const out = uniquePath(base, `.${format}`)
+      const o = t.options
+      const embedded = await mux(
+        {
+          video: pick.video ? join(tmp, 'video.m4s') : undefined,
+          audio: pick.audio ? join(tmp, 'audio.m4s') : undefined,
+          out: `${out}.tmp`,
+          format,
+          title: t.title,
+          hevc: pick.video ? isHevc(pick.video) : false,
+          dolbyVision: pick.video ? isDolbyVision(pick.video) : false,
+          cover: o.embedCover ? extras.cover : undefined,
+          subtitles: o.embedSubtitle ? extras.subtitles : undefined,
+          chapters: extras.chapters,
+          metadata: {
+            artist: t.meta?.owner,
+            album: t.series || t.groupTitle !== t.title ? t.groupTitle : undefined,
+            date: t.nameValues?.pubdate ? new Date(Number(t.nameValues.pubdate) * 1000).toISOString().slice(0, 10) : undefined,
+            comment: t.item.bvid ? `https://www.bilibili.com/video/${t.item.bvid}` : t.meta?.url,
+            description: t.item.desc ?? t.meta?.desc
+          }
+        },
+        ac.signal
+      )
       // 先写到目标目录里的 .tmp 再改名，避免跨卷移动和半成品文件
       renameSync(`${out}.tmp`, out)
 
-      check()
-      this.patch(t, { status: 'extras' })
-      const note = await writeExtras(t.item, t.options, out.replace(/\.[^./]+$/, ''), this.settings())
+      const sideNotes = await placeSidecars(t, extras, out.slice(0, -format.length - 1), embedded)
       rmSync(tmp, { recursive: true, force: true })
       const size = statSync(out).size
+      const note = [...pick.notes, ...extras.notes, ...sideNotes].join('；') || undefined
       this.batch.done++
-      this.patch(t, { status: 'done', outputPath: out, note, speed: 0, downloaded: size, total: size, retries: 0 })
+      this.patch(t, { status: 'done', outputPath: out, relBase, note, speed: 0, downloaded: size, total: size, retries: 0 })
+      this.emit('done', t)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       if (ac.signal.aborted) {

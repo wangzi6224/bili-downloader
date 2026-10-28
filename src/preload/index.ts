@@ -29,7 +29,7 @@ const api: BiliApi = {
     onChanged: on('auth:changed')
   },
   parse: (input) => invoke('parse', input),
-  qualities: (item) => invoke('qualities', item),
+  streamInfo: (item) => invoke('streamInfo', item),
   download: {
     enqueue: (req) => invoke('dl:enqueue', req),
     list: () => invoke('dl:list'),
@@ -41,6 +41,13 @@ const api: BiliApi = {
     redownload: (id) => invoke('dl:redownload', id),
     clearFinished: () => invoke('dl:clearFinished'),
     onUpdate: on('dl:update')
+  },
+  history: {
+    downloadedKeys: () => invoke('history:downloadedKeys'),
+    clearDownloads: () => invoke('history:clearDownloads'),
+    parses: () => invoke('history:parses'),
+    removeParse: (input) => invoke('history:removeParse', input),
+    clearParses: () => invoke('history:clearParses')
   },
   settings: {
     get: () => invoke('settings:get'),

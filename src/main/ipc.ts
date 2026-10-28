@@ -4,9 +4,17 @@ import { checkAuth, ensureLoggedIn, getAuthState, requireLogin } from './auth/au
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
 import { openLoginWindow } from './auth/loginWindow'
 import { biliSession, clearBiliCookies } from './auth/session'
-import { getPlayInfo, qualitiesFromInfo } from './bili/playurl'
+import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
 import { resolveInput } from './bili/resolve'
 import type { DownloadManager } from './download/manager'
+import {
+  clearDownloads,
+  clearParses,
+  downloadedKeys,
+  parseRecords,
+  recordParse,
+  removeParse
+} from './history'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow } from './windows'
 
@@ -70,9 +78,24 @@ export function registerIpc(manager: DownloadManager): void {
 
   handle('parse', async (input: string) => {
     await ensureLoggedIn()
-    return resolveInput(input)
+    const result = await resolveInput(input)
+    recordParse({
+      input: input.trim(),
+      title: result.title,
+      kind: result.kind,
+      cover: result.cover,
+      count: result.groups.reduce((n, g) => n + g.items.length, 0),
+      at: Date.now()
+    })
+    return result
   })
-  handle('qualities', async (item: MediaItem) => qualitiesFromInfo(await getPlayInfo(item, 127)))
+  handle('streamInfo', async (item: MediaItem) => streamInfoFromPlay(await getPlayInfo(item, 127)))
+
+  handle('history:downloadedKeys', () => downloadedKeys())
+  handle('history:clearDownloads', () => clearDownloads())
+  handle('history:parses', () => parseRecords())
+  handle('history:removeParse', (input: string) => removeParse(input))
+  handle('history:clearParses', () => clearParses())
 
   handle('dl:enqueue', (req: EnqueueRequest) => manager.enqueue(req))
   handle('dl:list', () => manager.list())

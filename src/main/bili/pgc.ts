@@ -13,6 +13,7 @@ interface Episode {
   cover?: string
   duration?: number
   status?: number
+  pub_time?: number
 }
 
 interface SeasonData {
@@ -22,7 +23,11 @@ interface SeasonData {
   cover: string
   episodes: Episode[]
   section?: { id: number; title: string; episodes: Episode[] }[]
-  up_info?: { uname?: string }
+  up_info?: { uname?: string; mid?: number }
+  evaluate?: string
+  styles?: string[]
+  link?: string
+  publish?: { pub_time?: string }
 }
 
 function episodeTitle(ep: Episode, seasonTitle: string, single: boolean): string {
@@ -59,6 +64,7 @@ export async function parsePgc(t: { epId?: number; seasonId?: number; mediaId?: 
       epId: ep.id,
       cover: ep.cover,
       duration: ep.duration ? Math.round(ep.duration / 1000) : undefined,
+      pubdate: ep.pub_time || undefined,
       badge: ep.badge || undefined,
       needVip: ep.badge === '会员' || ep.status === 13
     })
@@ -78,6 +84,14 @@ export async function parsePgc(t: { epId?: number; seasonId?: number; mediaId?: 
     title: s.title,
     cover: s.cover,
     owner: s.up_info?.uname,
+    meta: {
+      desc: s.evaluate,
+      owner: s.up_info?.uname,
+      ownerMid: s.up_info?.mid,
+      pubdate: s.publish?.pub_time ? Math.floor(new Date(s.publish.pub_time.replace(' ', 'T') + '+08:00').getTime() / 1000) || undefined : undefined,
+      genres: s.styles,
+      url: s.link || `https://www.bilibili.com/bangumi/play/ss${s.season_id}`
+    },
     groups,
     defaultSelected: current ? [current.key] : all.length ? [all[0].key] : []
   }

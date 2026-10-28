@@ -1,6 +1,8 @@
 import { join } from 'node:path'
 import { app } from 'electron'
-import type { Settings } from '@shared/types'
+import { DEFAULT_TEMPLATES, validateTemplate } from '@shared/naming'
+import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
+import type { CodecPref, Settings } from '@shared/types'
 import { readJson, writeJson } from './store'
 
 function defaults(): Settings {
@@ -9,8 +11,10 @@ function defaults(): Settings {
     concurrency: 2,
     powerMode: 'display',
     defaultQn: 127,
-    defaultCodec: 'avc',
-    extras: { cover: false, subtitle: true, danmaku: false },
+    defaults: { ...DEFAULT_OPTIONS },
+    rememberLast: true,
+    naming: { ...DEFAULT_TEMPLATES },
+    duplicateAction: 'ask',
     danmaku: { fontSize: 25, opacity: 0.8, duration: 8 },
     clipboardWatch: true,
     threads: 4,
@@ -21,20 +25,37 @@ function defaults(): Settings {
   }
 }
 
+/** 旧版设置里的字段 */
+interface LegacySettings {
+  defaultCodec?: CodecPref
+  extras?: { cover: boolean; subtitle: boolean; danmaku: boolean }
+}
+
 const file = (): string => join(app.getPath('userData'), 'settings.json')
 const listeners = new Set<(s: Settings) => void>()
 let cache: Settings | undefined
 
+function migrate(saved: Partial<Settings> & LegacySettings, d: Settings): Settings {
+  const { defaultCodec, extras, ...rest } = saved
+  const base = normalizeOptions({
+    ...d.defaults,
+    ...extras,
+    ...(defaultCodec ? { codec: defaultCodec } : {}),
+    ...saved.defaults
+  })
+  const { qn: _qn, ...opts } = base
+  const naming = { ...d.naming, ...saved.naming }
+  // 坏掉的模板（例如手改配置文件）回退到默认
+  for (const k of Object.keys(naming) as (keyof typeof naming)[]) {
+    if (validateTemplate(naming[k])) naming[k] = d.naming[k]
+  }
+  return { ...d, ...rest, defaults: opts, naming, danmaku: { ...d.danmaku, ...saved.danmaku } }
+}
+
 export function getSettings(): Settings {
   if (!cache) {
     const d = defaults()
-    const saved = readJson<Partial<Settings>>(file()) ?? {}
-    cache = {
-      ...d,
-      ...saved,
-      extras: { ...d.extras, ...saved.extras },
-      danmaku: { ...d.danmaku, ...saved.danmaku }
-    }
+    cache = migrate(readJson<Partial<Settings> & LegacySettings>(file()) ?? {}, d)
   }
   return cache
 }
@@ -46,6 +67,16 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   next.threads = clamp(next.threads, 1, 8)
   next.autoRetry = clamp(next.autoRetry, 0, 20)
   next.speedLimit = Math.max(0, Math.round(next.speedLimit) || 0)
+  if (patch.defaults) {
+    const { qn: _qn, ...opts } = normalizeOptions(patch.defaults)
+    next.defaults = opts
+  }
+  if (patch.naming) {
+    for (const v of Object.values(patch.naming)) {
+      const err = validateTemplate(v)
+      if (err) throw new Error(`命名模板有误：${err}`)
+    }
+  }
   cache = next
   writeJson(file(), next)
   for (const fn of listeners) fn(next)

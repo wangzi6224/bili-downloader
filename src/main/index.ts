@@ -1,7 +1,9 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeTheme, Notification, screen, shell } from 'electron'
+import type { TaskInfo } from '@shared/types'
 import { checkAuth, checkAuthThrottled, onAuthRequired, onLoggedIn, requireLogin } from './auth/authGuard'
 import { DownloadManager } from './download/manager'
+import { recordDownload } from './history'
 import { limiter } from './download/rateLimiter'
 import { registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
@@ -123,6 +125,9 @@ function start(): void {
     getSettings
   )
   manager.on('update', (tasks) => send('dl:update', tasks))
+  manager.on('done', (t: TaskInfo) =>
+    recordDownload({ key: t.item.key, title: t.title, groupTitle: t.groupTitle, path: t.outputPath ?? '', at: Date.now() })
+  )
   manager.on('active', (active: boolean) => applyPower(active, getSettings().powerMode))
   manager.on('idle', ({ done, failed }: { done: number; failed: number }) => {
     if (!getSettings().notify || !Notification.isSupported()) return
