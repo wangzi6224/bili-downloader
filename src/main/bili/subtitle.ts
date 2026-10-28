@@ -71,7 +71,26 @@ const ISO639: [RegExp, string][] = [
   [/^th/i, 'tha'],
   [/^vi/i, 'vie'],
   [/^id/i, 'ind'],
-  [/^ar/i, 'ara']
+  [/^ar/i, 'ara'],
+  [/^(he|iw)/i, 'heb'],
+  [/^ca/i, 'cat'],
+  [/^nl/i, 'dut'],
+  [/^pl/i, 'pol'],
+  [/^tr/i, 'tur'],
+  [/^uk/i, 'ukr'],
+  [/^sv/i, 'swe'],
+  [/^hi/i, 'hin'],
+  [/^ms/i, 'may'],
+  [/^(fil|tl)/i, 'fil'],
+  [/^cs/i, 'cze'],
+  [/^el/i, 'gre'],
+  [/^fi/i, 'fin'],
+  [/^da/i, 'dan'],
+  [/^(no|nb)/i, 'nor'],
+  [/^hu/i, 'hun'],
+  [/^ro/i, 'rum'],
+  // 手语（例如 ase 美国手语）
+  [/^(ase|sgn)/i, 'sgn']
 ]
 
 /** 嵌入视频时的语言代码和轨道名；AI 字幕单独标注，避免播放器里出现两条同名“中文” */

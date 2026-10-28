@@ -95,7 +95,7 @@ export async function parseFav(mediaId: number): Promise<ParseResult> {
     cover: d.info.cover,
     owner: d.info.upper?.name,
     meta: { desc: d.info.intro, owner: d.info.upper?.name, ownerMid: d.info.upper?.mid },
-    groups: [{ id: 'fav', title: `收藏夹（共 ${d.info.media_count} 个）`, items }],
+    groups: [{ id: 'fav', title: '收藏夹', items }],
     defaultSelected: items.filter((i) => !i.unavailable).map((i) => i.key),
     paging: { source: { type: 'fav', mediaId }, page: 1, total: d.info.media_count, hasMore: d.has_more }
   }
@@ -166,7 +166,7 @@ export async function parseSpace(mid: number, keyword?: string): Promise<ParseRe
     cover: card.card.face,
     owner: name,
     meta: { owner: name, ownerMid: mid, desc: card.card.sign },
-    groups: [{ id: 'space', title: `投稿（共 ${first.total} 个）`, items: first.items }],
+    groups: [{ id: 'space', title: '投稿', items: first.items }],
     defaultSelected: [],
     paging: { source: { type: 'space', mid, keyword }, page: 1, total: first.total, hasMore: first.total > SPACE_PS }
   }
@@ -200,7 +200,7 @@ export async function parseSpaceSeason(mid: number, seasonId: number): Promise<P
     title: d.meta.title,
     cover: d.meta.cover,
     meta: { desc: d.meta.description, ownerMid: mid },
-    groups: [{ id: 'season', title: `合集（共 ${d.meta.total} 个）`, items }],
+    groups: [{ id: 'season', title: '合集', items }],
     defaultSelected: items.map((i) => i.key),
     paging: { source: { type: 'spaceSeason', mid, seasonId }, page: 1, total: d.meta.total, hasMore: d.meta.total > SPACE_PS }
   }
@@ -219,7 +219,7 @@ export async function parseSpaceSeries(mid: number, seriesId: number): Promise<P
     title: meta.meta.name,
     cover: meta.meta.cover ?? items[0]?.cover ?? '',
     meta: { desc: meta.meta.description, ownerMid: mid },
-    groups: [{ id: 'series', title: `系列（共 ${d.page.total} 个）`, items }],
+    groups: [{ id: 'series', title: '系列', items }],
     defaultSelected: items.map((i) => i.key),
     paging: { source: { type: 'spaceSeries', mid, seriesId }, page: 1, total: d.page.total, hasMore: d.page.total > SPACE_PS }
   }
@@ -282,7 +282,7 @@ export async function parseWatchLater(): Promise<ParseResult> {
     kind: 'ugc',
     title: '稍后再看',
     cover: items[0]?.cover ?? '',
-    groups: [{ id: 'toview', title: `稍后再看（共 ${d.count} 个）`, items }],
+    groups: [{ id: 'toview', title: '稍后再看', items }],
     defaultSelected: items.map((i) => i.key)
   }
 }
@@ -383,7 +383,7 @@ export async function parseWeekly(number?: number): Promise<ParseResult> {
     title,
     cover: items[0]?.cover ?? '',
     meta: { url: `https://www.bilibili.com/v/popular/weekly?num=${n}` },
-    groups: [{ id: 'weekly', title: `${d.config.label ?? title}（${items.length} 个）`, items }],
+    groups: [{ id: 'weekly', title: d.config.label ?? title, items }],
     defaultSelected: []
   }
 }
@@ -399,7 +399,7 @@ export async function parseRank(slug: string, rank: { rid: number; type: string;
     title: `排行榜 · ${rank.label}`,
     cover: items[0]?.cover ?? '',
     meta: { url: `https://www.bilibili.com/v/popular/rank/${slug}` },
-    groups: [{ id: 'rank', title: `${rank.label}排行（${items.length} 个）`, items }],
+    groups: [{ id: 'rank', title: `${rank.label}排行`, items }],
     defaultSelected: []
   }
 }

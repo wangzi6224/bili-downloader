@@ -14,13 +14,19 @@ import { AdvancedSettings } from './AdvancedSettings'
 import { Button, Modal } from './Modal'
 import { OptionsEditor } from './OptionsEditor'
 
+// 需要包含所有清晰度代码：“记住上次选择”可能存下其中任意一个
 const QN = [
-  { qn: 127, label: '最高可用' },
-  { qn: 120, label: '4K' },
+  { qn: 127, label: '最高可用（8K）' },
+  { qn: 126, label: '杜比视界' },
+  { qn: 125, label: 'HDR 真彩' },
+  { qn: 120, label: '4K 超清' },
   { qn: 116, label: '1080P 60帧' },
-  { qn: 80, label: '1080P' },
-  { qn: 64, label: '720P' },
-  { qn: 32, label: '480P' }
+  { qn: 112, label: '1080P 高码率' },
+  { qn: 80, label: '1080P 高清' },
+  { qn: 74, label: '720P 60帧' },
+  { qn: 64, label: '720P 准高清' },
+  { qn: 32, label: '480P 标清' },
+  { qn: 16, label: '360P 流畅' }
 ]
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

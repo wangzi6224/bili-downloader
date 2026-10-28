@@ -320,7 +320,8 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                   {(groups.length > 1 || paging) && (
                     <label className="sticky top-0 z-10 flex cursor-pointer items-center gap-2 bg-neutral-100 px-4 py-1.5 text-xs font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
                       <input type="checkbox" checked={groupOn} onChange={() => setMany(g.items, !groupOn)} className="accent-bili" />
-                      {g.title}（{g.items.length}）
+                      {g.title}
+                      {paging && g === groups[0] ? `（已加载 ${g.items.length} / ${paging.total}）` : `（${g.items.length}）`}
                     </label>
                   )}
                   {g.items.map((item) => (
