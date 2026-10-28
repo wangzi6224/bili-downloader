@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { extractInputs, parseInput } from './parseUrl'
+import type { MediaItem } from './types'
+import { extractInputs, itemUrl, parseInput } from './parseUrl'
 
 describe('parseInput', () => {
   it.each([
@@ -68,5 +69,20 @@ describe('extractInputs', () => {
     expect(
       extractInputs('第一个 https://www.bilibili.com/video/BV1GJ411x7h7\nBV1xx411c7mD, ep508404\n无关文字\nhttps://www.bilibili.com/video/BV1GJ411x7h7')
     ).toEqual(['https://www.bilibili.com/video/BV1GJ411x7h7', 'BV1xx411c7mD', 'ep508404'])
+  })
+})
+
+describe('itemUrl', () => {
+  const item = (fields: Partial<MediaItem>): MediaItem => ({ key: 'k', kind: 'ugc', title: 't', index: 1, cid: 1, ...fields })
+  it.each([
+    [{ bvid: 'BV1GJ411x7h7' }, 'https://www.bilibili.com/video/BV1GJ411x7h7'],
+    [{ bvid: 'BV1GJ411x7h7', page: 1 }, 'https://www.bilibili.com/video/BV1GJ411x7h7'],
+    [{ bvid: 'BV1GJ411x7h7', page: 3, index: 12 }, 'https://www.bilibili.com/video/BV1GJ411x7h7?p=3'],
+    [{ aid: 170001 }, 'https://www.bilibili.com/video/av170001'],
+    [{ kind: 'pgc', epId: 508404, bvid: 'BV1GJ411x7h7' }, 'https://www.bilibili.com/bangumi/play/ep508404'],
+    [{ kind: 'cheese', epId: 9 }, 'https://www.bilibili.com/cheese/play/ep9'],
+    [{ kind: 'audio', cid: 13598 }, 'https://www.bilibili.com/audio/au13598']
+  ] as [Partial<MediaItem>, string][])('%o', (fields, url) => {
+    expect(itemUrl(item(fields))).toBe(url)
   })
 })

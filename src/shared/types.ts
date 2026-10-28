@@ -29,6 +29,8 @@ export interface MediaItem {
   kind: MediaKind
   title: string
   index: number
+  /** 普通视频的分P号（合集里 index 是整个合集的序号） */
+  page?: number
   cid: number
   bvid?: string
   aid?: number
@@ -211,6 +213,8 @@ export interface TaskInfo {
   /** 不影响主文件的提示，例如“没有 CC 字幕” */
   note?: string
   outputPath?: string
+  /** 正在合并写入的 .tmp，被打断时要删掉 */
+  tmpOutput?: string
   /** 创建任务时的下载目录，之后改设置不影响已在队列中的任务 */
   dir?: string
   /** 已自动重试的次数 */
@@ -375,9 +379,13 @@ export interface BiliApi {
     enqueue(req: EnqueueRequest): Promise<string | undefined>
     list(): Promise<TaskInfo[]>
     pause(id: string): Promise<void>
+    pauseMany(ids: string[]): Promise<void>
+    pauseAll(): Promise<void>
     resume(id: string): Promise<void>
+    resumeMany(ids: string[]): Promise<void>
     resumeAll(): Promise<void>
-    cancel(id: string): Promise<void>
+    /** 从列表移除并删除没下载完的部分；deleteFiles 时已完成的也永久删除视频和附加文件 */
+    remove(ids: string[], deleteFiles: boolean): Promise<void>
     retry(id: string): Promise<void>
     /** 删除已下载的部分，从头开始 */
     redownload(id: string): Promise<void>

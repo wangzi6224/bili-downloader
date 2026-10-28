@@ -5,7 +5,7 @@ import { checkAuth, checkAuthThrottled, onAuthRequired, onLoggedIn, requireLogin
 import { resolveInput } from './bili/resolve'
 import { DownloadManager } from './download/manager'
 import { makeEnqueue } from './enqueue'
-import { recordDownload } from './history'
+import { recordDownload, removeDownloads } from './history'
 import { limiter } from './download/rateLimiter'
 import { registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
@@ -158,6 +158,7 @@ async function start(): Promise<void> {
   manager.on('done', (t: TaskInfo) =>
     recordDownload({ key: t.item.key, title: t.title, groupTitle: t.groupTitle, path: t.outputPath ?? '', at: Date.now() })
   )
+  manager.on('purged', (tasks: TaskInfo[]) => removeDownloads(tasks.map((t) => t.item.key)))
   manager.on('active', (active: boolean) => applyPower(active, getSettings().powerMode))
   manager.on('idle', ({ done, failed }: { done: number; failed: number }) =>
     notify(failed ? '下载结束，有任务失败' : '下载完成', failed ? `完成 ${done} 个，失败 ${failed} 个` : `${done} 个任务已全部完成`)

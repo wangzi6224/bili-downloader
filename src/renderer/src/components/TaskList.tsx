@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import {
   ArrowDown,
   Ban,
   Check,
+  ChevronRight,
   CircleAlert,
   CircleCheck,
   CirclePause,
@@ -20,12 +21,15 @@ import {
   RotateCcw,
   Search,
   Timer,
+  Trash2,
   X,
   type LucideIcon
 } from 'lucide-react'
+import { itemUrl } from '@shared/parseUrl'
 import type { PowerMode, TaskInfo, TaskStatus } from '@shared/types'
 import { fmtBytes, fmtEta, fmtSpeed, thumb } from '../format'
 import { api, updateSettings, useStore } from '../store'
+import { ACTIVE, buildEntries } from '../taskOrder'
 import { Logo } from './Logo'
 import { Badge, Dropdown, EmptyState, IconButton, Input, MenuItem, MenuLabel, Progress, Segmented, STROKE } from './ui'
 
@@ -43,7 +47,21 @@ const STATUS: Record<TaskStatus, { label: string; color: string; icon: LucideIco
   unsupported: { label: '无法下载', color: 'text-red-600 dark:text-red-400', icon: Ban }
 }
 
-export const ACTIVE = new Set<TaskStatus>(['fetching', 'downloading', 'merging', 'extras'])
+export { ACTIVE }
+
+/** 和主进程的判断一致：排队、运行中、等待登录、等待自动重试 */
+const pausable = (t: TaskInfo): boolean =>
+  ACTIVE.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' || Boolean(t.retryAt)
+const resumable = (t: TaskInfo): boolean => t.status === 'paused' || t.status === 'error'
+const settled = (t: TaskInfo): boolean => t.status === 'done' || t.status === 'unsupported'
+const failed = (t: TaskInfo): boolean => (t.status === 'error' && !t.retryAt) || t.status === 'unsupported'
+
+function removeTasks(ids: string[], deleteFiles: boolean): void {
+  api.download.remove(ids, deleteFiles).catch((e: Error) => useStore.getState().set({ error: e.message }))
+}
+
+/** 点击来自行里的按钮或链接时，不触发行本身的点击 */
+const fromControl = (e: MouseEvent): boolean => Boolean((e.target as HTMLElement).closest('a, button'))
 
 const POWER: { value: PowerMode; label: string }[] = [
   { value: 'off', label: '允许休眠' },
@@ -60,7 +78,7 @@ const TABS: { value: Tab; label: string; match: (t: TaskInfo) => boolean }[] = [
     match: (t) => ACTIVE.has(t.status) || ['queued', 'paused', 'waitingAuth'].includes(t.status) || Boolean(t.retryAt)
   },
   { value: 'done', label: '已完成', match: (t) => t.status === 'done' },
-  { value: 'failed', label: '失败', match: (t) => (t.status === 'error' && !t.retryAt) || t.status === 'unsupported' }
+  { value: 'failed', label: '失败', match: failed }
 ]
 
 /** 每秒刷新一次，用于重试倒计时 */
@@ -74,12 +92,22 @@ function useNow(enabled: boolean): number {
   return now
 }
 
-function TaskRow({ t, now }: { t: TaskInfo; now: number }) {
+/** 标题链接：在浏览器里打开 B站页面（主进程的 setWindowOpenHandler 交给系统浏览器） */
+function TitleLink({ href, children }: { href?: string; children: ReactNode }) {
+  if (!href) return <>{children}</>
+  return (
+    <a href={href} target="_blank" rel="noreferrer" title="在浏览器中打开 B站页面" className="hover:text-bili hover:underline">
+      {children}
+    </a>
+  )
+}
+
+function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?: boolean }) {
   const pct = t.total ? Math.min(100, (t.downloaded / t.total) * 100) : 0
   const active = ACTIVE.has(t.status)
   const retrying = t.status === 'error' && t.retryAt
   const s = retrying ? { label: '等待重试', color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false } : STATUS[t.status]
-  const finished = t.status === 'done' || t.status === 'unsupported'
+  const finished = settled(t)
 
   let detail = ''
   if (retrying) {
@@ -108,7 +136,7 @@ function TaskRow({ t, now }: { t: TaskInfo; now: number }) {
   return (
     <div
       className="group flex items-center gap-4 rounded-xl px-3 py-2.5 transition-colors hover:bg-hover"
-      onDoubleClick={() => t.status === 'done' && t.outputPath && api.showInFolder(t.outputPath)}
+      onDoubleClick={(e) => !fromControl(e) && t.status === 'done' && t.outputPath && api.showInFolder(t.outputPath)}
     >
       <div className="relative h-[54px] w-24 shrink-0 overflow-hidden rounded-lg bg-track ring-1 ring-line">
         {t.item.cover && (
@@ -121,12 +149,12 @@ function TaskRow({ t, now }: { t: TaskInfo; now: number }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium" title={t.relBase}>
-          {t.title}
+        <div className="truncate text-[13px] font-medium">
+          <TitleLink href={itemUrl(t.item)}>{t.title}</TitleLink>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={t.relBase}>
           {t.qualityLabel && <Badge>{t.qualityLabel}</Badge>}
-          {t.groupTitle !== t.title && <span className="truncate">{t.groupTitle}</span>}
+          {!nested && t.groupTitle !== t.title && <span className="truncate">{t.groupTitle}</span>}
         </div>
         {(active || t.status === 'paused' || retrying) && t.total > 0 && (
           <Progress value={pct} muted={!active} className="mt-2" />
@@ -160,17 +188,163 @@ function TaskRow({ t, now }: { t: TaskInfo; now: number }) {
               }}
             />
           )}
-          <IconButton
-            icon={X}
-            variant="danger"
-            label={finished ? '从列表移除' : '取消并删除已下载的部分'}
-            onClick={() => {
-              if (finished || confirm(`取消“${t.title}”并删除已下载的部分？`)) void api.download.cancel(t.id)
-            }}
-          />
+          {finished && <IconButton icon={X} label="从列表移除（保留文件）" onClick={() => removeTasks([t.id], false)} />}
+          {t.status !== 'unsupported' && (
+            <IconButton
+              icon={Trash2}
+              variant="danger"
+              label={t.status === 'done' ? '彻底删除：永久删除视频文件和附加文件' : '彻底删除：取消下载并删除已下载的部分'}
+              onClick={() => {
+                const ok = confirm(
+                  t.status === 'done'
+                    ? `永久删除“${t.title}”的视频文件，以及封面、字幕、弹幕等附加文件？删除后无法恢复。`
+                    : `取消“${t.title}”并删除已下载的部分？`
+                )
+                if (ok) removeTasks([t.id], true)
+              }}
+            />
+          )}
         </div>
         {primary}
       </div>
+    </div>
+  )
+}
+
+/** 合集的总体状态：有在下的算下载中，其次排队、等待登录、暂停、失败，都没有才算完成 */
+function groupStatus(tasks: TaskInfo[]): TaskStatus {
+  if (tasks.some((t) => ACTIVE.has(t.status))) return 'downloading'
+  if (tasks.some((t) => t.status === 'queued' || t.retryAt)) return 'queued'
+  if (tasks.some((t) => t.status === 'waitingAuth')) return 'waitingAuth'
+  if (tasks.some((t) => t.status === 'paused')) return 'paused'
+  if (tasks.some(failed)) return 'error'
+  return 'done'
+}
+
+/** 同一个合集的任务折叠成一行，显示总进度；展开后列出每个任务 */
+function GroupRow({
+  tasks,
+  visible,
+  open,
+  onToggle,
+  now
+}: {
+  tasks: TaskInfo[]
+  visible: TaskInfo[]
+  open: boolean
+  onToggle: () => void
+  now: number
+}) {
+  const first = tasks[0]
+  const ids = tasks.map((t) => t.id)
+  const counted = tasks.filter((t) => t.status !== 'unsupported')
+  const done = tasks.filter((t) => t.status === 'done')
+  const failedCount = tasks.filter(failed).length
+  // 按任务数平均：排队的任务还不知道大小，按字节算会忽高忽低
+  const pct = counted.length
+    ? (counted.reduce((sum, t) => sum + (t.status === 'done' ? 1 : t.total ? Math.min(1, t.downloaded / t.total) : 0), 0) /
+        counted.length) *
+      100
+    : 0
+  const speed = tasks.reduce((sum, t) => sum + (t.status === 'downloading' ? t.speed : 0), 0)
+  const status = groupStatus(tasks)
+  const s = STATUS[status]
+  const label = status === 'error' ? `${failedCount} 个失败` : s.label
+  const allSettled = tasks.every(settled)
+
+  let detail = `${pct.toFixed(0)}%`
+  if (status === 'downloading') detail = fmtSpeed(speed)
+  else if (status === 'done') detail = fmtBytes(done.reduce((sum, t) => sum + t.total, 0))
+
+  let primary = null
+  if (tasks.some(pausable)) {
+    primary = <IconButton icon={Pause} label="暂停整组" onClick={() => api.download.pauseMany(ids)} />
+  } else if (tasks.some(resumable)) {
+    primary = <IconButton icon={Play} label="继续整组" onClick={() => api.download.resumeMany(ids)} />
+  } else if (done[0]?.outputPath) {
+    primary = <IconButton icon={FolderOpen} label="在访达中显示" onClick={() => api.showInFolder(done[0].outputPath!)} />
+  }
+
+  return (
+    <div>
+      <div
+        className="group flex items-center gap-4 rounded-xl px-3 py-2.5 transition-colors hover:bg-hover"
+        onClick={(e) => !fromControl(e) && onToggle()}
+      >
+        {/* 叠起来的卡片，表示这是一组 */}
+        <div className="relative h-[54px] w-24 shrink-0">
+          <div className="absolute inset-x-2 -top-1 h-full rounded-lg bg-track ring-1 ring-line" />
+          <div className="absolute inset-0 overflow-hidden rounded-lg bg-track ring-1 ring-line">
+            {(first.seriesCover || first.item.cover) && (
+              <img
+                src={thumb((first.seriesCover || first.item.cover)!, 192)}
+                referrerPolicy="no-referrer"
+                className="h-full w-full object-cover"
+                alt=""
+              />
+            )}
+            <span className="absolute right-1 bottom-1 rounded bg-black/65 px-1 text-[10px] leading-4 font-medium text-white tabular-nums">
+              {tasks.length}
+            </span>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1 text-[13px] font-medium">
+            <button
+              type="button"
+              aria-label={open ? '收起' : '展开'}
+              aria-expanded={open}
+              onClick={onToggle}
+              className="-ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-hover hover:text-fg"
+            >
+              <ChevronRight size={15} strokeWidth={STROKE} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+            </button>
+            <span className="truncate">
+              <TitleLink href={first.meta?.url}>{first.groupTitle}</TitleLink>
+            </span>
+          </div>
+          <div className="mt-1 truncate text-xs text-muted tabular-nums">
+            共 {tasks.length} 个 · 已完成 {done.length}
+            {failedCount > 0 && ` · 失败 ${failedCount}`}
+          </div>
+          {status !== 'done' && <Progress value={pct} muted={status !== 'downloading'} className="mt-2" />}
+        </div>
+        <div className="w-32 shrink-0 text-right text-xs">
+          <div className={`inline-flex items-center gap-1 font-medium ${s.color}`}>
+            <s.icon size={13} strokeWidth={2} className={s.spin ? 'animate-spin' : ''} />
+            {label}
+            {status === 'downloading' && <span className="tabular-nums">{pct.toFixed(0)}%</span>}
+          </div>
+          <div className="mt-0.5 truncate text-muted tabular-nums">{detail}</div>
+        </div>
+        <div className="flex w-[100px] shrink-0 items-center justify-end gap-0.5">
+          <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            {allSettled && <IconButton icon={X} label="整组从列表移除（保留文件）" onClick={() => removeTasks(ids, false)} />}
+            <IconButton
+              icon={Trash2}
+              variant="danger"
+              label="彻底删除整组"
+              onClick={() => {
+                const ok = confirm(
+                  `删除“${first.groupTitle}”的 ${tasks.length} 个任务？` +
+                    (done.length
+                      ? `其中 ${done.length} 个已完成的视频文件及封面、字幕、弹幕会被永久删除，无法恢复。`
+                      : '已下载的部分会一并删除。')
+                )
+                if (ok) removeTasks(ids, true)
+              }}
+            />
+          </div>
+          {primary}
+        </div>
+      </div>
+      {open && (
+        <div className="ml-6 border-l border-line pl-1">
+          {visible.map((t) => (
+            <TaskRow key={t.id} t={t} now={now} nested />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -263,9 +437,12 @@ export function TaskList() {
   const tasks = useStore((s) => s.tasks)
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
+  /** 展开着的合集，默认都折叠 */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const running = tasks.some((t) => ACTIVE.has(t.status))
-  const resumable = tasks.some((t) => t.status === 'paused' || t.status === 'error')
-  const finished = tasks.some((t) => t.status === 'done' || t.status === 'unsupported')
+  const canPause = tasks.some(pausable)
+  const canResume = tasks.some(resumable)
+  const finished = tasks.some(settled)
   const now = useNow(tasks.some((t) => t.retryAt))
 
   const visible = useMemo(() => {
@@ -278,8 +455,16 @@ export function TaskList() {
           !q ||
           [t.title, t.groupTitle, t.relBase, t.item.bvid ?? ''].some((s) => s.toLowerCase().includes(q))
       )
-      .reverse()
   }, [tasks, tab, query])
+
+  const entries = useMemo(() => buildEntries(tasks, visible), [tasks, visible])
+
+  const toggle = (key: string): void =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
 
   if (!tasks.length) {
     return (
@@ -313,12 +498,27 @@ export function TaskList() {
         />
         <div className="flex-1" />
         <PowerMenu running={running} />
-        <IconButton icon={Play} label="全部继续" disabled={!resumable} onClick={() => api.download.resumeAll()} />
+        <IconButton icon={Pause} label="全部暂停" disabled={!canPause} onClick={() => api.download.pauseAll()} />
+        <IconButton icon={Play} label="全部继续" disabled={!canResume} onClick={() => api.download.resumeAll()} />
         <IconButton icon={ListX} label="清除已完成" disabled={!finished} onClick={() => api.download.clearFinished()} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        {visible.length ? (
-          visible.map((t) => <TaskRow key={t.id} t={t} now={now} />)
+        {entries.length ? (
+          entries.map((e) =>
+            e.type === 'task' ? (
+              <TaskRow key={e.t.id} t={e.t} now={now} />
+            ) : (
+              <GroupRow
+                key={e.key}
+                tasks={e.tasks}
+                visible={e.visible}
+                // 搜索时自动展开，直接看到匹配的任务
+                open={Boolean(query.trim()) || expanded.has(e.key)}
+                onToggle={() => toggle(e.key)}
+                now={now}
+              />
+            )
+          )
         ) : (
           <EmptyState icon={query ? Search : Download} title="没有符合条件的任务" />
         )}

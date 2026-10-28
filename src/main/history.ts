@@ -30,6 +30,13 @@ export function recordDownload(entry: HistoryEntry): void {
 
 export const downloadedKeys = (): string[] => [...loadDownloads().keys()]
 
+/** 文件被删掉了，之后再选中不算“已下载” */
+export function removeDownloads(keys: string[]): void {
+  const map = loadDownloads()
+  for (const k of keys) map.delete(k)
+  writeJson(downloadsFile(), [...map.values()])
+}
+
 export function clearDownloads(): void {
   downloads = new Map()
   writeJson(downloadsFile(), [])

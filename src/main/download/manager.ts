@@ -10,6 +10,7 @@ import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { preferCdn } from '../net/cdn'
 import { readJson, writeJson } from '../store'
+import { removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
 import { placeSidecars, prepareExtras } from './extras'
 import { fetchFile } from './fetchFile'
@@ -18,6 +19,10 @@ import { mux, type OutFormat } from './mux'
 
 const RUNNING = new Set(['fetching', 'downloading', 'merging', 'extras'])
 const SETTLED = new Set(['done', 'unsupported'])
+
+/** 可以暂停的：排队、运行中、等待登录、等待自动重试 */
+const pausable = (t: TaskInfo): boolean =>
+  t.status === 'queued' || RUNNING.has(t.status) || t.status === 'waitingAuth' || Boolean(t.retryAt)
 
 function speedMeter(): (bytes: number) => number {
   let lastT = 0
@@ -94,6 +99,7 @@ async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
  * - active(boolean)：是否有任务在运行，用于防休眠
  * - idle({ done, failed })：队列从忙到全部结束，用于完成通知
  * - done(task)：单个任务完成，用于记录下载历史
+ * - purged(tasks)：已完成的任务连同文件被删除，用于移出下载历史
  */
 export class DownloadManager extends EventEmitter {
   private tasks: TaskInfo[]
@@ -177,11 +183,21 @@ export class DownloadManager extends EventEmitter {
   }
 
   pause(id: string): void {
-    const t = this.find(id)
-    if (!t || SETTLED.has(t.status)) return
-    this.clearRetry(t)
-    this.running.get(id)?.abort()
-    this.patch(t, { status: 'paused', speed: 0 })
+    this.pauseMany([id])
+  }
+
+  /** 先把状态都改成暂停再中断，免得中断后重新调度又启动了同一批里还没暂停的任务 */
+  pauseMany(ids: string[]): void {
+    const targets = this.tasks.filter((t) => ids.includes(t.id) && pausable(t))
+    for (const t of targets) {
+      this.clearRetry(t)
+      this.patch(t, { status: 'paused', speed: 0 })
+    }
+    for (const t of targets) this.running.get(t.id)?.abort()
+  }
+
+  pauseAll(): void {
+    this.pauseMany(this.tasks.map((t) => t.id))
   }
 
   /** 手动继续/重试：重置自动重试计数 */
@@ -193,14 +209,18 @@ export class DownloadManager extends EventEmitter {
     this.schedule()
   }
 
-  resumeAll(): void {
+  resumeMany(ids: string[]): void {
     for (const t of this.tasks) {
-      if (t.status === 'paused' || t.status === 'error') {
+      if (ids.includes(t.id) && (t.status === 'paused' || t.status === 'error')) {
         this.clearRetry(t)
         this.patch(t, { status: 'queued', error: undefined, retries: 0 })
       }
     }
     this.schedule()
+  }
+
+  resumeAll(): void {
+    this.resumeMany(this.tasks.map((t) => t.id))
   }
 
   /** 删除已下载的分片，从头开始（坏分片导致合并必然失败时用） */
@@ -213,7 +233,7 @@ export class DownloadManager extends EventEmitter {
       this.canceled.add(id)
       ac.abort()
     } else {
-      rmSync(join(this.tmpRoot, id), { recursive: true, force: true })
+      this.discardPartial(t)
     }
     this.patch(t, {
       status: 'queued',
@@ -228,18 +248,34 @@ export class DownloadManager extends EventEmitter {
     if (!ac) this.schedule()
   }
 
-  cancel(id: string): void {
-    const t = this.find(id)
-    if (t) this.clearRetry(t)
-    const ac = this.running.get(id)
-    if (ac) {
-      this.canceled.add(id)
-      ac.abort()
-    } else {
-      rmSync(join(this.tmpRoot, id), { recursive: true, force: true })
+  /**
+   * 从列表移除。未完成的任务一并删除已下载的部分；deleteFiles 时已完成的任务
+   * 也永久删除成品和封面、字幕、弹幕等附加文件。有文件删不掉时抛错列出路径。
+   */
+  remove(ids: string[], deleteFiles: boolean): void {
+    const removed = this.tasks.filter((t) => ids.includes(t.id))
+    // 先移出列表，中断运行中的任务后重新调度时就不会再启动它们
+    this.tasks = this.tasks.filter((t) => !ids.includes(t.id))
+    const purged: TaskInfo[] = []
+    const failed: string[] = []
+    for (const t of removed) {
+      this.clearRetry(t)
+      const ac = this.running.get(t.id)
+      if (ac) {
+        // 由 run 结束时清理临时文件和已经合并出的成品
+        this.canceled.add(t.id)
+        ac.abort()
+      } else {
+        this.discardPartial(t)
+      }
+      if (deleteFiles && t.status === 'done') {
+        failed.push(...removeTaskOutputs(t, this.rootOf(t)))
+        purged.push(t)
+      }
     }
-    this.tasks = this.tasks.filter((t) => t.id !== id)
     this.changed()
+    if (purged.length) this.emit('purged', purged)
+    if (failed.length) throw new Error(`有 ${failed.length} 个文件没能删除：${failed.join('、')}`)
   }
 
   clearFinished(): void {
@@ -294,6 +330,19 @@ export class DownloadManager extends EventEmitter {
     return true
   }
 
+  private rootOf(t: TaskInfo): string {
+    return t.dir ?? this.settings().downloadDir
+  }
+
+  /** 删除没下载完的部分：临时目录里的分片和附加内容、合并到一半的 .tmp */
+  private discardPartial(t: TaskInfo): void {
+    rmSync(join(this.tmpRoot, t.id), { recursive: true, force: true })
+    if (t.tmpOutput) {
+      removeTaskOutputs({ tmpOutput: t.tmpOutput }, this.rootOf(t))
+      t.tmpOutput = undefined
+    }
+  }
+
   private find(id: string): TaskInfo | undefined {
     return this.tasks.find((t) => t.id === id)
   }
@@ -341,6 +390,8 @@ export class DownloadManager extends EventEmitter {
     this.running.set(t.id, ac)
     this.emitActive()
     const tmp = join(this.tmpRoot, t.id)
+    /** 已经合并出来的成品，取消时要一起删掉 */
+    let produced: string | undefined
     // 暂停/取消后不能再改写状态
     const check = (): void => {
       if (ac.signal.aborted) throw new AbortError()
@@ -405,6 +456,9 @@ export class DownloadManager extends EventEmitter {
       }
       const format = plan.format
       const out = uniquePath(base, `.${format}`)
+      // 上次合并到一半退出了应用，留下的半成品先删掉
+      if (t.tmpOutput) rmSync(t.tmpOutput, { force: true })
+      this.patch(t, { tmpOutput: `${out}.tmp` })
       const o = t.options
       const embedded = await mux(
         {
@@ -430,8 +484,12 @@ export class DownloadManager extends EventEmitter {
       )
       // 先写到目标目录里的 .tmp 再改名，避免跨卷移动和半成品文件
       renameSync(`${out}.tmp`, out)
+      produced = out
+      this.patch(t, { tmpOutput: undefined })
 
       const sideNotes = await placeSidecars(t, extras, out.slice(0, -format.length - 1), embedded)
+      // 保存附加内容时被删除了：不能再标记完成、记进下载历史
+      if (this.canceled.has(t.id)) throw new AbortError()
       rmSync(tmp, { recursive: true, force: true })
       const size = statSync(out).size
       const note = [...plan.notes, ...extras.notes, ...sideNotes].join('；') || undefined
@@ -454,7 +512,14 @@ export class DownloadManager extends EventEmitter {
       }
     } finally {
       this.running.delete(t.id)
-      if (this.canceled.delete(t.id)) rmSync(tmp, { recursive: true, force: true })
+      if (this.canceled.delete(t.id)) {
+        rmSync(tmp, { recursive: true, force: true })
+        removeTaskOutputs({ outputPath: produced, tmpOutput: t.tmpOutput }, this.rootOf(t))
+      } else if (t.tmpOutput) {
+        // 合并被暂停或出错打断，半成品没用，下次重新合并
+        rmSync(t.tmpOutput, { force: true })
+      }
+      if (t.tmpOutput) this.patch(t, { tmpOutput: undefined })
       this.schedule()
     }
   }

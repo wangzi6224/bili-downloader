@@ -1,3 +1,5 @@
+import type { MediaItem } from './types'
+
 export type Target =
   | { type: 'short'; url: string }
   | { type: 'ugc'; bvid?: string; aid?: number; page?: number }
@@ -137,4 +139,21 @@ export function extractInputs(text: string): string[] {
     }
   }
   return found
+}
+
+/** 条目在 B站网页上的地址（任务列表里点标题打开） */
+export function itemUrl(item: MediaItem): string {
+  switch (item.kind) {
+    case 'pgc':
+      return `https://www.bilibili.com/bangumi/play/ep${item.epId}`
+    case 'cheese':
+      return `https://www.bilibili.com/cheese/play/ep${item.epId}`
+    case 'audio':
+      // 音频的 cid 就是歌曲 id
+      return `https://www.bilibili.com/audio/au${item.cid}`
+    default: {
+      const video = `https://www.bilibili.com/video/${item.bvid ?? `av${item.aid}`}`
+      return item.page && item.page > 1 ? `${video}?p=${item.page}` : video
+    }
+  }
 }
