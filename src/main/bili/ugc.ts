@@ -121,7 +121,7 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
         cover: v.pic,
         owner: v.owner?.name,
         meta,
-        groups: [{ id: 'stein', title: `互动视频剧情片段（共 ${nodes.length} 个）`, items: nodes }],
+        groups: [{ id: 'stein', title: '互动视频剧情片段', items: nodes }],
         defaultSelected: nodes.map((i) => i.key)
       }
     }
@@ -182,7 +182,7 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
     cover: v.pic,
     owner: v.owner?.name,
     meta,
-    groups: [{ id: 'pages', title: multi ? `分P（共 ${items.length} P）` : v.title, items }],
+    groups: [{ id: 'pages', title: multi ? '分P' : v.title, items }],
     defaultSelected: (currentPage ? items.filter((i) => i.cid === currentPage.cid) : items).map((i) => i.key)
   }
 }

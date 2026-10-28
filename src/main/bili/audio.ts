@@ -63,7 +63,7 @@ export async function parseAudioMenu(amid: number): Promise<ParseResult> {
     cover: info.cover,
     owner: info.uname,
     meta: { owner: info.uname, ownerMid: info.uid, desc: info.intro, url: `https://www.bilibili.com/audio/am${amid}` },
-    groups: [{ id: 'menu', title: `歌单（共 ${first.totalSize} 首）`, items }],
+    groups: [{ id: 'menu', title: '歌单', items }],
     defaultSelected: items.map((i) => i.key)
   }
 }
