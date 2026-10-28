@@ -6,6 +6,7 @@ import { renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
 import type { EnqueueRequest, Settings, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
+import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { readJson, writeJson } from '../store'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
@@ -36,6 +37,53 @@ function speedMeter(): (bytes: number) => number {
       lastB = bytes
     }
     return speed
+  }
+}
+
+const KIND_LABEL = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' } as const
+
+interface StreamPlan {
+  parts: { name: string; urls: string[]; fingerprint: string; estimate: number }[]
+  video?: DashStream
+  hasAudio: boolean
+  format: OutFormat
+  qualityLabel: string
+  quality: string
+  codec: string
+  notes: string[]
+}
+
+/** 决定要下载哪些流：音频区直接取音频地址，视频走 DASH 选流 */
+async function planStreams(t: TaskInfo): Promise<StreamPlan> {
+  if (t.item.kind === 'audio') {
+    const s = await getAudioStream(t.item.cid, t.options.audio)
+    return {
+      parts: [{ name: 'audio.m4s', urls: s.urls, fingerprint: `au-${s.label}-${s.size}`, estimate: s.size }],
+      hasAudio: true,
+      format: s.flac ? 'flac' : 'm4a',
+      qualityLabel: `音频 ${s.label}`,
+      quality: s.label,
+      codec: '',
+      notes: []
+    }
+  }
+  const pick = pickStreams(await getPlayInfo(t.item, t.options.qn), t.options)
+  const estimate = (s: DashStream): number => Math.round((s.bandwidth * (t.item.duration ?? 0)) / 8)
+  const part = (name: string, s: DashStream) => ({
+    name,
+    urls: streamUrls(s),
+    fingerprint: `${s.id}-${s.codecs}-${s.bandwidth}`,
+    estimate: estimate(s)
+  })
+  return {
+    parts: [...(pick.video ? [part('video.m4s', pick.video)] : []), ...(pick.audio ? [part('audio.m4s', pick.audio)] : [])],
+    video: pick.video,
+    hasAudio: Boolean(pick.audio),
+    format: pick.video ? pick.container : pick.audioKind === 'flac' ? 'flac' : 'm4a',
+    qualityLabel: pick.qualityLabel,
+    quality: pick.quality,
+    codec: pick.codec,
+    notes: pick.notes
   }
 }
 
@@ -82,7 +130,8 @@ export class DownloadManager extends EventEmitter {
     const settings = this.settings()
     const multi = req.items.length > 1
     // 只下一个用 single 模板；一次下多个按番剧 / 普通合集区分
-    const template = !multi ? settings.naming.single : req.kind === 'pgc' ? settings.naming.pgc : settings.naming.multi
+    const episodic = req.kind === 'pgc' || req.kind === 'cheese'
+    const template = !multi ? settings.naming.single : episodic ? settings.naming.pgc : settings.naming.multi
     const now = Math.floor(Date.now() / 1000)
     for (const item of req.items) {
       const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
@@ -92,15 +141,15 @@ export class DownloadManager extends EventEmitter {
         // 单个视频的标题和总标题相同，series 留空，可选段会自动去掉
         series: multi || item.title !== req.title ? req.title : '',
         index: item.index,
-        owner: req.meta?.owner,
-        owner_mid: req.meta?.ownerMid,
+        owner: item.owner ?? req.meta?.owner,
+        owner_mid: item.ownerMid ?? req.meta?.ownerMid,
         pubdate: item.pubdate ?? req.meta?.pubdate,
         date: now,
         bvid: item.bvid,
         aid: item.aid,
         cid: item.cid,
         ep_id: item.epId,
-        type: req.kind === 'pgc' ? '番剧影视' : '视频'
+        type: KIND_LABEL[req.kind]
       }
       this.tasks.push({
         id: randomUUID(),
@@ -112,7 +161,7 @@ export class DownloadManager extends EventEmitter {
         template,
         nameValues,
         meta: req.meta,
-        series: req.kind === 'pgc' && multi,
+        series: episodic && multi,
         seriesCover: req.cover,
         dir: settings.downloadDir,
         status: 'queued',
@@ -297,17 +346,14 @@ export class DownloadManager extends EventEmitter {
     }
     try {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0 })
-      const info = await getPlayInfo(t.item, t.options.qn)
+      const plan = await planStreams(t)
       check()
-      const pick = pickStreams(info, t.options)
-      this.patch(t, { status: 'downloading', qualityLabel: pick.qualityLabel })
+      this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel })
       mkdirSync(tmp, { recursive: true })
 
-      const parts: [string, DashStream][] = []
-      if (pick.video) parts.push(['video.m4s', pick.video])
-      if (pick.audio) parts.push(['audio.m4s', pick.audio])
-      // 拿到真实大小之前先按码率估算
-      const sizes = parts.map(([, s]) => Math.round((s.bandwidth * (t.item.duration ?? 0)) / 8))
+      const parts = plan.parts
+      // 拿到真实大小之前先用估算值
+      const sizes = parts.map((p) => p.estimate)
       const done = parts.map(() => 0)
       const meter = speedMeter()
       const report = (): void => {
@@ -318,13 +364,13 @@ export class DownloadManager extends EventEmitter {
       // 音视频两个文件同时下载，各自再分段
       const threads = this.settings().threads
       await Promise.all(
-        parts.map(async ([name, stream], i) => {
-          const dest = join(tmp, name)
+        parts.map(async (part, i) => {
+          const dest = join(tmp, part.name)
           if (!existsSync(dest)) {
             await fetchFile({
-              urls: streamUrls(stream),
+              urls: part.urls,
               dest,
-              fingerprint: `${stream.id}-${stream.codecs}-${stream.bandwidth}`,
+              fingerprint: part.fingerprint,
               threads,
               headers: BASE_HEADERS,
               signal: ac.signal,
@@ -348,7 +394,7 @@ export class DownloadManager extends EventEmitter {
       this.patch(t, { status: 'merging' })
       // 按实际拿到的画质、编码重新套一次命名模板
       const relBase = t.template
-        ? renderTemplate(t.template, { ...t.nameValues, quality: pick.quality, codec: pick.codec })
+        ? renderTemplate(t.template, { ...t.nameValues, quality: plan.quality, codec: plan.codec })
         : t.relBase
       const base = join(t.dir ?? this.settings().downloadDir, relBase)
       try {
@@ -356,18 +402,18 @@ export class DownloadManager extends EventEmitter {
       } catch (e) {
         throw toDiskError(e, dirname(base))
       }
-      const format: OutFormat = pick.video ? pick.container : pick.audioKind === 'flac' ? 'flac' : 'm4a'
+      const format = plan.format
       const out = uniquePath(base, `.${format}`)
       const o = t.options
       const embedded = await mux(
         {
-          video: pick.video ? join(tmp, 'video.m4s') : undefined,
-          audio: pick.audio ? join(tmp, 'audio.m4s') : undefined,
+          video: plan.video ? join(tmp, 'video.m4s') : undefined,
+          audio: plan.hasAudio ? join(tmp, 'audio.m4s') : undefined,
           out: `${out}.tmp`,
           format,
           title: t.title,
-          hevc: pick.video ? isHevc(pick.video) : false,
-          dolbyVision: pick.video ? isDolbyVision(pick.video) : false,
+          hevc: plan.video ? isHevc(plan.video) : false,
+          dolbyVision: plan.video ? isDolbyVision(plan.video) : false,
           cover: o.embedCover ? extras.cover : undefined,
           subtitles: o.embedSubtitle ? extras.subtitles : undefined,
           chapters: extras.chapters,
@@ -387,7 +433,7 @@ export class DownloadManager extends EventEmitter {
       const sideNotes = await placeSidecars(t, extras, out.slice(0, -format.length - 1), embedded)
       rmSync(tmp, { recursive: true, force: true })
       const size = statSync(out).size
-      const note = [...pick.notes, ...extras.notes, ...sideNotes].join('；') || undefined
+      const note = [...plan.notes, ...extras.notes, ...sideNotes].join('；') || undefined
       this.batch.done++
       this.patch(t, { status: 'done', outputPath: out, relBase, note, speed: 0, downloaded: size, total: size, retries: 0 })
       this.emit('done', t)

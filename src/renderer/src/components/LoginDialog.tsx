@@ -9,6 +9,7 @@ export function LoginDialog() {
   const [profiles, setProfiles] = useState<BrowserProfile[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [cookieText, setCookieText] = useState('')
 
   const detect = (): void => {
     setProfiles(null)
@@ -119,6 +120,37 @@ export function LoginDialog() {
           </Button>
           <span className="text-xs text-neutral-500">支持扫码、密码、短信登录，登录成功后窗口自动关闭</span>
         </div>
+
+        <details className="mt-5">
+          <summary className="cursor-pointer text-sm font-medium">手动粘贴 Cookie</summary>
+          <div className="mt-2 text-xs text-neutral-500">
+            粘贴 “SESSDATA=…; bili_jct=…; DedeUserID=…” 这样的内容，或 Cookie-Editor 等插件导出的 JSON。Cookie 等同于登录凭据，只在本机保存。
+          </div>
+          <textarea
+            value={cookieText}
+            onChange={(e) => setCookieText(e.target.value)}
+            rows={3}
+            className="mt-2 w-full rounded-lg border border-neutral-300 bg-white p-2 font-mono text-xs outline-none focus:border-bili dark:border-neutral-700 dark:bg-neutral-900"
+          />
+          <Button
+            className="mt-2"
+            disabled={busy !== null || !cookieText.trim()}
+            onClick={async () => {
+              setBusy('cookie')
+              setError(null)
+              try {
+                done(await api.auth.importCookie(cookieText))
+                setCookieText('')
+              } catch (e) {
+                setError((e as Error).message)
+              } finally {
+                setBusy(null)
+              }
+            }}
+          >
+            {busy === 'cookie' ? '验证中…' : '用这段 Cookie 登录'}
+          </Button>
+        </details>
 
         {error && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/50">{error}</div>}
 

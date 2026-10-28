@@ -65,6 +65,27 @@ export async function getPlayInfo(item: MediaItem, qn: number): Promise<PlayInfo
       { wbi: true }
     )
   }
+  if (item.kind === 'cheese') {
+    let c: PlayInfo
+    try {
+      c = await api<PlayInfo>('https://api.bilibili.com/pugv/player/web/playurl', {
+        avid: item.aid,
+        cid: item.cid,
+        ep_id: item.epId,
+        qn,
+        ...PARAMS
+      })
+    } catch (e) {
+      if (e instanceof BiliError && e.code !== -1 && e.code !== 412 && e.code < 500) {
+        throw new UnsupportedError(`没有这节课的观看权限（可能需要购买）：${e.message}`, e.code)
+      }
+      throw e
+    }
+    if (c.is_drm || c.drm_type) throw new UnsupportedError('这节课使用了 DRM 加密，不支持下载')
+    if (c.is_preview === 1) throw new UnsupportedError('当前账号只能试看这节课（需要购买）')
+    return c
+  }
+  if (item.kind === 'audio') throw new UnsupportedError('音频不走视频取流接口')
   let r: PlayInfo & { video_info?: PlayInfo; play_check?: { play_detail?: string } }
   try {
     r = await api('https://api.bilibili.com/pgc/player/web/v2/playurl', {

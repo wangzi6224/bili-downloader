@@ -33,7 +33,7 @@ export async function prepareExtras(t: TaskInfo, tmp: string, settings: Settings
   const o = t.options
   const item = t.item
   const out: PreparedExtras = { subtitles: [], notes: [] }
-  const audioOnly = o.output === 'audio'
+  const audioOnly = o.output === 'audio' || item.kind === 'audio'
 
   if ((o.cover || o.embedCover || o.nfo) && item.cover) {
     try {
