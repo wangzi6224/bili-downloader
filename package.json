@@ -13,8 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
-    "build:mac": "npm run fetch-ffmpeg && electron-vite build && electron-builder --mac --x64 --arm64",
-    "release": "npm run build:mac && node scripts/release.mjs",
+    "build:mac": "npm run fetch-ffmpeg && electron-vite build && electron-builder --mac --x64 --arm64 --publish never",
+    "release": "node scripts/release.mjs --check && npm run build:mac && node scripts/release.mjs",
     "icons": "node scripts/build-icons.mjs"
   },
   "devDependencies": {

@@ -20,12 +20,26 @@ npm run build:mac
 
 ## 发布新版本
 
-1. 改 `package.json` 里的 `version`
+发布由 GitHub Actions 完成（[`.github/workflows/release.yml`](../.github/workflows/release.yml)）：推送 `v版本号` 的 tag 后，在 macOS runner 上跑测试和类型检查，打包两个架构，生成 `update.json`，创建 Release 并上传 zip、dmg 和 `update.json`，整个过程不需要本机参与。
+
+1. 改版本号：`npm version 0.5.0 --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`）
 2. 在 `CHANGELOG.md` 里把“未发布”改成 `## 新版本号 - 日期`，这段会显示在应用的更新弹窗和 Release 页面上
-3. 提交并 `git push`
-4. 运行 `npm run release`：打包两个架构，生成 `dist/update.json`，用 `gh` 创建 `v版本号` 的 Release 并上传 zip、dmg 和 `update.json`
+3. 提交、推送，再打 tag 推送：
+
+   ```bash
+   git commit -am "chore: 发布 0.5.0" && git push
+   git tag v0.5.0 && git push origin v0.5.0
+   ```
+
+4. 在仓库的 Actions 页面看进度，完成后 Release 页面就有新版本了
+
+工作流第一步会检查 tag 和 `package.json` 的版本是否一致、`CHANGELOG.md` 里有没有这个版本、这个版本是不是已经发布过，不对就直接失败，不会打包。tag 打错了先删掉（`git push origin :refs/tags/v0.5.0 && git tag -d v0.5.0`），改好再重新打。网络之类的偶发失败在 Actions 页面点 “Re-run jobs” 即可。
 
 带后缀的版本号（如 `1.0.0-beta.1`）会发布成预发布版本，已安装的正式版不会收到。
+
+改了打包相关的配置，想先确认能打出包：在 Actions 页面手动运行“发布”工作流（Run workflow），它只打包不发布，安装包和 `update.json` 作为这次运行的产物上传，保留 7 天。
+
+Actions 不可用时，也可以在本机发布：提交并推送后运行 `npm run release`，它会先做同样的检查，再打包，用 `gh` 创建 `v版本号` 的 Release（tag 不存在会自动创建）并上传。
 
 ## 在本地测试更新流程
 

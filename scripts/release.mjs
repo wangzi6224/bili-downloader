@@ -1,6 +1,7 @@
 // 发布新版本到 GitHub Releases：取 CHANGELOG.md 里当前版本的说明，生成 dist/update.json（应用内更新读这个文件），
 // 再用 gh 创建 Release，上传两个架构的 zip（自动更新用）和 dmg（手动安装用）。
-// 用法：npm run release（先打包再发布）；node scripts/release.mjs --dry-run 只生成 update.json 不上传
+// 平时由 GitHub Actions 在推送 v版本号 的 tag 后运行（.github/workflows/release.yml）；也可以在本机 npm run release（检查、打包、发布）
+// 参数：--check 只检查版本号、tag 和更新日志，不用先打包；--dry-run 只生成 update.json 不上传
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -10,8 +11,11 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
 const dryRun = process.argv.includes('--dry-run')
+const checkOnly = process.argv.includes('--check')
 const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const tag = `v${version}`
+/** 在 GitHub Actions 里由推送 tag 触发时，是推送的那个 tag */
+const pushedTag = process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : undefined
 const ARCHS = ['arm64', 'x64']
 /** update.json 里最多带几个版本的说明，跳过了多个版本的用户能看到中间的变化 */
 const MAX_NOTES = 30
@@ -39,8 +43,16 @@ function readChangelog() {
 const notes = readChangelog().slice(0, MAX_NOTES)
 const current = notes.find((n) => n.version === version)
 if (!current?.body) fail(`CHANGELOG.md 里没有 ${version} 的说明，先加上一段 “## ${version} - YYYY-MM-DD”`)
+if (pushedTag && pushedTag !== tag) fail(`推送的 tag ${pushedTag} 和 package.json 里的版本 ${version} 不一致`)
+if (!dryRun && spawnSync('gh', ['release', 'view', tag], { cwd: root, stdio: 'ignore' }).status === 0) {
+  fail(`${tag} 已经发布过了，先改 package.json 里的版本号`)
+}
+if (checkOnly) {
+  console.log(`✓ ${tag} 可以发布`)
+  process.exit(0)
+}
 
-const repo = sh('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'])
+const repo = process.env.GITHUB_REPOSITORY || sh('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'])
 const base = `https://github.com/${repo}/releases/download/${tag}`
 
 const assets = []
@@ -74,10 +86,8 @@ if (dryRun) process.exit(0)
 
 if (sh('git', ['status', '--porcelain'])) fail('还有未提交的修改，先提交再发布')
 const head = sh('git', ['rev-parse', 'HEAD'])
-if (!sh('git', ['branch', '-r', '--contains', head])) fail('当前提交还没有推送到 GitHub，先 git push')
-if (spawnSync('gh', ['release', 'view', tag], { cwd: root, stdio: 'ignore' }).status === 0) {
-  fail(`${tag} 已经发布过了，先改 package.json 里的版本号`)
-}
+// Actions 里检出的就是已推送的 tag，而且只拉了这一个提交，查不到远端分支
+if (!pushedTag && !sh('git', ['branch', '-r', '--contains', head])) fail('当前提交还没有推送到 GitHub，先 git push')
 
 // 预发布版本（如 1.0.0-beta.1）不会被 releases/latest 选中，正式版用户收不到
 const pre = version.includes('-') ? ['--prerelease'] : []

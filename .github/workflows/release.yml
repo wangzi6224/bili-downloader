@@ -1,0 +1,71 @@
+# 推送 v版本号 的 tag 后自动测试、打包两个架构，并发布到 GitHub Releases，发布步骤见 docs/RELEASING.md
+# 也可以在 Actions 页面手动运行：只打包不发布，安装包作为这次运行的产物上传，用来验证打包流程
+name: 发布
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    # dmg 只能在 macOS 上打；Apple 芯片的 runner 也能打 x64 的包
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # 先确认 tag 和 package.json 的版本一致、更新日志写了这个版本、还没发布过，免得白打包
+      - name: 检查版本
+        if: github.event_name == 'push'
+        run: node scripts/release.mjs --check
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+      # ffmpeg 来自第三方站点，按下载脚本缓存：脚本里的版本或校验值变了才重新下载
+      - uses: actions/cache@v6
+        with:
+          path: resources/ffmpeg
+          key: ffmpeg-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+
+      - name: 打包
+        run: npm run build:mac
+
+      - name: 发布
+        if: github.event_name == 'push'
+        run: node scripts/release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 生成 update.json
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/release.mjs --dry-run
+
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: bili-downloader
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/update.json
+          # dmg 和 zip 本身已经压缩过
+          compression-level: 0
+          retention-days: 7
