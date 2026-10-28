@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { app } from 'electron'
 import type { HistoryEntry, ParseRecord } from '@shared/types'
-import { readJson, writeJson } from './store'
+import { readJsonArray, writeJson } from './store'
 
 const MAX_PARSES = 300
 
@@ -12,12 +12,12 @@ let downloads: Map<string, HistoryEntry> | undefined
 let parses: ParseRecord[] | undefined
 
 function loadDownloads(): Map<string, HistoryEntry> {
-  downloads ??= new Map((readJson<HistoryEntry[]>(downloadsFile()) ?? []).map((e) => [e.key, e]))
+  downloads ??= new Map(readJsonArray<HistoryEntry>(downloadsFile()).map((e) => [e.key, e]))
   return downloads
 }
 
 function loadParses(): ParseRecord[] {
-  parses ??= readJson<ParseRecord[]>(parsesFile()) ?? []
+  parses ??= readJsonArray<ParseRecord>(parsesFile())
   return parses
 }
 

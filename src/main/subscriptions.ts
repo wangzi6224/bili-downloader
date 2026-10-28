@@ -6,7 +6,7 @@ import type { EnqueueRequest, NewSubscription, Subscription } from '@shared/type
 import { AuthExpiredError } from './bili/http'
 import { resolveInput } from './bili/resolve'
 import { downloadedKeys } from './history'
-import { readJson, writeJson } from './store'
+import { readJsonArray, writeJson } from './store'
 
 const TICK_MS = 60_000
 /** 记住的已见条目上限，防止大收藏夹让文件无限变大 */
@@ -23,7 +23,7 @@ export class SubscriptionManager extends EventEmitter {
 
   constructor(private enqueue: (req: EnqueueRequest) => Promise<string | undefined>) {
     super()
-    this.subs = readJson<Subscription[]>(this.file()) ?? []
+    this.subs = readJsonArray<Subscription>(this.file())
   }
 
   private file(): string {

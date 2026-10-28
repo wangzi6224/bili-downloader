@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react'
 import { ArrowUp } from 'lucide-react'
-import type { AudioPref, CodecPref, Container, DanmakuFormat, DownloadOptions, OutputKind, StreamInfo } from '@shared/types'
+import type { AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo } from '@shared/types'
+import { actualCodec, AUDIO_LABEL, moveUp, type EditableOptions } from '../viewLogic'
 import { IconButton, Segmented, Select } from './ui'
-
-export type EditableOptions = Omit<DownloadOptions, 'qn'>
 
 const CODEC_LABEL: Record<CodecPref, string> = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' }
 const CODEC_HINT: Record<CodecPref, string> = { avc: '兼容性最好', hevc: '体积更小', av1: '最省空间，需 M1 以后的 Mac' }
@@ -13,15 +12,6 @@ const OUTPUTS: { value: OutputKind; label: string; hint: string }[] = [
   { value: 'audio', label: '仅音频', hint: '只保存声音（m4a，无损为 flac）' },
   { value: 'video', label: '仅视频', hint: '只保存画面，没有声音' }
 ]
-
-const AUDIO_LABEL: Record<AudioPref, string> = {
-  best: '最佳',
-  flac: 'Hi-Res 无损',
-  dolby: '杜比全景声',
-  '192k': '192K',
-  '132k': '132K',
-  '64k': '64K'
-}
 
 export function Section({ title, children, dim }: { title: string; children: ReactNode; dim?: boolean }) {
   return (
@@ -70,12 +60,10 @@ function CodecOrder({
   disabled?: boolean
 }) {
   const move = (i: number): void => {
-    if (i === 0) return
-    const next = [...order]
-    ;[next[i - 1], next[i]] = [next[i], next[i - 1]]
-    onChange(next)
+    const next = moveUp(order, i)
+    if (next) onChange(next)
   }
-  const actual = available?.length ? order.find((c) => available.includes(c)) : undefined
+  const actual = actualCodec(order, available)
   return (
     <div className={disabled ? 'opacity-40' : ''}>
       <div className="flex flex-col gap-1">
@@ -212,21 +200,4 @@ export function OptionsEditor({
       </Section>
     </div>
   )
-}
-
-/** 底部“这次会下载什么”的标签，避免下完才发现没有声音 */
-export function summaryTags(o: EditableOptions, info?: StreamInfo | null): string[] {
-  const tags: string[] = []
-  const hasAudio = !info || info.hasAudio
-  if (o.output !== 'audio') tags.push(`视频（${o.container.toUpperCase()}）`)
-  if (o.output !== 'video' && hasAudio) tags.push(`音频（${AUDIO_LABEL[o.audio]}）`)
-  if (o.output === 'video') tags.push('无声')
-  if (o.embedCover || o.cover) tags.push('封面')
-  if (o.output !== 'audio') {
-    if (o.embedSubtitle || o.subtitle) tags.push('字幕')
-    if (o.chapters) tags.push('章节')
-    if (o.danmaku) tags.push('弹幕')
-  }
-  if (o.nfo) tags.push('NFO')
-  return tags
 }

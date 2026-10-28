@@ -43,8 +43,8 @@ let cache: Settings | undefined
 
 function migrate(saved: Partial<Settings> & LegacySettings, d: Settings): Settings {
   const { defaultCodec, extras, ...rest } = saved
+  // 默认值由 normalizeOptions 补齐，不能先铺进来：带了 codecOrder 它就不会再换算旧的 codec
   const base = normalizeOptions({
-    ...d.defaults,
     ...extras,
     ...(defaultCodec ? { codec: defaultCodec } : {}),
     ...saved.defaults

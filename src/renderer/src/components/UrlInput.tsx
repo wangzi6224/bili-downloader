@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Clipboard, ClipboardPaste, Clock, Flame, Folder, Link2, ListPlus, Loader2, Star } from 'lucide-react'
-import { extractInputs, parseInput, RANK_SLUGS } from '@shared/parseUrl'
+import { extractInputs, RANK_SLUGS } from '@shared/parseUrl'
 import { api, parseBatch, parseLink, useStore } from '../store'
+import { classifyPaste } from '../viewLogic'
 import { Banner, Button, Dropdown, fieldCls, IconButton, MenuItem, MenuLabel, Modal, ModalFooter, ModalHeader, STROKE } from './ui'
 
 /** 菜单打开时才挂载，顺便加载收藏夹 */
@@ -191,13 +192,13 @@ export function UrlInput() {
             onPaste={(e) => {
               const pasted = e.clipboardData.getData('text')
               lastClip.current = pasted.trim()
-              const inputs = extractInputs(pasted)
-              if (inputs.length > 1) {
+              const paste = classifyPaste(pasted)
+              if (paste.type === 'batch') {
                 // 多行内容粘进单行输入框会丢掉换行，直接批量解析
                 e.preventDefault()
-                setText(inputs.join(' '))
-                void parseBatch(inputs)
-              } else if (parseInput(pasted)) {
+                setText(paste.inputs.join(' '))
+                void parseBatch(paste.inputs)
+              } else if (paste.type === 'single') {
                 // 粘贴后立即解析
                 setTimeout(() => submit(pasted), 0)
               }

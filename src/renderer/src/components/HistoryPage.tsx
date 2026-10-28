@@ -1,18 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { History, Search, Trash2, X } from 'lucide-react'
 import type { ParseRecord } from '@shared/types'
-import { thumb } from '../format'
+import { ago, thumb } from '../format'
 import { api, parseLink, useStore } from '../store'
 import { Badge, Button, EmptyState, IconButton, Input, PageHeader } from './ui'
-
-function ago(ms: number): string {
-  const s = (Date.now() - ms) / 1000
-  if (s < 60) return '刚刚'
-  if (s < 3600) return `${Math.floor(s / 60)} 分钟前`
-  if (s < 86400) return `${Math.floor(s / 3600)} 小时前`
-  if (s < 86400 * 30) return `${Math.floor(s / 86400)} 天前`
-  return new Date(ms).toLocaleDateString()
-}
 
 /** 解析记录：方便下次接着下合集里剩下的集 */
 export function HistoryPage() {
@@ -87,7 +78,7 @@ export function HistoryPage() {
                 <Badge>{r.kind === 'pgc' ? '番剧影视' : '视频'}</Badge>
                 <span className="tabular-nums">{r.count} 项</span>
                 <span>·</span>
-                <span>{ago(r.at)}</span>
+                <span>{ago(r.at, Date.now())}</span>
               </div>
               <div className="mt-0.5 truncate text-[11px] text-subtle">{r.input}</div>
             </div>

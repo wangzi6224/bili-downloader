@@ -3,11 +3,11 @@
 // arm64：https://ffmpeg.martin-riedl.de（GPLv3；ffmpeg-static 的 arm64 带 --enable-nonfree，不可再分发，所以不用它）
 //        固定的 sha256 与该构建旁边发布的 ffmpeg.zip.sha256 一致
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
+import { isUpToDate, licenseText, verifySha256 } from './lib/ffmpeg.mjs'
 
 const STATIC_BASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1'
 const FFMPEG_SRC = 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.2'
@@ -45,15 +45,13 @@ async function download(url) {
 for (const [arch, src] of Object.entries(SOURCES)) {
   const dir = join(root, arch)
   const bin = join(dir, 'ffmpeg')
-  const stamp = join(dir, '.sha256')
-  if (existsSync(bin) && existsSync(stamp) && readFileSync(stamp, 'utf8') === src.sha256) {
+  if (isUpToDate(dir, src.sha256)) {
     console.log(`ffmpeg ${arch}: 已是 ${src.version}，跳过`)
     continue
   }
   console.log(`ffmpeg ${arch}: 下载 ${src.version}…`)
   const archive = await download(src.url)
-  const actual = createHash('sha256').update(archive).digest('hex')
-  if (actual !== src.sha256) throw new Error(`ffmpeg ${arch} 校验失败：期望 ${src.sha256}，实际 ${actual}`)
+  verifySha256(archive, src.sha256, `ffmpeg ${arch}`)
   mkdirSync(dir, { recursive: true })
   if (src.url.endsWith('.zip')) {
     const zip = join(dir, 'ffmpeg.zip')
@@ -65,7 +63,7 @@ for (const [arch, src] of Object.entries(SOURCES)) {
   }
   chmodSync(bin, 0o755)
   const licenses = await Promise.all(src.license.map(download))
-  writeFileSync(join(dir, 'LICENSE'), [src.notice, ...licenses.map(String)].filter(Boolean).join('\n'))
-  writeFileSync(stamp, src.sha256)
+  writeFileSync(join(dir, 'LICENSE'), licenseText(src.notice, licenses))
+  writeFileSync(join(dir, '.sha256'), src.sha256)
   console.log(`ffmpeg ${arch}: 完成`)
 }

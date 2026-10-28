@@ -1,6 +1,6 @@
 import type { AuthState } from '@shared/types'
 import { checkAuth } from './authGuard'
-import { clearBiliCookies, setBiliCookies, type PlainCookie, type SameSite } from './session'
+import { clearBiliCookies, isBiliHost, setBiliCookies, snapshotCookies, type PlainCookie, type SameSite } from './session'
 
 const HTTP_ONLY = new Set(['SESSDATA'])
 const HALF_YEAR = 180 * 86400
@@ -28,7 +28,7 @@ export function parseCookieText(text: string, now = Math.floor(Date.now() / 1000
     const raw = JSON.parse(t) as JsonCookie | JsonCookie[]
     return (Array.isArray(raw) ? raw : [raw])
       .filter((c) => c.name && typeof c.value === 'string')
-      .filter((c) => !c.domain || c.domain.replace(/^\./, '').endsWith('bilibili.com'))
+      .filter((c) => !c.domain || isBiliHost(c.domain))
       .map((c) => ({
         domain: c.domain ? (c.domain.startsWith('.') || c.domain === 'bilibili.com' ? `.${c.domain.replace(/^\./, '')}` : c.domain) : '.bilibili.com',
         name: c.name,
@@ -68,9 +68,29 @@ export async function importCookieText(text: string): Promise<AuthState> {
     throw new Error('看不懂这段内容，请粘贴 “SESSDATA=…; bili_jct=…” 这样的 Cookie，或插件导出的 JSON')
   }
   if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) throw new Error('里面没有 SESSDATA，无法登录')
-  await clearBiliCookies()
-  await setBiliCookies(cookies)
-  const state = await checkAuth()
-  if (!state.loggedIn) throw new Error('这段 Cookie 已经失效，请重新获取')
-  return state
+  return replaceLogin(cookies, '这段 Cookie 已经失效，请重新获取')
+}
+
+/**
+ * 用导入的 cookie 换掉现在的登录，确认登录有效才保留；
+ * 无效或确认时出错就写回原来的 cookie，导入失败不会把用户登出
+ */
+export async function replaceLogin(cookies: PlainCookie[], invalid: string): Promise<AuthState> {
+  const backup = await snapshotCookies()
+  try {
+    await clearBiliCookies()
+    await setBiliCookies(cookies)
+    const state = await checkAuth()
+    if (!state.loggedIn) throw new Error(invalid)
+    return state
+  } catch (e) {
+    try {
+      await clearBiliCookies()
+      await setBiliCookies(backup)
+      await checkAuth()
+    } catch (err) {
+      console.warn('恢复原来的登录失败', err)
+    }
+    throw e
+  }
 }

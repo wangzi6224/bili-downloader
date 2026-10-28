@@ -6,3 +6,4 @@ resources/ffmpeg/
 .DS_Store
 .vscode/
 .idea/
+coverage/

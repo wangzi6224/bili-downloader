@@ -27,3 +27,24 @@ export function fmtEta(sec: number): string {
 /** B站图片加尺寸参数，减小缩略图体积 */
 export const thumb = (url: string | undefined, w: number): string | undefined =>
   url ? `${url.replace(/^http:/, 'https:')}@${w}w.webp` : undefined
+
+/**
+ * 相对时间：刚刚、N 分钟前、N 小时前、N 天前。
+ * suffix 接在后面（例如“检查”）；dateAfterMonth 时 30 天以上直接显示日期
+ */
+export function ago(ms: number, now: number, { suffix = '', dateAfterMonth = true } = {}): string {
+  const s = (now - ms) / 1000
+  if (s < 60) return `刚刚${suffix}`
+  if (s < 3600) return `${Math.floor(s / 60)} 分钟前${suffix}`
+  if (s < 86400) return `${Math.floor(s / 3600)} 小时前${suffix}`
+  if (s < 86400 * 30 || !dateAfterMonth) return `${Math.floor(s / 86400)} 天前${suffix}`
+  return new Date(ms).toLocaleDateString()
+}
+
+/** 订阅上次检查的时间 */
+export const checkedAgo = (ms: number | undefined, now: number): string =>
+  ms ? ago(ms, now, { suffix: '检查', dateAfterMonth: false }) : '还没检查过'
+
+/** 把 str 里 [start, end) 这一段换成 text，用于在光标处插入 */
+export const insertAt = (str: string, start: number, end: number, text: string): string =>
+  str.slice(0, start) + text + str.slice(end)

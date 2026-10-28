@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, Rss, Trash2 } from 'lucide-react'
 import type { Subscription } from '@shared/types'
+import { checkedAgo } from '../format'
 import { api } from '../store'
 import { EmptyState, IconButton, PageHeader, Select, Switch } from './ui'
 
@@ -12,15 +13,6 @@ export const INTERVALS = [
   { min: 720, label: '12 小时' },
   { min: 1440, label: '每天' }
 ]
-
-function ago(ms?: number): string {
-  if (!ms) return '还没检查过'
-  const s = (Date.now() - ms) / 1000
-  if (s < 60) return '刚刚检查'
-  if (s < 3600) return `${Math.floor(s / 60)} 分钟前检查`
-  if (s < 86400) return `${Math.floor(s / 3600)} 小时前检查`
-  return `${Math.floor(s / 86400)} 天前检查`
-}
 
 export function SubscriptionsPage() {
   const [subs, setSubs] = useState<Subscription[] | null>(null)
@@ -54,7 +46,7 @@ export function SubscriptionsPage() {
                     {s.title}
                   </div>
                   <div className="mt-0.5 truncate text-xs text-muted">
-                    {ago(s.lastCheck)}
+                    {checkedAgo(s.lastCheck, Date.now())}
                     {s.lastNew ? ` · 上次发现 ${s.lastNew} 个新内容` : ''}
                     {s.lastError && <span className="text-red-600 dark:text-red-400"> · {s.lastError}</span>}
                   </div>

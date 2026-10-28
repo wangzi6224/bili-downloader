@@ -8,7 +8,7 @@
 npm run build:mac
 ```
 
-会先下载两个架构的静态 ffmpeg（固定 sha256 校验），再在 `dist/` 里分别生成 `x64` 和 `arm64` 的 dmg 和 zip。打开 dmg 后把应用图标拖到“应用程序”即可安装。应用使用 ad-hoc 签名、没有公证，第一次打开会被拦截，需要到“系统设置 → 隐私与安全性”里点“仍要打开”（macOS 15 起右键 →“打开”已不再有效）。
+会先跑类型检查和单元测试（`npm run verify`），任何一项失败，或者覆盖率低于 `vitest.config.mts` 里的门槛，都会直接停下、不打包；通过后下载两个架构的静态 ffmpeg（固定 sha256 校验），再在 `dist/` 里分别生成 `x64` 和 `arm64` 的 dmg 和 zip。打开 dmg 后把应用图标拖到“应用程序”即可安装。应用使用 ad-hoc 签名、没有公证，第一次打开会被拦截，需要到“系统设置 → 隐私与安全性”里点“仍要打开”（macOS 15 起右键 →“打开”已不再有效）。
 
 应用图标的源文件是 `build/icon.svg`，dmg 安装窗口背景的源文件是 `build/dmg-background.svg`，改完后运行 `npm run icons` 重新生成 `build/icon.icns`、`build/icon.png` 和 `build/background{,@2x}.png`（生成物已提交，平时打包不需要这一步）。背景里图标的位置要和 `electron-builder.yml` 里 `dmg.contents` 的坐标一致。
 
@@ -20,7 +20,7 @@ npm run build:mac
 
 ## 发布新版本
 
-发布由 GitHub Actions 完成（[`.github/workflows/release.yml`](../.github/workflows/release.yml)）：推送 `v版本号` 的 tag 后，在 macOS runner 上跑测试和类型检查，打包两个架构，生成 `update.json`，创建 Release 并上传 zip、dmg 和 `update.json`，整个过程不需要本机参与。
+发布由 GitHub Actions 完成（[`.github/workflows/release.yml`](../.github/workflows/release.yml)）：推送 `v版本号` 的 tag 后，在 macOS runner 上跑类型检查和单元测试（含覆盖率门槛），打包两个架构，生成 `update.json`，创建 Release 并上传 zip、dmg 和 `update.json`，整个过程不需要本机参与。
 
 1. 改版本号：`npm version 0.5.0 --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`）
 2. 在 `CHANGELOG.md` 里把“未发布”改成 `## 新版本号 - 日期`，这段会显示在应用的更新弹窗和 Release 页面上

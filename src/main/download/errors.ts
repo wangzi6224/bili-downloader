@@ -1,4 +1,4 @@
-import { BiliError } from '../bili/http'
+import { BiliError, isTransient } from '../bili/http'
 
 /** 网络类错误：断连、超时、CDN 返回异常，值得自动重试 */
 export class DownloadError extends Error {}
@@ -39,7 +39,7 @@ export function isRetryable(e: unknown): boolean {
   if (e instanceof DiskError || e instanceof FfmpegError || e instanceof AbortError) return false
   if (e instanceof DownloadError) return true
   // 接口返回的业务错误（如视频不存在）不重试，网络失败、412、5xx 重试
-  if (e instanceof BiliError) return e.code === -1 || e.code === 412 || e.code >= 500
+  if (e instanceof BiliError) return isTransient(e)
   // fetch 本身失败（DNS、连接被重置等）
   return e instanceof TypeError
 }

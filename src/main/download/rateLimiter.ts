@@ -24,16 +24,18 @@ export class RateLimiter {
     this.tokens -= bytes
     if (this.tokens >= 0) return
     const waitMs = (-this.tokens / this.rate) * 1000
+    // 已经中止的 signal 不会再触发 abort 事件，得先查一次
+    if (signal?.aborted) throw new AbortError()
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, waitMs)
-      signal?.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timer)
-          reject(new AbortError())
-        },
-        { once: true }
-      )
+      const onAbort = (): void => {
+        clearTimeout(timer)
+        reject(new AbortError())
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      }, waitMs)
+      signal?.addEventListener('abort', onAbort, { once: true })
     })
   }
 }

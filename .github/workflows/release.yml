@@ -36,8 +36,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - run: npm ci
-      - run: npm test
-      - run: npm run typecheck
 
       # ffmpeg 来自第三方站点，按下载脚本缓存：脚本里的版本或校验值变了才重新下载
       - uses: actions/cache@v6
@@ -45,6 +43,7 @@ jobs:
           path: resources/ffmpeg
           key: ffmpeg-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
 
+      # 打包前会先跑类型检查和单元测试，覆盖率低于 vitest.config.mts 里的门槛也会失败
       - name: 打包
         run: npm run build:mac
 

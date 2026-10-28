@@ -5,9 +5,9 @@ description: 发布 B站下载器（bili-downloader）的新版本：定版本�
 
 # 发布新版本
 
-推送 `v版本号` 的 tag 会触发 `.github/workflows/release.yml`：在 macOS runner 上检查版本 → `npm ci` → 测试 → 类型检查 → 打包 x64 和 arm64 → `scripts/release.mjs` 创建 Release，上传两个 zip、两个 dmg 和 `update.json`。已安装的应用从 `releases/latest/download/update.json` 检查更新，所以**推送 tag 就等于把新版本发给所有用户**，推送前必须得到用户明确同意。
+推送 `v版本号` 的 tag 会触发 `.github/workflows/release.yml`：在 macOS runner 上检查版本 → `npm ci` → 类型检查、单元测试和覆盖率门槛（`npm run build:mac` 里先跑 `npm run verify`）→ 打包 x64 和 arm64 → `scripts/release.mjs` 创建 Release，上传两个 zip、两个 dmg 和 `update.json`。已安装的应用从 `releases/latest/download/update.json` 检查更新，所以**推送 tag 就等于把新版本发给所有用户**，推送前必须得到用户明确同意。
 
-更多背景见 `docs/RELEASING.md`。版本号和更新日志的解析规则以 `scripts/release.mjs` 为准。
+更多背景见 `docs/RELEASING.md`。版本号和更新日志的解析规则以 `scripts/release.mjs` 和 `scripts/lib/release.mjs` 为准。
 
 ## 1. 发布前检查
 
@@ -15,7 +15,7 @@ description: 发布 B站下载器（bili-downloader）的新版本：定版本�
 git switch main && git pull --ff-only
 git status --porcelain                          # 必须没有输出
 gh run list --workflow release.yml --limit 3    # 不能有正在跑的发布
-npm test && npm run typecheck
+npm run verify                                  # 类型检查 + 单元测试 + 覆盖率门槛
 ```
 
 有未提交的改动、本地和 origin/main 不一致、或者测试没过，先停下来告诉用户，不要自行处理。
@@ -92,7 +92,7 @@ node -e "fetch('https://github.com/wangzi6224/bili-downloader/releases/latest/do
 | 情况 | 处理 |
 | --- | --- |
 | “检查版本”这一步失败 | 看日志：tag 和 `package.json` 版本不一致、更新日志里没有这个版本、或已经发布过。修好并推送到 main 后，告诉用户要删掉旧 tag 重打：`git push origin :refs/tags/v<版本> && git tag -d v<版本>`，再回到第 6 步 |
-| 测试、类型检查或打包失败 | 同上：修复 → 删 tag → 在修好的提交上重打 |
+| 类型检查、测试、覆盖率门槛或打包失败 | 同上：修复 → 删 tag → 在修好的提交上重打 |
 | 网络之类的偶发失败，Release 还没创建 | `gh run rerun <run-id> --failed` |
 | Release 已经创建但有问题 | 用户可能已经更新了，不要删掉后用同一个版本号重发；告诉用户，一般是修好后发一个新的补丁版本 |
 

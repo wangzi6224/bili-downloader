@@ -27,9 +27,23 @@ import {
 } from 'lucide-react'
 import { itemUrl } from '@shared/parseUrl'
 import type { PowerMode, TaskInfo, TaskStatus } from '@shared/types'
-import { fmtBytes, fmtEta, fmtSpeed, thumb } from '../format'
+import { fmtSpeed, thumb } from '../format'
 import { api, updateSettings, useStore } from '../store'
 import { ACTIVE, buildEntries } from '../taskOrder'
+import {
+  clearCounts,
+  filterTasks,
+  groupSummary,
+  pausable,
+  resumable,
+  settled,
+  shortenHome,
+  statusCounts,
+  TABS,
+  taskDetail,
+  taskPct,
+  type Tab
+} from '../taskStatus'
 import { Logo } from './Logo'
 import {
   Badge,
@@ -65,13 +79,6 @@ const STATUS: Record<TaskStatus, { label: string; color: string; icon: LucideIco
 
 export { ACTIVE }
 
-/** 和主进程的判断一致：排队、运行中、等待登录、等待自动重试 */
-const pausable = (t: TaskInfo): boolean =>
-  ACTIVE.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' || Boolean(t.retryAt)
-const resumable = (t: TaskInfo): boolean => t.status === 'paused' || t.status === 'error'
-const settled = (t: TaskInfo): boolean => t.status === 'done' || t.status === 'unsupported'
-const failed = (t: TaskInfo): boolean => (t.status === 'error' && !t.retryAt) || t.status === 'unsupported'
-
 function removeTasks(ids: string[], deleteFiles: boolean): void {
   api.download.remove(ids, deleteFiles).catch((e: Error) => useStore.getState().set({ error: e.message }))
 }
@@ -83,18 +90,6 @@ const POWER: { value: PowerMode; label: string }[] = [
   { value: 'off', label: '允许休眠' },
   { value: 'system', label: '阻止系统睡眠' },
   { value: 'display', label: '保持屏幕常亮' }
-]
-
-type Tab = 'all' | 'active' | 'done' | 'failed'
-const TABS: { value: Tab; label: string; match: (t: TaskInfo) => boolean }[] = [
-  { value: 'all', label: '全部', match: () => true },
-  {
-    value: 'active',
-    label: '进行中',
-    match: (t) => ACTIVE.has(t.status) || ['queued', 'paused', 'waitingAuth'].includes(t.status) || Boolean(t.retryAt)
-  },
-  { value: 'done', label: '已完成', match: (t) => t.status === 'done' },
-  { value: 'failed', label: '失败', match: failed }
 ]
 
 /** 每秒刷新一次，用于重试倒计时 */
@@ -119,23 +114,12 @@ function TitleLink({ href, children }: { href?: string; children: ReactNode }) {
 }
 
 function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?: boolean }) {
-  const pct = t.total ? Math.min(100, (t.downloaded / t.total) * 100) : 0
+  const pct = taskPct(t)
   const active = ACTIVE.has(t.status)
   const retrying = t.status === 'error' && t.retryAt
   const s = retrying ? { label: '等待重试', color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false } : STATUS[t.status]
   const finished = settled(t)
-
-  let detail = ''
-  if (retrying) {
-    detail = `${Math.max(0, Math.ceil((t.retryAt! - now) / 1000))} 秒后 · 第 ${(t.retries ?? 0) + 1} 次`
-  } else if (t.status === 'downloading') {
-    const eta = t.speed > 0 ? fmtEta((t.total - t.downloaded) / t.speed) : ''
-    detail = `${fmtSpeed(t.speed)}${eta ? ` · 剩 ${eta}` : ''}`
-  } else if (t.status === 'done') {
-    detail = fmtBytes(t.total)
-  } else if (t.total > 0 && t.status !== 'queued') {
-    detail = `${fmtBytes(t.downloaded)} / ${fmtBytes(t.total)}`
-  }
+  const detail = taskDetail(t, now)
 
   // 常显的主操作
   let primary = null
@@ -227,16 +211,6 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
   )
 }
 
-/** 合集的总体状态：有在下的算下载中，其次排队、等待登录、暂停、失败，都没有才算完成 */
-function groupStatus(tasks: TaskInfo[]): TaskStatus {
-  if (tasks.some((t) => ACTIVE.has(t.status))) return 'downloading'
-  if (tasks.some((t) => t.status === 'queued' || t.retryAt)) return 'queued'
-  if (tasks.some((t) => t.status === 'waitingAuth')) return 'waitingAuth'
-  if (tasks.some((t) => t.status === 'paused')) return 'paused'
-  if (tasks.some(failed)) return 'error'
-  return 'done'
-}
-
 /** 同一个合集的任务折叠成一行，显示总进度；展开后列出每个任务 */
 function GroupRow({
   tasks,
@@ -253,24 +227,9 @@ function GroupRow({
 }) {
   const first = tasks[0]
   const ids = tasks.map((t) => t.id)
-  const counted = tasks.filter((t) => t.status !== 'unsupported')
-  const done = tasks.filter((t) => t.status === 'done')
-  const failedCount = tasks.filter(failed).length
-  // 按任务数平均：排队的任务还不知道大小，按字节算会忽高忽低
-  const pct = counted.length
-    ? (counted.reduce((sum, t) => sum + (t.status === 'done' ? 1 : t.total ? Math.min(1, t.downloaded / t.total) : 0), 0) /
-        counted.length) *
-      100
-    : 0
-  const speed = tasks.reduce((sum, t) => sum + (t.status === 'downloading' ? t.speed : 0), 0)
-  const status = groupStatus(tasks)
+  const { status, pct, done, failedCount, allSettled, detail } = groupSummary(tasks)
   const s = STATUS[status]
   const label = status === 'error' ? `${failedCount} 个失败` : s.label
-  const allSettled = tasks.every(settled)
-
-  let detail = `${pct.toFixed(0)}%`
-  if (status === 'downloading') detail = fmtSpeed(speed)
-  else if (status === 'done') detail = fmtBytes(done.reduce((sum, t) => sum + t.total, 0))
 
   let primary = null
   if (tasks.some(pausable)) {
@@ -412,8 +371,7 @@ function PowerMenu({ running }: { running: boolean }) {
 function ClearDialog({ onClose }: { onClose: () => void }) {
   const tasks = useStore((s) => s.tasks)
   const [deleteFiles, setDeleteFiles] = useState(false)
-  const count = tasks.filter(settled).length
-  const files = tasks.filter((t) => t.status === 'done' && t.outputPath).length
+  const { count, files } = clearCounts(tasks)
 
   const submit = (): void => {
     onClose()
@@ -462,10 +420,7 @@ function ClearDialog({ onClose }: { onClose: () => void }) {
 /** 底部状态栏：总速度、各状态数量、下载目录 */
 function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
   const settings = useStore((s) => s.settings)!
-  const speed = tasks.reduce((sum, t) => sum + (t.status === 'downloading' ? t.speed : 0), 0)
-  const running = tasks.filter((t) => ACTIVE.has(t.status)).length
-  const queued = tasks.filter((t) => t.status === 'queued').length
-  const done = tasks.filter((t) => t.status === 'done').length
+  const { speed, running, queued, done } = statusCounts(tasks)
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-4 border-t border-line px-6 text-xs text-muted tabular-nums">
@@ -492,7 +447,7 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
         className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 hover:bg-hover hover:text-fg"
       >
         <FolderOpen size={13} strokeWidth={STROKE} className="shrink-0" />
-        <span className="max-w-64 truncate">{settings.downloadDir.replace(/^\/Users\/[^/]+/, '~')}</span>
+        <span className="max-w-64 truncate">{shortenHome(settings.downloadDir)}</span>
       </button>
     </div>
   )
@@ -513,17 +468,7 @@ export function TaskList() {
   const finished = tasks.some(settled)
   const now = useNow(tasks.some((t) => t.retryAt))
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const match = TABS.find((x) => x.value === tab)!.match
-    return tasks
-      .filter((t) => match(t))
-      .filter(
-        (t) =>
-          !q ||
-          [t.title, t.groupTitle, t.relBase, t.item.bvid ?? ''].some((s) => s.toLowerCase().includes(q))
-      )
-  }, [tasks, tab, query])
+  const visible = useMemo(() => filterTasks(tasks, tab, query), [tasks, tab, query])
 
   const entries = useMemo(() => buildEntries(tasks, visible), [tasks, visible])
 

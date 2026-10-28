@@ -9,7 +9,7 @@ import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { preferCdn } from '../net/cdn'
-import { readJson, writeJson } from '../store'
+import { readJsonArray, writeJson } from '../store'
 import { removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
 import { placeSidecars, prepareExtras } from './extras'
@@ -105,6 +105,8 @@ export class DownloadManager extends EventEmitter {
   private tasks: TaskInfo[]
   private running = new Map<string, AbortController>()
   private canceled = new Set<string>()
+  /** 正在合并的任务已经选定的成品路径：文件要等合并完才出现，同名的任务同时合并时不能挑到同一个名字 */
+  private claimed = new Set<string>()
   private retryTimers = new Map<string, NodeJS.Timeout>()
   private authBlocked = false
   private wasActive = false
@@ -120,13 +122,16 @@ export class DownloadManager extends EventEmitter {
   ) {
     super()
     // 重启后不自动开跑，未完成的任务一律改为暂停，由用户点“全部继续”
-    this.tasks = (readJson<TaskInfo[]>(stateFile) ?? []).map((t) => ({
-      ...t,
-      options: normalizeOptions(t.options),
-      speed: 0,
-      retryAt: undefined,
-      status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
-    }))
+    this.tasks = readJsonArray<TaskInfo>(stateFile)
+      // 缺了 id、item 的条目没法恢复，跳过
+      .filter((t) => t?.id && t.item)
+      .map((t) => ({
+        ...t,
+        options: normalizeOptions(t.options),
+        speed: 0,
+        retryAt: undefined,
+        status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
+      }))
   }
 
   list(): TaskInfo[] {
@@ -307,7 +312,8 @@ export class DownloadManager extends EventEmitter {
       const limit = this.settings().concurrency
       for (const t of this.tasks) {
         if (this.running.size >= limit) break
-        if (t.status === 'queued') void this.run(t)
+        // 暂停后立刻继续时，上一次 run 可能还卡在取流里没结束，等它结算后再启动
+        if (t.status === 'queued' && !this.running.has(t.id)) void this.run(t)
       }
     }
     this.emitActive()
@@ -400,6 +406,7 @@ export class DownloadManager extends EventEmitter {
     const tmp = join(this.tmpRoot, t.id)
     /** 已经合并出来的成品，取消时要一起删掉 */
     let produced: string | undefined
+    let claimed: string | undefined
     // 暂停/取消后不能再改写状态
     const check = (): void => {
       if (ac.signal.aborted) throw new AbortError()
@@ -463,7 +470,8 @@ export class DownloadManager extends EventEmitter {
         throw toDiskError(e, dirname(base))
       }
       const format = plan.format
-      const out = uniquePath(base, `.${format}`)
+      const out = uniquePath(base, `.${format}`, (p) => this.claimed.has(p))
+      this.claimed.add((claimed = out))
       // 上次合并到一半退出了应用，留下的半成品先删掉
       if (t.tmpOutput) rmSync(t.tmpOutput, { force: true })
       this.patch(t, { tmpOutput: `${out}.tmp` })
@@ -519,7 +527,9 @@ export class DownloadManager extends EventEmitter {
         this.patch(t, { status: 'error', error: message, speed: 0 })
       }
     } finally {
-      this.running.delete(t.id)
+      if (claimed) this.claimed.delete(claimed)
+      // 同一任务被暂停又继续时，不能删掉之后那次 run 的控制器
+      if (this.running.get(t.id) === ac) this.running.delete(t.id)
       if (this.canceled.delete(t.id)) {
         rmSync(tmp, { recursive: true, force: true })
         removeTaskOutputs({ outputPath: produced, tmpOutput: t.tmpOutput }, this.rootOf(t))

@@ -8,6 +8,12 @@ export const UA =
 
 export const biliSession = (): Electron.Session => session.fromPartition(PARTITION)
 
+/** bilibili.com 本身或它的子域名（可带前导点）；evilbilibili.com 这类不算 */
+export const isBiliHost = (host: string): boolean => {
+  const h = host.replace(/^\./, '')
+  return h === 'bilibili.com' || h.endsWith('.bilibili.com')
+}
+
 export type SameSite = NonNullable<CookiesSetDetails['sameSite']>
 
 export interface PlainCookie {
@@ -59,6 +65,22 @@ export async function setBiliCookies(list: PlainCookie[]): Promise<void> {
     })
   }
   await cookies.flushStore()
+}
+
+/** 当前分区里的全部 cookie，换成 setBiliCookies 能写回的格式（导入新登录失败时用来恢复原来的） */
+export async function snapshotCookies(): Promise<PlainCookie[]> {
+  return (await biliSession().cookies.get({}))
+    .filter((c) => c.domain)
+    .map((c) => ({
+      domain: c.domain!,
+      name: c.name,
+      value: c.value,
+      path: c.path || '/',
+      secure: Boolean(c.secure),
+      httpOnly: Boolean(c.httpOnly),
+      expires: c.session ? undefined : c.expirationDate,
+      sameSite: c.sameSite
+    }))
 }
 
 export async function clearBiliCookies(): Promise<void> {

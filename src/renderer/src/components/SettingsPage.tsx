@@ -10,7 +10,9 @@ import {
   type NamingTemplates
 } from '@shared/naming'
 import type { CloseAction, DuplicateAction, PowerMode, ThemeMode } from '@shared/types'
+import { insertAt } from '../format'
 import { api, updateSettings, useStore } from '../store'
+import { updateHint } from '../viewLogic'
 import { AdvancedSettings } from './AdvancedSettings'
 import { OptionsEditor } from './OptionsEditor'
 import { Button, fieldCls, Group, Input, PageHeader, Row, Segmented, Select, Switch } from './ui'
@@ -71,7 +73,7 @@ function NamingEditor() {
     const cur = draft[focused]
     const at = el?.selectionStart ?? cur.length
     const end = el?.selectionEnd ?? cur.length
-    setDraft({ ...draft, [focused]: cur.slice(0, at) + text + cur.slice(end) })
+    setDraft({ ...draft, [focused]: insertAt(cur, at, end, text) })
     requestAnimationFrame(() => {
       el?.focus()
       el?.setSelectionRange(at + text.length, at + text.length)
@@ -146,17 +148,8 @@ function UpdateGroup() {
   const set = useStore((st) => st.set)
   const [busy, setBusy] = useState(false)
   const info = u && 'info' in u ? u.info : undefined
-  const at = u?.checkedAt ? `（${new Date(u.checkedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 检查）` : ''
-  const hint = !u ? null : {
-    idle: '还没有检查过',
-    checking: '正在检查…',
-    latest: `已是最新版本${at}`,
-    available: `发现新版本 ${info?.version}${info?.skipped ? '（已跳过）' : ''}`,
-    downloading: `正在下载 ${info?.version}`,
-    ready: `${info?.version} 已下载，重启即可完成更新`,
-    installing: '正在安装…',
-    error: <span className="text-red-600 dark:text-red-400">{u.status === 'error' ? u.error : ''}</span>
-  }[u.status]
+  const h = updateHint(u)
+  const hint = h && (h.error ? <span className="text-red-600 dark:text-red-400">{h.text}</span> : h.text)
 
   const check = async (): Promise<void> => {
     setBusy(true)

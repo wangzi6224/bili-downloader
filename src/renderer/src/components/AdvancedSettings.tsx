@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Copy, Eye, EyeOff, FileDown, FileUp, Gauge, KeyRound, Terminal, Wifi } from 'lucide-react'
 import type { ProxyMode } from '@shared/types'
 import { api, updateSettings, useStore } from '../store'
+import { mcpClientConfig, pingLabel, sortPings } from '../viewLogic'
 import { Badge, Button, Group, IconButton, Input, Row, Select, Switch } from './ui'
 
 export function AdvancedSettings() {
@@ -28,12 +29,7 @@ export function AdvancedSettings() {
     return () => clearTimeout(t)
   }, [s.proxy, s.mcp])
 
-  const endpoint = `http://127.0.0.1:${s.mcp.port}/mcp`
-  const clientConfig = JSON.stringify(
-    { mcpServers: { 'bili-downloader': { type: 'http', url: endpoint, headers: { Authorization: `Bearer ${s.mcp.token}` } } } },
-    null,
-    2
-  )
+  const { endpoint, json: clientConfig, command } = mcpClientConfig(s.mcp.port, s.mcp.token)
   const copy = async (text: string, what: string): Promise<void> => {
     await api.writeClipboard(text)
     setMessage(`已复制${what}`)
@@ -93,7 +89,7 @@ export function AdvancedSettings() {
             {hosts.map((h) => (
               <option key={h.host} value={h.host}>
                 {h.label}
-                {pings && ` · ${pings[h.host] === null ? '不通' : `${pings[h.host]} ms`}`}
+                {pings && ` · ${pingLabel(pings[h.host])}`}
               </option>
             ))}
           </Select>
@@ -113,17 +109,12 @@ export function AdvancedSettings() {
               <div className="text-xs text-muted">测速中…</div>
             ) : (
               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted">
-                {hosts
-                  .map((h) => ({ ...h, ms: pings[h.host] }))
-                  .sort((a, b) => (a.ms ?? 1e9) - (b.ms ?? 1e9))
-                  .map((h) => (
-                    <div key={h.host} className="flex justify-between">
-                      <span>{h.label}</span>
-                      <span className={`tabular-nums ${h.ms === null ? 'text-red-600 dark:text-red-400' : ''}`}>
-                        {h.ms === null ? '不通' : `${h.ms} ms`}
-                      </span>
-                    </div>
-                  ))}
+                {sortPings(hosts, pings).map((h) => (
+                  <div key={h.host} className="flex justify-between">
+                    <span>{h.label}</span>
+                    <span className={`tabular-nums ${h.ms === null ? 'text-red-600 dark:text-red-400' : ''}`}>{pingLabel(h.ms)}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -171,9 +162,7 @@ export function AdvancedSettings() {
           </Button>
           <Button
             icon={Terminal}
-            onClick={() =>
-              copy(`claude mcp add --transport http bili-downloader ${endpoint} --header "Authorization: Bearer ${s.mcp.token}"`, ' Claude Code 命令')
-            }
+            onClick={() => copy(command, ' Claude Code 命令')}
           >
             Claude Code 命令
           </Button>

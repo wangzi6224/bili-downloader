@@ -2,7 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import type { AuthState } from '@shared/types'
 import { getMainWindow } from '../windows'
 import { checkAuth, getAuthState } from './authGuard'
-import { biliSession, PARTITION, UA } from './session'
+import { biliSession, isBiliHost, PARTITION, UA } from './session'
 
 const LOGIN_URL = 'https://passport.bilibili.com/login'
 
@@ -40,8 +40,10 @@ export function openLoginWindow(): Promise<AuthState> {
 
     win.webContents.setWindowOpenHandler(({ url }) => {
       const { protocol, hostname } = new URL(url)
-      if (hostname.endsWith('bilibili.com')) win.loadURL(url)
-      else if (protocol === 'https:' || protocol === 'http:') shell.openExternal(url)
+      // javascript:、file: 之类的一律不打开
+      const web = protocol === 'https:' || protocol === 'http:'
+      if (web && isBiliHost(hostname)) win.loadURL(url)
+      else if (web) shell.openExternal(url)
       return { action: 'deny' }
     })
 

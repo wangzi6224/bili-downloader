@@ -19,6 +19,13 @@ export class AuthExpiredError extends BiliError {
 /** 该内容本身无法下载（DRM、地区限制、需要大会员等），重试没有意义 */
 export class UnsupportedError extends BiliError {}
 
+/**
+ * 网络失败（-1）、风控（412）、服务器错误（HTTP 5xx）这类过一会儿再试可能就好的错误。
+ * 接口返回的业务错误码不算，它们有的是很大的正数（如 6002003），不能按“>= 500”判断
+ */
+export const isTransient = (e: BiliError): boolean =>
+  !(e instanceof UnsupportedError) && (e.code === -1 || e.code === 412 || (e.code >= 500 && e.code < 600))
+
 export const BASE_HEADERS = {
   'User-Agent': UA,
   Referer: 'https://www.bilibili.com/',

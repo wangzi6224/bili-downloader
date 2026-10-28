@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { AppWindow, LogOut, MonitorDown } from 'lucide-react'
 import type { CloseAction } from '@shared/types'
 import { api, useStore } from '../store'
-import { ACTIVE } from './TaskList'
+import { unfinishedCount } from '../taskStatus'
 import { Banner, Button, Modal, ModalFooter, ModalHeader } from './ui'
 
 export function CloseDialog() {
   const set = useStore((s) => s.set)
   // 退出后进行中、排队、等待登录的任务都会变成已暂停
-  const pending = useStore((s) => s.tasks.filter((t) => ACTIVE.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth').length)
+  const pending = useStore((s) => unfinishedCount(s.tasks))
   const [remember, setRemember] = useState(false)
 
   const choose = async (action: Exclude<CloseAction, 'ask'>): Promise<void> => {

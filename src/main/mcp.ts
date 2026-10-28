@@ -103,7 +103,14 @@ export class McpServer {
     await this.stop()
     this.error = undefined
     if (!cfg.enabled) return
-    const server = createServer((req, res) => void this.handle(req, res, cfg))
+    const server = createServer((req, res) => {
+      this.handle(req, res, cfg).catch((e) => {
+        // 兜底：每个请求都要有响应，否则客户端会一直挂着
+        console.error('MCP 请求处理失败', e)
+        if (res.headersSent) res.destroy()
+        else this.reply(res, 500, { error: 'internal error' })
+      })
+    })
     await new Promise<void>((resolve) => {
       server.once('error', (e: NodeJS.ErrnoException) => {
         this.error = e.code === 'EADDRINUSE' ? `端口 ${cfg.port} 已被占用` : e.message
@@ -124,11 +131,15 @@ export class McpServer {
   }
 
   private reply(res: ServerResponse, status: number, body?: unknown): void {
+    // 先序列化：序列化失败时响应头还没发出，兜底还能回 500
+    const data = body === undefined ? undefined : JSON.stringify(body)
     res.writeHead(status, body === undefined ? {} : { 'Content-Type': 'application/json' })
-    res.end(body === undefined ? undefined : JSON.stringify(body))
+    res.end(data)
   }
 
   private authorized(req: IncomingMessage, cfg: McpSettings): boolean {
+    // 令牌为空时两个空 buffer 会被判为相等，必须直接拒绝
+    if (!cfg.token) return false
     const host = req.headers.host ?? ''
     if (host !== `127.0.0.1:${cfg.port}` && host !== `localhost:${cfg.port}`) return false
     const origin = req.headers.origin
@@ -161,6 +172,10 @@ export class McpServer {
   }
 
   private async dispatch(m: RpcRequest): Promise<unknown> {
+    // null、数字、数组之类的不是请求对象
+    if (!m || typeof m !== 'object' || Array.isArray(m)) {
+      return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } }
+    }
     // 没有 id 的是通知，不需要回复
     if (m.id === undefined) return undefined
     const ok = (result: unknown) => ({ jsonrpc: '2.0', id: m.id, result })

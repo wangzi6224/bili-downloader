@@ -94,3 +94,26 @@ describe('removeTaskOutputs', () => {
     rmSync(outside, { recursive: true, force: true })
   })
 })
+
+describe('removeTaskOutputs 的失败和多级目录', () => {
+  it('删不掉的文件返回路径（文件位置是个目录）', () => {
+    touch('a/x.mp4/inner')
+    const out = join(root, 'a', 'x.mp4')
+    expect(removeTaskOutputs({ outputPath: out }, root)).toEqual([out])
+    expect(existsSync(out)).toBe(true)
+  })
+
+  it('逐级删掉变空的目录，遇到还有别的文件的目录停下', () => {
+    touch('a/keep.txt', 'a/b/c/x.mp4', 'a/b/c/x.jpg', 'a/b/tvshow.nfo')
+    expect(removeTaskOutputs({ outputPath: join(root, 'a', 'b', 'c', 'x.mp4') }, root)).toEqual([])
+    expect(ls()).toEqual(['a'])
+    expect(ls('a')).toEqual(['keep.txt'])
+  })
+
+  it('目录不存在或没有产出时什么都不做', () => {
+    expect(removeTaskOutputs({ outputPath: join(root, 'nope', 'x.mp4'), tmpOutput: join(root, 'nope', 'y.mp4.tmp') }, root)).toEqual([])
+    expect(removeTaskOutputs({}, root)).toEqual([])
+    pruneDirs(join(root, 'nope', 'deeper'), root)
+    expect(ls()).toEqual([])
+  })
+})

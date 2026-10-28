@@ -5,8 +5,8 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { AuthState, BrowserProfile } from '@shared/types'
-import { checkAuth } from './authGuard'
-import { clearBiliCookies, setBiliCookies, type PlainCookie, type SameSite } from './session'
+import { replaceLogin } from './cookieImport'
+import { isBiliHost, type PlainCookie, type SameSite } from './session'
 
 const SUPPORT = join(homedir(), 'Library/Application Support')
 
@@ -27,11 +27,6 @@ const CHROMIUM: ChromiumBrowser[] = [
 ]
 
 const FIREFOX_PROFILES = join(SUPPORT, 'Firefox/Profiles')
-
-const isBiliHost = (host: string): boolean => {
-  const h = host.replace(/^\./, '')
-  return h === 'bilibili.com' || h.endsWith('.bilibili.com')
-}
 
 // ---------- Chromium 解密（导出供单元测试） ----------
 
@@ -269,11 +264,5 @@ export async function importFromBrowser(id: string): Promise<AuthState> {
   if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) {
     throw new Error(`${f.profile.browser}（${f.profile.profile}）里没有 B站登录信息`)
   }
-  await clearBiliCookies()
-  await setBiliCookies(cookies)
-  const state = await checkAuth()
-  if (!state.loggedIn) {
-    throw new Error('导入的登录信息已失效，请先在浏览器里重新登录 B站，或改用应用内登录')
-  }
-  return state
+  return replaceLogin(cookies, '导入的登录信息已失效，请先在浏览器里重新登录 B站，或改用应用内登录')
 }

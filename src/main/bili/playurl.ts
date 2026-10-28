@@ -1,5 +1,5 @@
 import type { AudioPref, CodecPref, Container, MediaItem, OutputKind, QualityOption, StreamInfo } from '@shared/types'
-import { api, BiliError, UnsupportedError } from './http'
+import { api, AuthExpiredError, BiliError, isTransient, UnsupportedError } from './http'
 
 export interface DashStream {
   id: number
@@ -76,7 +76,8 @@ export async function getPlayInfo(item: MediaItem, qn: number): Promise<PlayInfo
         ...PARAMS
       })
     } catch (e) {
-      if (e instanceof BiliError && e.code !== -1 && e.code !== 412 && e.code < 500) {
+      // 登录过期要让任务等重新登录，网络、服务器问题要能重试，其余的业务错误才是没有权限
+      if (e instanceof BiliError && !(e instanceof AuthExpiredError) && !isTransient(e)) {
         throw new UnsupportedError(`没有这节课的观看权限（可能需要购买）：${e.message}`, e.code)
       }
       throw e

@@ -17,6 +17,7 @@ import { getSettings, onSettingsChange } from './settings'
 import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
 import { Updater } from './update/updater'
+import { closeDecision, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
@@ -24,18 +25,9 @@ const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
 
-type Bounds = { x: number; y: number; width: number; height: number }
-
 /** 上次的窗口位置；所在的显示器已经不在了就不用 */
-function savedBounds(): Partial<Bounds> {
-  const b = readJson<Bounds>(windowStateFile())
-  if (!b) return {}
-  const visible = screen.getAllDisplays().some((d) => {
-    const a = d.workArea
-    return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y
-  })
-  return visible ? b : { width: b.width, height: b.height }
-}
+const savedBounds = (): Partial<Bounds> =>
+  restoreBounds(readJson<Bounds>(windowStateFile()), screen.getAllDisplays().map((d) => d.workArea))
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -62,12 +54,11 @@ function createWindow(): BrowserWindow {
   win.once('ready-to-show', () => win.show())
   win.on('close', (e) => {
     if (!win.isFullScreen() && !win.isMinimized()) writeJson(windowStateFile(), win.getNormalBounds())
-    // 页面崩了就没法弹询问，照常关掉
-    if (quitting || win.webContents.isCrashed()) return
+    const decision = closeDecision({ quitting, crashed: win.webContents.isCrashed(), action: getSettings().closeAction })
+    if (decision === 'allow') return
     e.preventDefault()
-    const action = getSettings().closeAction
-    if (action === 'quit') app.quit()
-    else if (action === 'background') hideMainWindow()
+    if (decision === 'quit') app.quit()
+    else if (decision === 'hide') hideMainWindow()
     else send('app:closeRequested')
   })
   win.on('closed', () => setMainWindow(null))

@@ -80,3 +80,78 @@ describe('notesSince', () => {
     expect(notesSince(notes, '0.2.0', '0.2.0')).toEqual([])
   })
 })
+
+describe('compareVersions 剩余分支', () => {
+  it('主版本、次版本不同时直接决定大小', () => {
+    expect(compareVersions('2.0.0', '1.9.9')).toBe(1)
+    expect(compareVersions('1.2.0', '1.10.0')).toBe(-1)
+    expect(compareVersions(' 1.0.0 ', 'v1.0.0')).toBe(0)
+  })
+
+  it('预发布后缀逐段比较：数字按大小，文字按字典序，段多的更大', () => {
+    expect(compareVersions('1.0.0-beta.1', '1.0.0-beta')).toBe(1)
+    expect(compareVersions('1.0.0-rc.1', '1.0.0-beta.9')).toBe(1)
+    expect(compareVersions('1.0.0-beta.1', '1.0.0-beta.1')).toBe(0)
+    expect(compareVersions('1.0.0-1', '1.0.0-alpha')).toBe(-1)
+    expect(compareVersions('0.9.0-beta', '1.0.0')).toBe(-1)
+  })
+
+  it('报错信息指出格式不对的那一个', () => {
+    expect(() => compareVersions('1.0.0', 'x')).toThrow('版本号格式不对：x')
+    expect(() => compareVersions('y', '1.0.0')).toThrow('版本号格式不对：y')
+  })
+})
+
+describe('parseManifest 剩余分支', () => {
+  const file = { url: 'https://example.com/a.zip', sha512: 'abc', size: 1 }
+
+  it('files 缺失或条目为空时报错', () => {
+    expect(() => parseManifest({ ...valid, files: undefined })).toThrow('files')
+    expect(() => parseManifest({ ...valid, files: 'x' })).toThrow('files')
+    expect(() => parseManifest({ ...valid, files: { arm64: null } })).toThrow('files.arm64.url')
+    expect(() => parseManifest({ ...valid, files: { arm64: { ...file, url: 1 } } })).toThrow('files.arm64.url')
+    expect(() => parseManifest({ ...valid, files: { arm64: { ...file, sha512: 1 } } })).toThrow('files.arm64.sha512')
+    expect(() => parseManifest({ ...valid, files: { arm64: { ...file, size: '1' } } })).toThrow('files.arm64.size')
+    expect(() => parseManifest({ ...valid, version: 1 })).toThrow('version')
+    expect(() => parseManifest('str')).toThrow('不是 JSON 对象')
+  })
+
+  it('本地测试模式也不接受伪装成本机的域名', () => {
+    const at = (page: string) => () => parseManifest({ ...valid, page }, true)
+    expect(at('http://localhost.evil.com/')).toThrow('page')
+    expect(at('http://127.0.0.1.evil.com/')).toThrow('page')
+    expect(at('http://localhost:8080')).toThrow('page')
+    expect(parseManifest({ ...valid, page: 'http://localhost:8080/r' }, true).page).toBe('http://localhost:8080/r')
+    expect(parseManifest({ ...valid, page: 'http://localhost/r' }, true).page).toBe('http://localhost/r')
+  })
+
+  it('notes 不是数组时当作没有说明', () => {
+    expect(parseManifest({ ...valid, notes: 'x' }).notes).toEqual([])
+    expect(parseManifest({ ...valid, notes: { version: '0.3.0', body: 'b' } }).notes).toEqual([])
+    expect(parseManifest({ ...valid, notes: undefined }).notes).toEqual([])
+  })
+
+  it('丢掉空的说明，缺日期时补空字符串', () => {
+    const m = parseManifest({ ...valid, notes: [null, { version: '0.3.0', body: 'b', date: 1 }] })
+    expect(m.notes).toEqual([{ version: '0.3.0', date: '', body: 'b' }])
+  })
+
+  it('date 不是字符串时置空，只保留需要的字段', () => {
+    const m = parseManifest({ ...valid, date: 123, files: { x64: { ...file, extra: 'x' } } })
+    expect(m.date).toBe('')
+    expect(m.files).toEqual({ x64: file })
+  })
+})
+
+describe('notesSince 预发布版本', () => {
+  it('预发布版本按版本号排序和截取', () => {
+    const notes = [
+      { version: '1.0.0', date: '', body: '' },
+      { version: '1.0.0-beta.2', date: '', body: '' },
+      { version: '1.0.0-beta.1', date: '', body: '' },
+      { version: '1.0.0-beta.10', date: '', body: '' }
+    ]
+    expect(notesSince(notes, '1.0.0-beta.1', '1.0.0').map((n) => n.version)).toEqual(['1.0.0', '1.0.0-beta.10', '1.0.0-beta.2'])
+    expect(notesSince(notes, '0.9.0', '1.0.0-beta.2').map((n) => n.version)).toEqual(['1.0.0-beta.2', '1.0.0-beta.1'])
+  })
+})

@@ -36,14 +36,13 @@ Development mode adds a **调试** (Debug) menu to the menu bar with **模拟登
 ## Before opening a pull request
 
 ```bash
-npm test             # unit tests (Vitest)
-npm run typecheck    # TypeScript
+npm run verify       # TypeScript + unit tests (Vitest) with coverage thresholds
 ```
 
-Both must pass. Please also:
+It must pass: `npm run build` and `npm run build:mac` run the same check first and refuse to build when it fails. `npm test` runs the tests alone without coverage, which is quicker while you work. Please also:
 
 - keep changes focused: one feature or fix per pull request
-- add or update tests for logic in `src/main` and `src/shared`
+- add or update tests for any logic you add or change; renderer logic goes in `src/renderer/src/*.ts` (not in components) so it can be tested in Node. The coverage report is written to `coverage/index.html`
 - follow the existing code style; code comments and UI text are written in Simplified Chinese
 - use short commit messages in the existing style, e.g. `feat: …`, `fix: …`, `docs: …`, `chore: …`
 - add a line under the unreleased section of `CHANGELOG.md` for user-facing changes

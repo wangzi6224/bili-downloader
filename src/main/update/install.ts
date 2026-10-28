@@ -10,8 +10,9 @@ const run = promisify(execFile)
  * 应用退出后由它替换 .app：没有开发者证书时 Squirrel.Mac（electron-updater）无法校验签名，
  * 所以自己换。替换失败就恢复旧版本，最后都会重新打开应用。
  * 参数：要等待退出的进程号、解压好的新版 .app、要替换的 .app
+ * 导出供单元测试单独运行
  */
-const SCRIPT = `#!/bin/sh
+export const SCRIPT = `#!/bin/sh
 pid="$1"; new="$2"; target="$3"
 n=0
 while kill -0 "$pid" 2>/dev/null; do

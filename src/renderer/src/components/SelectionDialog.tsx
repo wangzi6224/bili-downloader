@@ -18,24 +18,31 @@ import {
   UserRound,
   X
 } from 'lucide-react'
-import { renderTemplate } from '@shared/naming'
 import { parseRange } from '@shared/range'
-import type { MediaGroup, MediaItem, Paging, ParseResult, QualityOption, StreamInfo } from '@shared/types'
+import type { MediaGroup, MediaItem, Paging, ParseResult, StreamInfo } from '@shared/types'
 import { fmtDuration, thumb } from '../format'
+import {
+  appendToFirst,
+  bestQuality,
+  CODEC_TEXT,
+  downloadedMatcher,
+  enqueueBatches,
+  FALLBACK,
+  filterGroups,
+  pathPreview,
+  resolveDuplicates,
+  selectable,
+  selectedItems,
+  setMany as withMany,
+  subscribable as canSubscribe,
+  toggleSelection
+} from '../selection'
 import { api, useStore } from '../store'
-import { OptionsEditor, Section, summaryTags, type EditableOptions } from './OptionsEditor'
+import { summaryTags, type EditableOptions } from '../viewLogic'
+import { OptionsEditor, Section } from './OptionsEditor'
 import { INTERVALS } from './SubscriptionsPage'
 import { Badge, Button, IconButton, Input, Modal, Select, STROKE } from './ui'
 
-// 取不到清晰度列表时的兜底选项
-const FALLBACK: QualityOption[] = [
-  { qn: 127, label: '最高可用', needVip: false, needLogin: false, codecs: [] },
-  { qn: 80, label: '1080P 高清', needVip: false, needLogin: true, codecs: [] },
-  { qn: 64, label: '720P 准高清', needVip: false, needLogin: false, codecs: [] },
-  { qn: 32, label: '480P 标清', needVip: false, needLogin: false, codecs: [] }
-]
-
-const CODEC_TEXT = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' } as const
 const KIND_TEXT = { ugc: '视频', pgc: '番剧 / 影视', cheese: '课程', audio: '音频' } as const
 /** 自动加载全部分页时每页的间隔，避免触发风控 */
 const PAGE_INTERVAL = 1000
@@ -77,10 +84,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
     void api.history.downloadedKeys().then((keys) => setDownloaded(new Set(keys)))
   }, [])
 
-  // 列表里还没展开分P的视频，按 BV 号判断是否下载过
-  const downloadedBv = useMemo(() => new Set([...downloaded].map((k) => k.split(':')[1])), [downloaded])
-  const isDownloaded = (i: MediaItem): boolean =>
-    downloaded.has(i.key) || Boolean(i.lazy && i.bvid && downloadedBv.has(i.bvid))
+  const isDownloaded = useMemo(() => downloadedMatcher(downloaded), [downloaded])
 
   // 用第一个选中项（没有就用第一项）查询可用清晰度和音轨
   const probe = all.find((i) => selected.has(i.key) && !i.unavailable) ?? all.find((i) => !i.unavailable)
@@ -94,8 +98,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
       .then((s) => {
         if (!alive) return
         setInfo(s)
-        const usable = s.qualities.filter((q) => (isVip || !q.needVip) && q.codecs.length)
-        const best = usable.find((q) => q.qn <= settings.defaultQn) ?? usable[usable.length - 1] ?? s.qualities[0]
+        const best = bestQuality(s.qualities, isVip, settings.defaultQn)
         if (best) setQn(best.qn)
       })
       .catch((e: Error) => alive && setInfoError(e.message))
@@ -107,7 +110,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
   const appendPage = async (page: number): Promise<boolean> => {
     if (!paging) return false
     const r = await api.parseMore(paging.source, page)
-    setGroups((gs) => gs.map((g, i) => (i === 0 ? { ...g, items: [...g.items, ...r.items.filter((it) => !g.items.some((x) => x.key === it.key))] } : g)))
+    setGroups((gs) => appendToFirst(gs, r.items))
     setPaging({ ...paging, page, total: r.total, hasMore: r.hasMore })
     return r.hasMore
   }
@@ -141,37 +144,18 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
     }
   }
 
-  const visible = useMemo(() => {
-    const k = filter.trim().toLowerCase()
-    if (!k) return groups
-    return groups
-      .map((g) => ({ ...g, items: g.items.filter((i) => i.title.toLowerCase().includes(k) || (i.owner ?? '').toLowerCase().includes(k)) }))
-      .filter((g) => g.items.length)
-  }, [groups, filter])
+  const visible = useMemo(() => filterGroups(groups, filter), [groups, filter])
   const visibleItems = useMemo(() => visible.flatMap((g) => g.items), [visible])
-  const selectable = (i: MediaItem): boolean => !i.unavailable
 
+  // Shift 点击：把区间内的都设成同一个状态
   const toggle = (item: MediaItem, shift: boolean): void => {
-    if (!selectable(item)) return
-    const idx = visibleItems.indexOf(item)
-    const next = new Set(selected)
-    const on = !next.has(item.key)
-    if (shift && lastClicked.current !== null) {
-      // Shift 点击：把区间内的都设成同一个状态
-      const [a, b] = [lastClicked.current, idx].sort((x, y) => x - y)
-      for (const i of visibleItems.slice(a, b + 1)) if (selectable(i)) on ? next.add(i.key) : next.delete(i.key)
-    } else {
-      on ? next.add(item.key) : next.delete(item.key)
-    }
-    lastClicked.current = idx
-    setSelected(next)
+    const r = toggleSelection(selected, visibleItems, item, lastClicked.current, shift)
+    if (!r) return
+    lastClicked.current = r.anchor
+    setSelected(r.selected)
   }
 
-  const setMany = (items: MediaItem[], on: boolean): void => {
-    const next = new Set(selected)
-    for (const i of items) if (selectable(i)) on ? next.add(i.key) : next.delete(i.key)
-    setSelected(next)
-  }
+  const setMany = (items: MediaItem[], on: boolean): void => setSelected(withMany(selected, items, on))
 
   const close = (): void => {
     stopLoading.current = true
@@ -183,16 +167,8 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
     setSubmitting(true)
     const options = { qn, ...opts, output: audioKind ? ('audio' as const) : opts.output }
     try {
-      const keys = new Set(items.map((i) => i.key))
-      // 批量解析时每个来源单独入队，命名各用各的标题
-      const batches = result.batch
-        ? groups
-            .map((g) => ({ g, items: g.items.filter((i) => keys.has(i.key)) }))
-            .filter((b) => b.items.length && b.g.source)
-            .map(({ g, items: its }) => ({ ...g.source!, items: its }))
-        : [{ title: result.title, cover: result.cover, kind: result.kind, meta: result.meta, items }]
       const notes: string[] = []
-      for (const b of batches) {
+      for (const b of enqueueBatches(result, groups, items)) {
         const note = await api.download.enqueue({ ...b, options })
         if (note) notes.push(note)
       }
@@ -208,50 +184,23 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
   }
 
   const start = (): void => {
-    const items = all.filter((i) => selected.has(i.key) && selectable(i))
-    const dups = items.filter(isDownloaded)
-    if (!dups.length || settings.duplicateAction === 'download') return void enqueue(items)
-    if (settings.duplicateAction === 'skip') return void enqueue(items.filter((i) => !isDownloaded(i)))
-    setDupPrompt(dups)
+    const d = resolveDuplicates(selectedItems(all, selected), isDownloaded, settings.duplicateAction)
+    if ('ask' in d) setDupPrompt(d.ask)
+    else void enqueue(d.enqueue)
   }
 
   const qualities = info?.qualities ?? (infoError ? FALLBACK : [])
   const chosen = qualities.find((q) => q.qn === qn)
   const showList = groups.length > 1 || all.length > 1
-  const selectedCount = all.filter((i) => selected.has(i.key) && selectable(i)).length
+  const selectedCount = selectedItems(all, selected).length
 
   // 保存路径预览：和主进程用同一套模板
-  const preview = useMemo(() => {
-    const first = all.find((i) => selected.has(i.key))
-    if (!first) return ''
-    const group = groups.find((g) => g.items.includes(first))
-    const src = result.batch && group?.source ? group.source : { title: result.title, kind: result.kind, meta: result.meta }
-    const multi = (result.batch ? (group?.items.filter((i) => selected.has(i.key)).length ?? 0) : selectedCount) > 1
-    const episodic = src.kind === 'pgc' || src.kind === 'cheese'
-    const tpl = !multi ? settings.naming.single : episodic ? settings.naming.pgc : settings.naming.multi
-    const output = audioKind ? 'audio' : opts.output
-    const ext = output === 'audio' ? (opts.audio === 'flac' ? 'flac' : 'm4a') : opts.container
-    const codec = chosen?.codecs.length ? (opts.codecOrder.find((c) => chosen.codecs.includes(c)) ?? opts.codecOrder[0]) : opts.codecOrder[0]
-    return `${renderTemplate(tpl, {
-      title: first.title,
-      series: multi || first.title !== src.title ? src.title : '',
-      index: first.index,
-      owner: first.owner ?? src.meta?.owner,
-      owner_mid: first.ownerMid ?? src.meta?.ownerMid,
-      pubdate: first.pubdate ?? src.meta?.pubdate,
-      date: Math.floor(Date.now() / 1000),
-      quality: output === 'audio' ? '' : chosen?.label,
-      codec: output === 'audio' ? '' : CODEC_TEXT[codec],
-      bvid: first.bvid,
-      aid: first.aid,
-      cid: first.cid,
-      ep_id: first.epId,
-      type: { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' }[src.kind]
-    })}.${ext}`
-  }, [all, groups, selected, settings.naming, result, opts, chosen, selectedCount, audioKind])
+  const preview = useMemo(
+    () => pathPreview({ result, groups, all, selected, naming: settings.naming, opts, audioKind, chosen, now: Date.now() }),
+    [all, groups, selected, settings.naming, result, opts, chosen, audioKind]
+  )
 
-  // 列表类来源（收藏夹、合集、番剧、UP 主等）可以订阅更新
-  const subscribable = Boolean(result.input && !result.batch && (paging || all.length > 1 || result.kind === 'pgc' || result.kind === 'cheese'))
+  const subscribable = canSubscribe(result, paging, all.length)
 
   const subscribe = async (): Promise<void> => {
     try {
@@ -489,11 +438,11 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                   <Button
                     size="sm"
                     variant="primary"
-                    onClick={() => enqueue(all.filter((i) => selected.has(i.key) && selectable(i) && !isDownloaded(i)))}
+                    onClick={() => enqueue(selectedItems(all, selected).filter((i) => !isDownloaded(i)))}
                   >
                     跳过它们
                   </Button>
-                  <Button size="sm" onClick={() => enqueue(all.filter((i) => selected.has(i.key) && selectable(i)))}>
+                  <Button size="sm" onClick={() => enqueue(selectedItems(all, selected))}>
                     仍然下载
                   </Button>
                 </div>

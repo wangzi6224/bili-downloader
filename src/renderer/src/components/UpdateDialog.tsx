@@ -1,94 +1,75 @@
 import { useState, type ReactNode } from 'react'
 import { Download, ExternalLink, Loader2, RotateCw, SkipForward, Sparkles } from 'lucide-react'
 import { fmtBytes } from '../format'
+import { fmtDate, parseMarkdown, type InlineNode } from '../markdown'
 import { api, useStore } from '../store'
-import { ACTIVE } from './TaskList'
+import { unfinishedCount } from '../taskStatus'
 import { Banner, Button, Modal, ModalFooter, ModalHeader, Progress } from './ui'
 
 const code = 'rounded bg-track px-1 py-px font-mono text-[11px] text-fg'
 
-/** 行内：**粗体**、`代码`、[文字](https://链接) */
-function inline(text: string): ReactNode[] {
-  const out: ReactNode[] = []
-  const re = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g
-  let last = 0
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    if (m.index > last) out.push(text.slice(last, m.index))
-    if (m[1]) out.push(<strong key={m.index} className="font-semibold">{m[1]}</strong>)
-    else if (m[2]) out.push(<code key={m.index} className={code}>{m[2]}</code>)
-    else
-      out.push(
-        <a key={m.index} href={m[4]} target="_blank" rel="noreferrer" className="text-bili hover:underline">
-          {m[3]}
-        </a>
+function renderInline(nodes: InlineNode[]): ReactNode[] {
+  return nodes.map((n, i) => {
+    if (n.type === 'text') return n.text
+    if (n.type === 'strong')
+      return (
+        <strong key={i} className="font-semibold">
+          {n.text}
+        </strong>
       )
-    last = re.lastIndex
-  }
-  if (last < text.length) out.push(text.slice(last))
-  return out
+    if (n.type === 'code')
+      return (
+        <code key={i} className={code}>
+          {n.text}
+        </code>
+      )
+    return (
+      <a key={i} href={n.href} target="_blank" rel="noreferrer" className="text-bili hover:underline">
+        {n.text}
+      </a>
+    )
+  })
 }
 
-/** 更新说明只用到标题、列表和段落，不引入完整的 Markdown 库 */
 function Markdown({ text }: { text: string }) {
-  const blocks: ReactNode[] = []
-  let list: { ordered: boolean; items: string[] } | null = null
-  let para: string[] = []
-  const flush = (): void => {
-    if (para.length) blocks.push(<p key={blocks.length}>{inline(para.join(' '))}</p>)
-    para = []
-    if (list) {
-      const items = list.items.map((t, i) => <li key={i}>{inline(t)}</li>)
-      blocks.push(
-        list.ordered ? (
-          <ol key={blocks.length} className="list-decimal space-y-1 pl-5">
+  return (
+    <div className="flex flex-col gap-2 text-[13px] leading-relaxed">
+      {parseMarkdown(text).map((b, i) => {
+        if (b.type === 'heading')
+          return (
+            <div key={i} className="font-semibold">
+              {renderInline(b.content)}
+            </div>
+          )
+        if (b.type === 'paragraph')
+          return (
+            <p key={i}>
+              {renderInline(b.content)}
+            </p>
+          )
+        const items = b.items.map((nodes, j) => (
+          <li key={j}>
+            {renderInline(nodes)}
+          </li>
+        ))
+        return b.ordered ? (
+          <ol key={i} className="list-decimal space-y-1 pl-5">
             {items}
           </ol>
         ) : (
-          <ul key={blocks.length} className="list-disc space-y-1 pl-5 marker:text-subtle">
+          <ul key={i} className="list-disc space-y-1 pl-5 marker:text-subtle">
             {items}
           </ul>
         )
-      )
-    }
-    list = null
-  }
-  for (const raw of text.split('\n')) {
-    const line = raw.trim()
-    const heading = /^#{1,4}\s+(.*)$/.exec(line)
-    const item = /^(?:[-*+]|(\d+)\.)\s+(.*)$/.exec(line)
-    if (!line) flush()
-    else if (heading) {
-      flush()
-      blocks.push(
-        <div key={blocks.length} className="font-semibold">
-          {inline(heading[1])}
-        </div>
-      )
-    } else if (item) {
-      if (para.length || (list && list.ordered !== Boolean(item[1]))) flush()
-      list ??= { ordered: Boolean(item[1]), items: [] }
-      list.items.push(item[2])
-    } else if (list && /^\s{2,}/.test(raw)) {
-      // 缩进的续行接在上一条后面
-      list.items[list.items.length - 1] += ` ${line}`
-    } else {
-      if (list) flush()
-      para.push(line)
-    }
-  }
-  flush()
-  return <div className="flex flex-col gap-2 text-[13px] leading-relaxed">{blocks}</div>
-}
-
-const fmtDate = (s: string): string => {
-  const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('zh-CN')
+      })}
+    </div>
+  )
 }
 
 export function UpdateDialog() {
   const u = useStore((s) => s.update)
   const set = useStore((s) => s.set)
-  const pending = useStore((s) => s.tasks.filter((t) => ACTIVE.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth').length)
+  const pending = useStore((s) => unfinishedCount(s.tasks))
   const [failed, setFailed] = useState('')
   if (!u || !('info' in u) || !u.info) return null
   const { info } = u

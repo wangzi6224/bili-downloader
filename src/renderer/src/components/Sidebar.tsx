@@ -13,7 +13,9 @@ import {
   Settings,
   type LucideIcon
 } from 'lucide-react'
+import { thumb } from '../format'
 import { api, useStore, type View } from '../store'
+import { updateEntry, type UpdateIcon } from '../viewLogic'
 import { Logo } from './Logo'
 import { ACTIVE } from './TaskList'
 import { Badge, Dropdown, MenuItem, STROKE } from './ui'
@@ -45,19 +47,21 @@ function NavItem({ view, label, icon: Icon, count }: { view: View; label: string
   )
 }
 
+const UPDATE_ICON: Record<UpdateIcon, LucideIcon> = {
+  available: CircleArrowUp,
+  loading: Loader2,
+  restart: RotateCw,
+  error: CircleAlert
+}
+
 /** 有新版本时显示在设置上方，点开更新弹窗 */
 function UpdateEntry() {
   const u = useStore((s) => s.update)
   const set = useStore((s) => s.set)
-  if (!u || !('info' in u) || !u.info) return null
-  if (u.status === 'available' && u.info.skipped) return null
-  const [Icon, label] = {
-    available: [CircleArrowUp, `新版本 ${u.info.version}`],
-    downloading: [Loader2, `下载更新 ${u.status === 'downloading' && u.total ? Math.floor((u.done / u.total) * 100) : 0}%`],
-    ready: [RotateCw, '重启以完成更新'],
-    installing: [Loader2, '正在安装更新…'],
-    error: [CircleAlert, '更新失败']
-  }[u.status] as [LucideIcon, string]
+  const entry = updateEntry(u)
+  if (!entry) return null
+  const Icon = UPDATE_ICON[entry.icon]
+  const { label } = entry
   return (
     <button
       type="button"
@@ -103,7 +107,7 @@ function Account() {
     )
   }
 
-  const face = auth.user.face.replace(/^http:/, 'https:') + '@96w.webp'
+  const face = thumb(auth.user.face, 96)
   return (
     <Dropdown
       side="top"
