@@ -20,7 +20,8 @@ export interface BrowserProfile {
   blocked?: boolean
 }
 
-export type MediaKind = 'ugc' | 'pgc'
+/** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区 */
+export type MediaKind = 'ugc' | 'pgc' | 'cheese' | 'audio'
 
 /** 一个可下载的单元：普通视频的一个分P，或番剧/电影的一集 */
 export interface MediaItem {
@@ -40,12 +41,45 @@ export interface MediaItem {
   badge?: string
   needVip?: boolean
   unavailable?: string
+  /** 来自收藏夹、UP 主投稿等列表时的作者（每项可能不同） */
+  owner?: string
+  ownerMid?: number
+  /**
+   * 列表里只拿到了视频级信息（cid 未知或有多个分P），
+   * 加入下载队列时再查询详情并展开成分P
+   */
+  lazy?: boolean
+  pages?: number
 }
 
 export interface MediaGroup {
   id: string
   title: string
   items: MediaItem[]
+  /** 批量解析时，每个来源一组，下载时按组分别命名 */
+  source?: { title: string; kind: MediaKind; cover: string; meta?: MediaMeta }
+}
+
+/** 需要翻页的来源 */
+export type PagedSource =
+  | { type: 'fav'; mediaId: number }
+  | { type: 'space'; mid: number; keyword?: string }
+  | { type: 'spaceSeason'; mid: number; seasonId: number }
+  | { type: 'spaceSeries'; mid: number; seriesId: number }
+
+export interface Paging {
+  source: PagedSource
+  /** 已加载到第几页 */
+  page: number
+  total: number
+  hasMore: boolean
+}
+
+export interface PageResult {
+  items: MediaItem[]
+  page: number
+  total: number
+  hasMore: boolean
 }
 
 /** 整个视频 / 合集 / 剧集的元数据，用于命名和 NFO */
@@ -67,6 +101,11 @@ export interface ParseResult {
   meta?: MediaMeta
   groups: MediaGroup[]
   defaultSelected: string[]
+  paging?: Paging
+  /** 多个链接一起解析的结果 */
+  batch?: boolean
+  /** 批量解析里失败的链接 */
+  failures?: { input: string; error: string }[]
 }
 
 export type CodecPref = 'avc' | 'hevc' | 'av1'
@@ -233,15 +272,25 @@ export interface BiliApi {
     openLoginWindow(): Promise<AuthState>
     listBrowsers(): Promise<BrowserProfile[]>
     importFromBrowser(id: string): Promise<AuthState>
+    /** 手动粘贴的 Cookie：分号分隔或浏览器插件导出的 JSON */
+    importCookie(text: string): Promise<AuthState>
     logout(): Promise<AuthState>
     simulateExpiry(): Promise<void>
     onRequired(cb: () => void): () => void
     onChanged(cb: (state: AuthState) => void): () => void
   }
   parse(input: string): Promise<ParseResult>
+  /** 加载分页来源的下一页 */
+  parseMore(source: PagedSource, page: number): Promise<PageResult>
+  /** 多个链接逐个解析（间隔 0.5 秒，避免触发风控） */
+  parseBatch(inputs: string[]): Promise<ParseResult>
+  onParseProgress(cb: (p: { done: number; total: number; title?: string }) => void): () => void
   streamInfo(item: MediaItem): Promise<StreamInfo>
+  /** 当前账号创建的收藏夹 */
+  myFavFolders(): Promise<{ id: number; title: string; count: number }[]>
   download: {
-    enqueue(req: EnqueueRequest): Promise<void>
+    /** 返回无法加入队列的提示（例如列表里有失效视频） */
+    enqueue(req: EnqueueRequest): Promise<string | undefined>
     list(): Promise<TaskInfo[]>
     pause(id: string): Promise<void>
     resume(id: string): Promise<void>

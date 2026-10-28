@@ -1,11 +1,14 @@
 import { clipboard, dialog, ipcMain, shell } from 'electron'
-import type { EnqueueRequest, MediaItem, Settings } from '@shared/types'
+import type { EnqueueRequest, MediaItem, PagedSource, Settings } from '@shared/types'
 import { checkAuth, ensureLoggedIn, getAuthState, requireLogin } from './auth/authGuard'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
+import { importCookieText } from './auth/cookieImport'
 import { openLoginWindow } from './auth/loginWindow'
 import { biliSession, clearBiliCookies } from './auth/session'
+import { AUDIO_STREAM_INFO } from './bili/audio'
+import { expandLazy, loadPage, myFavFolders } from './bili/lists'
 import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
-import { resolveInput } from './bili/resolve'
+import { resolveBatch, resolveInput } from './bili/resolve'
 import type { DownloadManager } from './download/manager'
 import {
   clearDownloads,
@@ -16,7 +19,9 @@ import {
   removeParse
 } from './history'
 import { getSettings, updateSettings } from './settings'
-import { getMainWindow } from './windows'
+import { getMainWindow, send } from './windows'
+
+const progress = (done: number, total: number, title?: string): void => send('parse:progress', { done, total, title })
 
 const FAKE_SESSDATA = 'expired-for-testing'
 let stashedSessdata: Electron.Cookie | undefined
@@ -69,6 +74,7 @@ export function registerIpc(manager: DownloadManager): void {
   handle('auth:login', () => openLoginWindow())
   handle('auth:listBrowsers', () => listBrowserProfiles())
   handle('auth:import', (id: string) => importFromBrowser(id))
+  handle('auth:importCookie', (text: string) => importCookieText(text))
   handle('auth:logout', async () => {
     // 只清本地 cookie，不调用 B站退出接口——导入的 cookie 和浏览器共用同一个会话
     await clearBiliCookies()
@@ -89,7 +95,26 @@ export function registerIpc(manager: DownloadManager): void {
     })
     return result
   })
-  handle('streamInfo', async (item: MediaItem) => streamInfoFromPlay(await getPlayInfo(item, 127)))
+  handle('parseMore', async (source: PagedSource, page: number) => {
+    await ensureLoggedIn()
+    return loadPage(source, page)
+  })
+  handle('parseBatch', async (inputs: string[]) => {
+    await ensureLoggedIn()
+    return resolveBatch(inputs, progress)
+  })
+  handle('streamInfo', async (item: MediaItem) => {
+    if (item.kind === 'audio') return AUDIO_STREAM_INFO
+    // 列表里的视频还没有 cid，先查一次详情（只取第一个分P）
+    const probe = item.lazy ? (await expandLazy([item]))[0] : item
+    if (probe.unavailable) throw new Error(probe.unavailable)
+    return streamInfoFromPlay(await getPlayInfo(probe, 127))
+  })
+  handle('myFavFolders', async () => {
+    const s = await checkAuth().catch(() => getAuthState())
+    if (!s.loggedIn) throw new Error('请先登录')
+    return myFavFolders(s.user.mid)
+  })
 
   handle('history:downloadedKeys', () => downloadedKeys())
   handle('history:clearDownloads', () => clearDownloads())
@@ -97,7 +122,13 @@ export function registerIpc(manager: DownloadManager): void {
   handle('history:removeParse', (input: string) => removeParse(input))
   handle('history:clearParses', () => clearParses())
 
-  handle('dl:enqueue', (req: EnqueueRequest) => manager.enqueue(req))
+  handle('dl:enqueue', async (req: EnqueueRequest) => {
+    // 收藏夹、UP 主投稿里的视频要先查出分P才能下载
+    const items = await expandLazy(req.items, (done, total) => progress(done, total, '正在获取视频分P'))
+    const failed = items.filter((i) => i.unavailable)
+    manager.enqueue({ ...req, items: items.filter((i) => !i.unavailable) })
+    return failed.length ? `${failed.length} 个视频无法获取（${failed[0].unavailable}）` : undefined
+  })
   handle('dl:list', () => manager.list())
   handle('dl:pause', (id: string) => manager.pause(id))
   handle('dl:resume', (id: string) => manager.resume(id))

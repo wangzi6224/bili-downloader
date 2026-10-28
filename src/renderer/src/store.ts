@@ -10,7 +10,11 @@ interface State {
   tasks: TaskInfo[]
   parse: ParseResult | null
   parsing: boolean
+  /** 批量解析、展开分P时的进度 */
+  progress: { done: number; total: number; title?: string } | null
   error: string | null
+  /** 不算错误的提示，例如“3 个视频已失效” */
+  notice: string | null
   set: (patch: Partial<State>) => void
 }
 
@@ -22,24 +26,38 @@ export const useStore = create<State>((set) => ({
   tasks: [],
   parse: null,
   parsing: false,
+  progress: null,
   error: null,
+  notice: null,
   set: (patch) => set(patch)
 }))
 
 export const api = window.api
 
 export async function updateSettings(patch: Partial<Settings>): Promise<void> {
-  useStore.getState().set({ settings: await api.settings.set(patch) })
+  try {
+    useStore.getState().set({ settings: await api.settings.set(patch) })
+  } catch (e) {
+    useStore.getState().set({ error: (e as Error).message })
+  }
 }
 
-export async function parseLink(input: string): Promise<void> {
+async function runParse(fn: () => Promise<ParseResult>): Promise<void> {
   const { set } = useStore.getState()
-  set({ parsing: true, error: null })
+  set({ parsing: true, error: null, notice: null, progress: null })
   try {
-    set({ parse: await api.parse(input) })
+    const result = await fn()
+    set({ parse: result })
+    if (result.failures?.length) {
+      set({ notice: `${result.failures.length} 个链接解析失败：${result.failures.map((f) => f.error).join('；')}` })
+    }
   } catch (e) {
     set({ error: (e as Error).message })
   } finally {
-    set({ parsing: false })
+    set({ parsing: false, progress: null })
   }
 }
+
+export const parseLink = (input: string): Promise<void> => runParse(() => api.parse(input))
+
+export const parseBatch = (inputs: string[]): Promise<void> => runParse(() => api.parseBatch(inputs))

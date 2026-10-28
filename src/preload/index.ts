@@ -23,13 +23,18 @@ const api: BiliApi = {
     openLoginWindow: () => invoke('auth:login'),
     listBrowsers: () => invoke('auth:listBrowsers'),
     importFromBrowser: (id) => invoke('auth:import', id),
+    importCookie: (text) => invoke('auth:importCookie', text),
     logout: () => invoke('auth:logout'),
     simulateExpiry: () => invoke('auth:simulateExpiry'),
     onRequired: on('auth:required'),
     onChanged: on('auth:changed')
   },
   parse: (input) => invoke('parse', input),
+  parseMore: (source, page) => invoke('parseMore', source, page),
+  parseBatch: (inputs) => invoke('parseBatch', inputs),
+  onParseProgress: on('parse:progress'),
   streamInfo: (item) => invoke('streamInfo', item),
+  myFavFolders: () => invoke('myFavFolders'),
   download: {
     enqueue: (req) => invoke('dl:enqueue', req),
     list: () => invoke('dl:list'),
