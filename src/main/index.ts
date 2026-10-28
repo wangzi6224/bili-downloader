@@ -44,7 +44,11 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     title: 'B站下载器',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17181a' : '#f6f7f8',
+    trafficLightPosition: { x: 18, y: 18 },
+    // 侧边栏透出系统毛玻璃，内容区由页面自己铺底色
+    vibrancy: 'sidebar',
+    visualEffectState: 'followWindow',
+    backgroundColor: '#00000000',
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -193,6 +197,8 @@ async function start(): Promise<void> {
 
   registerIpc({ manager, subs, mcp, enqueue })
   buildMenu()
+  // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
+  if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   createWindow()
 
   // 启动时确认登录状态，未登录就弹出登录

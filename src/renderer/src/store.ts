@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import type { AuthState, ParseResult, Settings, TaskInfo } from '@shared/types'
 
+export type View = 'downloads' | 'subs' | 'history' | 'settings'
+
 interface State {
   /** null 表示还在检查 */
   auth: AuthState | null
   loginOpen: boolean
-  settingsOpen: boolean
-  subsOpen: boolean
+  /** 侧边栏当前选中的页面 */
+  view: View
   /** 点了关闭按钮，询问退出还是后台运行 */
   closeAsk: boolean
   settings: Settings | null
@@ -24,8 +26,7 @@ interface State {
 export const useStore = create<State>((set) => ({
   auth: null,
   loginOpen: false,
-  settingsOpen: false,
-  subsOpen: false,
+  view: 'downloads',
   closeAsk: false,
   settings: null,
   tasks: [],

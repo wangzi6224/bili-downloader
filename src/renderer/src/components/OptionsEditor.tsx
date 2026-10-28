@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import { ArrowUp } from 'lucide-react'
 import type { AudioPref, CodecPref, Container, DanmakuFormat, DownloadOptions, OutputKind, StreamInfo } from '@shared/types'
+import { IconButton, Segmented, Select } from './ui'
 
 export type EditableOptions = Omit<DownloadOptions, 'qn'>
 
@@ -9,7 +11,7 @@ const CODEC_HINT: Record<CodecPref, string> = { avc: '兼容性最好', hevc: '�
 const OUTPUTS: { value: OutputKind; label: string; hint: string }[] = [
   { value: 'full', label: '完整视频', hint: '画面和声音合成一个文件' },
   { value: 'audio', label: '仅音频', hint: '只保存声音（m4a，无损为 flac）' },
-  { value: 'video', label: '仅视频（无声）', hint: '只保存画面，没有声音' }
+  { value: 'video', label: '仅视频', hint: '只保存画面，没有声音' }
 ]
 
 const AUDIO_LABEL: Record<AudioPref, string> = {
@@ -21,42 +23,10 @@ const AUDIO_LABEL: Record<AudioPref, string> = {
   '64k': '64K'
 }
 
-export function Seg<T extends string>({
-  value,
-  options,
-  onChange,
-  disabled
-}: {
-  value: T
-  options: { value: T; label: string; hint?: string }[]
-  onChange: (v: T) => void
-  disabled?: boolean
-}) {
-  return (
-    <div
-      className={`grid gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800 ${disabled ? 'opacity-40' : ''}`}
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
-    >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          title={o.hint}
-          disabled={disabled}
-          onClick={() => onChange(o.value)}
-          className={`truncate rounded-md px-1 py-1 text-xs ${value === o.value ? 'bg-white shadow dark:bg-neutral-700' : 'text-neutral-500'}`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function Section({ title, children, dim }: { title: string; children: ReactNode; dim?: boolean }) {
   return (
-    <section className={dim ? 'opacity-40' : ''}>
-      <div className="mb-2 text-sm font-medium">{title}</div>
+    <section className={`transition-opacity ${dim ? 'opacity-40' : ''}`}>
+      <div className="mb-2 text-xs font-medium text-muted">{title}</div>
       {children}
     </section>
   )
@@ -74,7 +44,7 @@ function Check({
   children: ReactNode
 }) {
   return (
-    <label className={`flex items-center gap-1.5 py-0.5 text-sm ${disabled ? 'opacity-40' : 'cursor-pointer'}`}>
+    <label className={`flex items-center gap-2 py-1 text-[13px] ${disabled ? 'opacity-40' : 'cursor-pointer'}`}>
       <input
         type="checkbox"
         className="accent-bili"
@@ -114,28 +84,18 @@ function CodecOrder({
           return (
             <div
               key={c}
-              className="flex items-center gap-2 rounded-md border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700"
+              className="flex h-8 items-center gap-2 rounded-lg border border-line bg-elevated pr-0.5 pl-2.5 text-xs"
             >
-              <span className="w-4 text-neutral-400 tabular-nums">{i + 1}</span>
-              <span className={`font-medium ${missing ? 'text-neutral-400 line-through' : ''}`}>{CODEC_LABEL[c]}</span>
-              <span className="min-w-0 flex-1 truncate text-neutral-500">{CODEC_HINT[c]}</span>
-              {i > 0 && (
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => move(i)}
-                  className="rounded px-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                  title="提高优先级"
-                >
-                  ↑
-                </button>
-              )}
+              <span className="w-3 text-subtle tabular-nums">{i + 1}</span>
+              <span className={`font-medium ${missing ? 'text-subtle line-through' : ''}`}>{CODEC_LABEL[c]}</span>
+              <span className="min-w-0 flex-1 truncate text-muted">{CODEC_HINT[c]}</span>
+              {i > 0 && <IconButton icon={ArrowUp} label="提高优先级" size="sm" disabled={disabled} onClick={() => move(i)} />}
             </div>
           )
         })}
       </div>
       {actual && actual !== order[0] && (
-        <div className="mt-1 text-xs text-amber-600">
+        <div className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
           该清晰度没有 {CODEC_LABEL[order[0]]}，将下载 {CODEC_LABEL[actual]}
         </div>
       )}
@@ -166,9 +126,9 @@ export function OptionsEditor({
   return (
     <div className="flex flex-col gap-5">
       <Section title="下载内容">
-        <Seg value={o.output} options={OUTPUTS} onChange={(output) => set({ output })} />
-        <div className="mt-1 text-xs text-neutral-500">{OUTPUTS.find((x) => x.value === o.output)?.hint}</div>
-        {noAudio && o.output !== 'video' && <div className="mt-1 text-xs text-amber-600">这个视频没有独立音轨</div>}
+        <Segmented fill value={o.output} options={OUTPUTS} onChange={(output) => set({ output })} />
+        <div className="mt-1.5 text-xs text-muted">{OUTPUTS.find((x) => x.value === o.output)?.hint}</div>
+        {noAudio && o.output !== 'video' && <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">这个视频没有独立音轨</div>}
       </Section>
 
       <Section title="编码优先级" dim={audioOnly}>
@@ -181,11 +141,11 @@ export function OptionsEditor({
       </Section>
 
       <Section title="音质" dim={o.output === 'video' || noAudio}>
-        <select
+        <Select
           value={o.audio}
           disabled={o.output === 'video' || noAudio}
           onChange={(e) => set({ audio: e.target.value as AudioPref })}
-          className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          className="w-full"
         >
           {(Object.keys(AUDIO_LABEL) as AudioPref[]).map((id) => (
             <option key={id} value={id} disabled={!audioAvailable(id)}>
@@ -193,14 +153,15 @@ export function OptionsEditor({
               {!audioAvailable(id) ? '（这个视频没有）' : ''}
             </option>
           ))}
-        </select>
-        <div className="mt-1 text-xs text-neutral-500">
+        </Select>
+        <div className="mt-1.5 text-xs leading-relaxed text-muted">
           “最佳”：完整视频优先杜比（MKV 时优先无损），仅音频优先无损；指定档位没有时自动降档
         </div>
       </Section>
 
       <Section title="封装格式" dim={audioOnly}>
-        <Seg<Container>
+        <Segmented<Container>
+          fill
           value={o.container}
           disabled={audioOnly}
           onChange={(container) => set({ container })}
@@ -235,18 +196,19 @@ export function OptionsEditor({
             弹幕
           </Check>
           {o.danmaku && !audioOnly && (
-            <select
+            <Select
+              size="sm"
               value={o.danmakuFormat}
               onChange={(e) => set({ danmakuFormat: e.target.value as DanmakuFormat })}
-              className="my-0.5 rounded-md border border-neutral-300 bg-white px-1 py-0.5 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+              className="my-0.5"
             >
               <option value="ass">ASS（播放器叠加）</option>
               <option value="xml">XML（原始）</option>
               <option value="both">ASS + XML</option>
-            </select>
+            </Select>
           )}
         </div>
-        {o.nfo && <div className="mt-1 text-xs text-neutral-500">生成 Kodi / Jellyfin / Emby 能识别的 .nfo，番剧额外生成 tvshow.nfo 和海报</div>}
+        {o.nfo && <div className="mt-1 text-xs leading-relaxed text-muted">生成 Kodi / Jellyfin / Emby 能识别的 .nfo，番剧额外生成 tvshow.nfo 和海报</div>}
       </Section>
     </div>
   )
