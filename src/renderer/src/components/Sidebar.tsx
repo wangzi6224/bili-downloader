@@ -1,5 +1,4 @@
 import {
-  ChevronsUpDown,
   CircleAlert,
   CircleArrowUp,
   Download,
@@ -18,7 +17,7 @@ import { api, useStore, type View } from '../store'
 import { updateEntry, type UpdateIcon } from '../viewLogic'
 import { Logo } from './Logo'
 import { ACTIVE } from './TaskList'
-import { Badge, Dropdown, MenuItem, STROKE } from './ui'
+import { Badge, IconButton, STROKE } from './ui'
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'downloads', label: '下载', icon: Download },
@@ -109,44 +108,31 @@ function Account() {
 
   const face = thumb(auth.user.face, 96)
   return (
-    <Dropdown
-      side="top"
-      align="start"
-      className="w-[200px]"
-      button={({ open, toggle }) => (
-        <button
-          type="button"
-          onClick={toggle}
-          className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${open ? 'bg-black/[.07] dark:bg-white/10' : 'hover:bg-black/[.04] dark:hover:bg-white/[.05]'}`}
-        >
-          <img src={face} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full ring-1 ring-black/5" alt="" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-medium">{auth.user.uname}</div>
-            {auth.user.vipActive ? (
-              <Badge tone="brand" className="mt-0.5">
-                {auth.user.vipLabel}
-              </Badge>
-            ) : (
-              <div className="text-[11px] text-muted">普通用户</div>
-            )}
-          </div>
-          <ChevronsUpDown size={14} strokeWidth={STROKE} className="shrink-0 text-subtle" />
-        </button>
-      )}
-    >
-      {(close) => (
-        <MenuItem
-          icon={LogOut}
-          danger
-          onClick={async () => {
-            close()
-            if (confirm('退出后需要重新导入或登录，确定吗？')) set({ auth: await api.auth.logout() })
-          }}
-        >
-          退出登录
-        </MenuItem>
-      )}
-    </Dropdown>
+    <div className="flex items-center gap-2.5 px-2 py-1.5">
+      <img src={face} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full ring-1 ring-black/5" alt="" />
+      <div className="min-w-0 flex-1">
+        {/* 名字太长时截成省略号，悬停看全名 */}
+        <div className="truncate text-[13px] font-medium" title={auth.user.uname}>
+          {auth.user.uname}
+        </div>
+        {auth.user.vipActive ? (
+          <Badge tone="brand" className="mt-0.5">
+            {auth.user.vipLabel}
+          </Badge>
+        ) : (
+          <div className="text-[11px] text-muted">普通用户</div>
+        )}
+      </div>
+      <IconButton
+        icon={LogOut}
+        label="退出登录"
+        size="sm"
+        variant="danger"
+        onClick={async () => {
+          if (confirm('退出后需要重新导入或登录，确定吗？')) set({ auth: await api.auth.logout() })
+        }}
+      />
+    </div>
   )
 }
 
