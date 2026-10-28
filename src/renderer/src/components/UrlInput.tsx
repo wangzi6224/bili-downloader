@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { parseInput } from '@shared/parseUrl'
 import { api, parseLink, useStore } from '../store'
 import { Button } from './Modal'
+import { ParseHistory } from './ParseHistory'
 
 export function UrlInput() {
   const [text, setText] = useState('')
@@ -51,6 +52,12 @@ export function UrlInput() {
         <Button variant="primary" className="h-11 px-5" disabled={parsing || !text.trim()} onClick={() => submit(text)}>
           {parsing ? '解析中…' : '解析'}
         </Button>
+        <ParseHistory
+          onPick={(input) => {
+            setText(input)
+            submit(input)
+          }}
+        />
       </div>
       {clip && !parsing && (
         <div className="mt-2 flex items-center gap-2 rounded-lg bg-sky/10 px-3 py-2 text-sm">

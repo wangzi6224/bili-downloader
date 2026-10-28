@@ -1,4 +1,5 @@
 // main / preload / renderer 共用的数据类型
+import type { NamingTemplates, NamingValues } from './naming'
 
 export interface UserInfo {
   mid: number
@@ -33,6 +34,9 @@ export interface MediaItem {
   epId?: number
   cover?: string
   duration?: number
+  /** 发布时间（unix 秒） */
+  pubdate?: number
+  desc?: string
   badge?: string
   needVip?: boolean
   unavailable?: string
@@ -44,36 +48,87 @@ export interface MediaGroup {
   items: MediaItem[]
 }
 
+/** 整个视频 / 合集 / 剧集的元数据，用于命名和 NFO */
+export interface MediaMeta {
+  desc?: string
+  owner?: string
+  ownerMid?: number
+  pubdate?: number
+  /** 分区或番剧风格 */
+  genres?: string[]
+  url?: string
+}
+
 export interface ParseResult {
   kind: MediaKind
   title: string
   cover: string
   owner?: string
+  meta?: MediaMeta
   groups: MediaGroup[]
   defaultSelected: string[]
 }
+
+export type CodecPref = 'avc' | 'hevc' | 'av1'
 
 export interface QualityOption {
   qn: number
   label: string
   needVip: boolean
   needLogin: boolean
+  /** 这个清晰度实际提供的编码；空数组表示当前账号拿不到 */
+  codecs: CodecPref[]
 }
 
-export type CodecPref = 'avc' | 'hevc' | 'av1'
+/** best：完整视频优先杜比，其次最高码率 AAC；仅音频优先无损 */
+export type AudioPref = 'best' | 'flac' | 'dolby' | '192k' | '132k' | '64k'
+
+export interface AudioOption {
+  id: AudioPref
+  label: string
+  available: boolean
+}
+
+export interface StreamInfo {
+  qualities: QualityOption[]
+  audios: AudioOption[]
+  /** 没有独立音轨（例如静音视频） */
+  hasAudio: boolean
+}
+
+/** 下载结果：完整视频 / 仅音频 / 仅视频（无声） */
+export type OutputKind = 'full' | 'audio' | 'video'
+export type Container = 'mp4' | 'mkv'
+export type DanmakuFormat = 'ass' | 'xml' | 'both'
 
 export interface DownloadOptions {
   qn: number
-  codec: CodecPref
-  audioOnly: boolean
+  /** 编码优先级，从前往后尝试 */
+  codecOrder: CodecPref[]
+  audio: AudioPref
+  output: OutputKind
+  container: Container
+  /** 封面另存为图片 */
   cover: boolean
+  /** 封面写进视频 / 音频文件 */
+  embedCover: boolean
+  /** 字幕另存为 .srt */
   subtitle: boolean
+  /** 字幕写进视频文件 */
+  embedSubtitle: boolean
   danmaku: boolean
+  danmakuFormat: DanmakuFormat
+  /** 把 B站进度条上的分段写成章节 */
+  chapters: boolean
+  /** Kodi / Jellyfin 元数据 */
+  nfo: boolean
 }
 
 export interface EnqueueRequest {
   title: string
   cover: string
+  kind: MediaKind
+  meta?: MediaMeta
   items: MediaItem[]
   options: DownloadOptions
 }
@@ -96,8 +151,16 @@ export interface TaskInfo {
   groupTitle: string
   item: MediaItem
   options: DownloadOptions
-  /** 输出文件不含扩展名的相对路径（相对下载目录） */
+  /** 输出文件不含扩展名的相对路径（相对下载目录）；合并时会按实际画质重新计算 */
   relBase: string
+  /** 创建任务时选定的命名模板和变量 */
+  template?: string
+  nameValues?: NamingValues
+  meta?: MediaMeta
+  /** 是否属于一次下载多集的番剧（决定 tvshow.nfo） */
+  series?: boolean
+  /** 整部剧集 / 合集的封面，用作媒体库海报 */
+  seriesCover?: string
   status: TaskStatus
   downloaded: number
   total: number
@@ -120,13 +183,19 @@ export type PowerMode = 'off' | 'system' | 'display'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
+/** 选中的内容里有已经下载过的 */
+export type DuplicateAction = 'ask' | 'skip' | 'download'
+
 export interface Settings {
   downloadDir: string
   concurrency: number
   powerMode: PowerMode
   defaultQn: number
-  defaultCodec: CodecPref
-  extras: { cover: boolean; subtitle: boolean; danmaku: boolean }
+  /** 新建下载时的默认选项；每次下载后会记住这次的选择 */
+  defaults: Omit<DownloadOptions, 'qn'>
+  rememberLast: boolean
+  naming: NamingTemplates
+  duplicateAction: DuplicateAction
   danmaku: { fontSize: number; opacity: number; duration: number }
   clipboardWatch: boolean
   /** 每个文件分几段并行下载 */
@@ -135,9 +204,26 @@ export interface Settings {
   speedLimit: number
   /** 网络错误自动重试次数，0 为关闭 */
   autoRetry: number
-  /** 队列全部完成后发系统通知 */
+  /** 队列全部结束后发系统通知 */
   notify: boolean
   theme: ThemeMode
+}
+
+export interface HistoryEntry {
+  key: string
+  title: string
+  groupTitle: string
+  path: string
+  at: number
+}
+
+export interface ParseRecord {
+  input: string
+  title: string
+  kind: MediaKind
+  cover: string
+  count: number
+  at: number
 }
 
 /** preload 通过 contextBridge 暴露给渲染进程的接口 */
@@ -153,7 +239,7 @@ export interface BiliApi {
     onChanged(cb: (state: AuthState) => void): () => void
   }
   parse(input: string): Promise<ParseResult>
-  qualities(item: MediaItem): Promise<QualityOption[]>
+  streamInfo(item: MediaItem): Promise<StreamInfo>
   download: {
     enqueue(req: EnqueueRequest): Promise<void>
     list(): Promise<TaskInfo[]>
@@ -166,6 +252,14 @@ export interface BiliApi {
     redownload(id: string): Promise<void>
     clearFinished(): Promise<void>
     onUpdate(cb: (tasks: TaskInfo[]) => void): () => void
+  }
+  history: {
+    /** 已下载过的条目 key */
+    downloadedKeys(): Promise<string[]>
+    clearDownloads(): Promise<void>
+    parses(): Promise<ParseRecord[]>
+    removeParse(input: string): Promise<ParseRecord[]>
+    clearParses(): Promise<void>
   }
   settings: {
     get(): Promise<Settings>

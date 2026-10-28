@@ -1,4 +1,4 @@
-import type { MediaGroup, MediaItem, ParseResult } from '@shared/types'
+import type { MediaGroup, MediaItem, MediaMeta, ParseResult } from '@shared/types'
 import { api } from './http'
 
 interface Page {
@@ -13,7 +13,7 @@ interface SeasonEpisode {
   bvid: string
   cid: number
   title: string
-  arc?: { pic?: string; duration?: number }
+  arc?: { pic?: string; duration?: number; pubdate?: number; desc?: string }
   pages?: Page[]
 }
 
@@ -23,7 +23,10 @@ interface ViewData {
   cid: number
   title: string
   pic: string
-  owner?: { name: string }
+  desc?: string
+  pubdate?: number
+  tname?: string
+  owner?: { mid: number; name: string }
   pages: Page[]
   ugc_season?: {
     id: number
@@ -42,6 +45,14 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
     { wbi: true }
   )
   const currentPage = v.pages.find((p) => p.page === t.page)
+  const meta: MediaMeta = {
+    desc: v.desc,
+    owner: v.owner?.name,
+    ownerMid: v.owner?.mid,
+    pubdate: v.pubdate,
+    genres: v.tname ? [v.tname] : undefined,
+    url: `https://www.bilibili.com/video/${v.bvid}`
+  }
   const isCurrent = (bvid: string, cid: number): boolean =>
     bvid === v.bvid && (!currentPage || currentPage.cid === cid)
 
@@ -62,7 +73,9 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
           bvid: ep.bvid,
           aid: ep.aid,
           cover: ep.arc?.pic,
-          duration: p.duration
+          duration: p.duration,
+          pubdate: ep.arc?.pubdate,
+          desc: ep.bvid === v.bvid ? v.desc : ep.arc?.desc
         }))
       })
     }))
@@ -72,6 +85,7 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
       title: season.title,
       cover: season.cover || v.pic,
       owner: v.owner?.name,
+      meta: { ...meta, desc: undefined, url: `https://www.bilibili.com/video/${v.bvid}` },
       groups,
       defaultSelected: all.filter((i) => isCurrent(i.bvid!, i.cid)).map((i) => i.key)
     }
@@ -87,13 +101,16 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
     bvid: v.bvid,
     aid: v.aid,
     cover: v.pic,
-    duration: p.duration
+    duration: p.duration,
+    pubdate: v.pubdate,
+    desc: v.desc
   }))
   return {
     kind: 'ugc',
     title: v.title,
     cover: v.pic,
     owner: v.owner?.name,
+    meta,
     groups: [{ id: 'pages', title: multi ? `分P（共 ${items.length} P）` : v.title, items }],
     defaultSelected: (currentPage ? items.filter((i) => i.cid === currentPage.cid) : items).map((i) => i.key)
   }

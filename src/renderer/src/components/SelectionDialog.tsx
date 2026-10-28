@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CodecPref, MediaItem, ParseResult, QualityOption } from '@shared/types'
+import { renderTemplate } from '@shared/naming'
+import type { MediaItem, ParseResult, QualityOption, StreamInfo } from '@shared/types'
 import { fmtDuration, thumb } from '../format'
 import { api, useStore } from '../store'
 import { Button, Modal } from './Modal'
-
-const CODECS: { value: CodecPref; label: string; hint: string }[] = [
-  { value: 'avc', label: 'AVC', hint: '兼容性最好' },
-  { value: 'hevc', label: 'HEVC', hint: '体积更小' },
-  { value: 'av1', label: 'AV1', hint: '需较新的 Mac' }
-]
+import { OptionsEditor, Section, summaryTags, type EditableOptions } from './OptionsEditor'
 
 // 取不到清晰度列表时的兜底选项
 const FALLBACK: QualityOption[] = [
-  { qn: 127, label: '最高可用', needVip: false, needLogin: false },
-  { qn: 80, label: '1080P 高清', needVip: false, needLogin: true },
-  { qn: 64, label: '720P 准高清', needVip: false, needLogin: false },
-  { qn: 32, label: '480P 标清', needVip: false, needLogin: false }
+  { qn: 127, label: '最高可用', needVip: false, needLogin: false, codecs: [] },
+  { qn: 80, label: '1080P 高清', needVip: false, needLogin: true, codecs: [] },
+  { qn: 64, label: '720P 准高清', needVip: false, needLogin: false, codecs: [] },
+  { qn: 32, label: '480P 标清', needVip: false, needLogin: false, codecs: [] }
 ]
+
+const CODEC_TEXT = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' } as const
 
 export function SelectionDialog({ result }: { result: ParseResult }) {
   const set = useStore((s) => s.set)
@@ -27,36 +25,39 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
   const all = useMemo(() => result.groups.flatMap((g) => g.items), [result])
   const [selected, setSelected] = useState(() => new Set(result.defaultSelected))
   const lastClicked = useRef<number | null>(null)
+  const [downloaded, setDownloaded] = useState<Set<string>>(new Set())
+  const [dupPrompt, setDupPrompt] = useState<MediaItem[] | null>(null)
 
-  const [qualities, setQualities] = useState<QualityOption[] | null>(null)
-  const [qualityError, setQualityError] = useState<string | null>(null)
+  const [info, setInfo] = useState<StreamInfo | null>(null)
+  const [infoError, setInfoError] = useState<string | null>(null)
   const [qn, setQn] = useState(settings.defaultQn)
-  const [codec, setCodec] = useState<CodecPref>(settings.defaultCodec)
-  const [audioOnly, setAudioOnly] = useState(false)
-  const [extras, setExtras] = useState(settings.extras)
+  const [opts, setOpts] = useState<EditableOptions>(settings.defaults)
   const [submitting, setSubmitting] = useState(false)
 
-  // 用第一个选中项（没有就用第一项）查询可用清晰度
+  useEffect(() => {
+    void api.history.downloadedKeys().then((keys) => setDownloaded(new Set(keys)))
+  }, [])
+
+  // 用第一个选中项（没有就用第一项）查询可用清晰度和音轨
   const probe = all.find((i) => selected.has(i.key)) ?? all[0]
   useEffect(() => {
     if (!probe) return
     let alive = true
-    setQualities(null)
-    setQualityError(null)
+    setInfo(null)
+    setInfoError(null)
     api
-      .qualities(probe)
-      .then((list) => {
+      .streamInfo(probe)
+      .then((s) => {
         if (!alive) return
-        setQualities(list)
-        const usable = list.filter((q) => isVip || !q.needVip)
-        const best = usable.find((q) => q.qn <= settings.defaultQn) ?? usable[usable.length - 1] ?? list[0]
+        setInfo(s)
+        const usable = s.qualities.filter((q) => (isVip || !q.needVip) && q.codecs.length)
+        const best = usable.find((q) => q.qn <= settings.defaultQn) ?? usable[usable.length - 1] ?? s.qualities[0]
         if (best) setQn(best.qn)
       })
-      .catch((e: Error) => alive && setQualityError(e.message))
+      .catch((e: Error) => alive && setInfoError(e.message))
     return () => {
       alive = false
     }
-    // 只在探测项变化时重新查询
   }, [probe?.key])
 
   const toggle = (item: MediaItem, shift: boolean): void => {
@@ -82,15 +83,21 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
 
   const close = (): void => set({ parse: null })
 
-  const start = async (): Promise<void> => {
+  const enqueue = async (items: MediaItem[]): Promise<void> => {
+    if (!items.length) return close()
     setSubmitting(true)
     try {
       await api.download.enqueue({
         title: result.title,
         cover: result.cover,
-        items: all.filter((i) => selected.has(i.key)),
-        options: { qn, codec, audioOnly, ...extras }
+        kind: result.kind,
+        meta: result.meta,
+        items,
+        options: { qn, ...opts }
       })
+      if (settings.rememberLast) {
+        set({ settings: await api.settings.set({ defaults: opts, defaultQn: qn }) })
+      }
       close()
     } catch (e) {
       set({ error: (e as Error).message })
@@ -98,11 +105,49 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
     }
   }
 
-  const options = qualities ?? (qualityError ? FALLBACK : [])
+  const start = (): void => {
+    const items = all.filter((i) => selected.has(i.key))
+    const dups = items.filter((i) => downloaded.has(i.key))
+    if (!dups.length || settings.duplicateAction === 'download') return void enqueue(items)
+    if (settings.duplicateAction === 'skip') return void enqueue(items.filter((i) => !downloaded.has(i.key)))
+    setDupPrompt(dups)
+  }
+
+  const qualities = info?.qualities ?? (infoError ? FALLBACK : [])
+  const chosen = qualities.find((q) => q.qn === qn)
   const multiGroup = result.groups.length > 1 || all.length > 1
 
+  // 保存路径预览：和主进程用同一套模板
+  const preview = useMemo(() => {
+    const items = all.filter((i) => selected.has(i.key))
+    const first = items[0]
+    if (!first) return ''
+    const multi = items.length > 1
+    const tpl = !multi ? settings.naming.single : result.kind === 'pgc' ? settings.naming.pgc : settings.naming.multi
+    const ext = opts.output === 'audio' ? (opts.audio === 'flac' ? 'flac' : 'm4a') : opts.container
+    const codec = chosen?.codecs.length ? (opts.codecOrder.find((c) => chosen.codecs.includes(c)) ?? opts.codecOrder[0]) : opts.codecOrder[0]
+    return `${renderTemplate(tpl, {
+      title: first.title,
+      series: multi || first.title !== result.title ? result.title : '',
+      index: first.index,
+      owner: result.meta?.owner,
+      owner_mid: result.meta?.ownerMid,
+      pubdate: first.pubdate ?? result.meta?.pubdate,
+      date: Math.floor(Date.now() / 1000),
+      quality: chosen?.label,
+      codec: opts.output === 'audio' ? '' : CODEC_TEXT[codec],
+      bvid: first.bvid,
+      aid: first.aid,
+      cid: first.cid,
+      ep_id: first.epId,
+      type: result.kind === 'pgc' ? '番剧影视' : '视频'
+    })}.${ext}`
+  }, [all, selected, settings.naming, result, opts, chosen])
+
+  const downloadedCount = all.filter((i) => downloaded.has(i.key)).length
+
   return (
-    <Modal onClose={close} className="flex h-[82vh] max-w-5xl flex-col">
+    <Modal onClose={close} className="flex h-[86vh] max-w-6xl flex-col">
       <div className="flex items-center gap-4 border-b border-neutral-200 p-4 dark:border-neutral-800">
         {result.cover && (
           <img src={thumb(result.cover, 240)} referrerPolicy="no-referrer" className="h-16 w-28 rounded-md object-cover" alt="" />
@@ -112,6 +157,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
           <div className="mt-1 text-xs text-neutral-500">
             {result.kind === 'pgc' ? '番剧 / 影视' : '视频'}
             {result.owner && ` · ${result.owner}`} · 共 {all.length} 项
+            {downloadedCount > 0 && <span className="text-green-600"> · 已下载过 {downloadedCount} 项</span>}
           </div>
         </div>
         <Button variant="ghost" onClick={close}>
@@ -135,6 +181,11 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
               >
                 反选
               </Button>
+              {downloadedCount > 0 && (
+                <Button variant="ghost" onClick={() => setGroup(all.filter((i) => downloaded.has(i.key)), false)}>
+                  去掉已下载
+                </Button>
+              )}
               <span className="ml-auto text-xs text-neutral-500">按住 Shift 点击可以连续选择 · 已选 {selected.size} 项</span>
             </div>
           )}
@@ -161,6 +212,11 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                       <input type="checkbox" readOnly checked={selected.has(item.key)} className="accent-bili" />
                       <span className="w-8 shrink-0 text-right text-xs text-neutral-400 tabular-nums">{item.index}</span>
                       <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                      {downloaded.has(item.key) && (
+                        <span className="shrink-0 text-xs text-green-600" title="下载历史里有这一项">
+                          ✓ 已下载
+                        </span>
+                      )}
                       {item.badge && (
                         <span className="shrink-0 rounded bg-bili/15 px-1.5 py-0.5 text-[10px] text-bili">{item.badge}</span>
                       )}
@@ -178,15 +234,14 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
           </div>
         </div>
 
-        <div className="flex w-72 shrink-0 flex-col text-sm">
+        <div className="flex w-80 shrink-0 flex-col text-sm">
           <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
-            <section className={audioOnly ? 'opacity-40' : ''}>
-              <div className="mb-2 font-medium">清晰度</div>
-              {!qualities && !qualityError && <div className="text-xs text-neutral-500">正在获取可用清晰度…</div>}
-              {qualityError && <div className="mb-2 text-xs text-amber-600">{qualityError}</div>}
-              <div className="flex flex-col gap-1">
-                {options.map((q) => {
-                  const locked = q.needVip && !isVip
+            <Section title="清晰度" dim={opts.output === 'audio'}>
+              {!info && !infoError && <div className="text-xs text-neutral-500">正在获取可用清晰度…</div>}
+              {infoError && <div className="mb-2 text-xs text-amber-600">{infoError}</div>}
+              <div className="flex flex-col gap-0.5">
+                {qualities.map((q) => {
+                  const locked = (q.needVip && !isVip) || (info !== null && !q.codecs.length)
                   return (
                     <label
                       key={q.qn}
@@ -195,87 +250,56 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                       <input
                         type="radio"
                         name="qn"
-                        disabled={locked || audioOnly}
+                        disabled={locked || opts.output === 'audio'}
                         checked={qn === q.qn}
                         onChange={() => setQn(q.qn)}
                         className="accent-bili"
                       />
                       <span className="flex-1">{q.label}</span>
+                      <span className="text-[10px] text-neutral-400">{q.codecs.map((c) => CODEC_TEXT[c]).join(' ')}</span>
                       {q.needVip && <span className="text-[10px] text-bili">大会员</span>}
                     </label>
                   )
                 })}
               </div>
-            </section>
-
-            <section className={audioOnly ? 'opacity-40' : ''}>
-              <div className="mb-2 font-medium">编码偏好</div>
-              <div className="grid grid-cols-3 gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800">
-                {CODECS.map((c) => (
-                  <button
-                    key={c.value}
-                    title={c.hint}
-                    disabled={audioOnly}
-                    onClick={() => setCodec(c.value)}
-                    className={`rounded-md py-1 text-xs ${codec === c.value ? 'bg-white shadow dark:bg-neutral-700' : 'text-neutral-500'}`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-1 text-xs text-neutral-500">{CODECS.find((c) => c.value === codec)?.hint}，没有时自动换用其他编码</div>
-            </section>
-
-            <section>
-              <div className="mb-2 font-medium">附加内容</div>
-              <label className="flex cursor-pointer items-center gap-2 py-0.5">
-                <input type="checkbox" checked={audioOnly} onChange={(e) => setAudioOnly(e.target.checked)} className="accent-bili" />
-                仅音频（m4a / 无损 flac）
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 py-0.5">
-                <input
-                  type="checkbox"
-                  checked={extras.cover}
-                  onChange={(e) => setExtras({ ...extras, cover: e.target.checked })}
-                  className="accent-bili"
-                />
-                封面图
-              </label>
-              <label className={`flex items-center gap-2 py-0.5 ${audioOnly ? 'opacity-40' : 'cursor-pointer'}`}>
-                <input
-                  type="checkbox"
-                  disabled={audioOnly}
-                  checked={extras.subtitle}
-                  onChange={(e) => setExtras({ ...extras, subtitle: e.target.checked })}
-                  className="accent-bili"
-                />
-                CC 字幕（.srt）
-              </label>
-              <label className={`flex items-center gap-2 py-0.5 ${audioOnly ? 'opacity-40' : 'cursor-pointer'}`}>
-                <input
-                  type="checkbox"
-                  disabled={audioOnly}
-                  checked={extras.danmaku}
-                  onChange={(e) => setExtras({ ...extras, danmaku: e.target.checked })}
-                  className="accent-bili"
-                />
-                弹幕（.ass）
-              </label>
-            </section>
+            </Section>
+            <OptionsEditor value={opts} onChange={setOpts} info={info} codecsForQuality={chosen?.codecs} />
           </div>
 
           {/* 下载按钮固定在底部，不随选项滚动 */}
           <div className="border-t border-neutral-200 p-4 dark:border-neutral-800">
-            <Button
-              variant="primary"
-              className="w-full py-2.5"
-              disabled={!selected.size || submitting || (!qualities && !qualityError && !audioOnly)}
-              onClick={start}
-            >
-              下载 {selected.size} 项
-            </Button>
-            <div className="mt-2 truncate text-center text-xs text-neutral-500" title={settings.downloadDir}>
-              保存到 {settings.downloadDir}
+            <div className="mb-2 flex flex-wrap gap-1">
+              {summaryTags(opts, info).map((t) => (
+                <span key={t} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                  {t}
+                </span>
+              ))}
+            </div>
+            {dupPrompt ? (
+              <div className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                选中的项目里有 {dupPrompt.length} 项已经下载过
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={() => enqueue(all.filter((i) => selected.has(i.key) && !downloaded.has(i.key)))}
+                  >
+                    跳过它们
+                  </Button>
+                  <Button onClick={() => enqueue(all.filter((i) => selected.has(i.key)))}>仍然下载</Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                className="w-full py-2.5"
+                disabled={!selected.size || submitting || (!info && !infoError && opts.output !== 'audio')}
+                onClick={start}
+              >
+                下载 {selected.size} 项
+              </Button>
+            )}
+            <div className="mt-2 truncate text-xs text-neutral-500" title={`${settings.downloadDir}/${preview}`}>
+              保存为 {preview || '—'}
             </div>
           </div>
         </div>

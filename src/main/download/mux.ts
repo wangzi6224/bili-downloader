@@ -72,40 +72,89 @@ export function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   return run
 }
 
-export interface MuxVideoOptions {
-  video: string
+export type OutFormat = 'mp4' | 'mkv' | 'm4a' | 'flac'
+
+export interface MuxOptions {
+  video?: string
   audio?: string
   out: string
+  format: OutFormat
   title: string
-  hevc: boolean
-  dolbyVision: boolean
+  hevc?: boolean
+  dolbyVision?: boolean
+  /** 写进文件的封面（jpg / png） */
+  cover?: string
+  subtitles?: { path: string; language: string; title: string }[]
+  /** FFMETADATA 格式的章节文件 */
+  chapters?: string
+  metadata?: Record<string, string | undefined>
 }
 
-export function muxVideo(o: MuxVideoOptions, signal?: AbortSignal): Promise<void> {
-  const args = ['-i', o.video]
-  if (o.audio) args.push('-i', o.audio)
-  args.push('-map', '0:v:0')
-  if (o.audio) args.push('-map', '1:a:0')
+/** 组装 ffmpeg 参数（导出供单元测试） */
+export function buildMuxArgs(o: MuxOptions): string[] {
+  const args: string[] = []
+  let inputs = 0
+  const input = (path: string, pre: string[] = []): number => {
+    args.push(...pre, '-i', path)
+    return inputs++
+  }
+  const mp4Family = o.format === 'mp4' || o.format === 'm4a'
+  const videoContainer = o.format === 'mp4' || o.format === 'mkv'
+
+  const vi = o.video ? input(o.video) : -1
+  const ai = o.audio ? input(o.audio) : -1
+  // MKV 的封面用附件，其余格式作为一路“附图”视频流
+  const ci = o.cover && o.format !== 'mkv' ? input(o.cover) : -1
+  const subs = videoContainer ? (o.subtitles ?? []) : []
+  const si = subs.map((s) => input(s.path))
+  const chi = o.chapters ? input(o.chapters, ['-f', 'ffmetadata']) : -1
+
+  if (vi >= 0) args.push('-map', `${vi}:v:0`)
+  if (ai >= 0) args.push('-map', `${ai}:a:0`)
+  if (ci >= 0) args.push('-map', `${ci}:v:0`)
+  for (const i of si) args.push('-map', `${i}:s:0`)
+  if (chi >= 0) args.push('-map_chapters', String(chi))
+
   args.push('-c', 'copy')
-  // QuickTime 只认 hvc1 / dvh1 标签的 HEVC
-  if (o.dolbyVision) args.push('-tag:v', 'dvh1', '-strict', 'unofficial')
-  else if (o.hevc) args.push('-tag:v', 'hvc1')
-  args.push('-metadata', `title=${o.title}`, '-movflags', '+faststart', '-f', 'mp4', o.out)
-  return runFfmpeg(args, signal)
+  if (si.length) args.push('-c:s', o.format === 'mp4' ? 'mov_text' : 'srt')
+  if (ci >= 0) args.push(`-disposition:v:${vi >= 0 ? 1 : 0}`, 'attached_pic')
+  if (o.cover && o.format === 'mkv') {
+    args.push('-attach', o.cover, '-metadata:s:t:0', `mimetype=${o.cover.endsWith('.png') ? 'image/png' : 'image/jpeg'}`)
+    args.push('-metadata:s:t:0', `filename=cover${o.cover.endsWith('.png') ? '.png' : '.jpg'}`)
+  }
+  subs.forEach((s, k) => {
+    args.push(`-metadata:s:s:${k}`, `language=${s.language}`, `-metadata:s:s:${k}`, `title=${s.title}`)
+    // MP4 的轨道名在 handler_name 里，否则播放器里多条中文字幕会同名
+    if (o.format === 'mp4') args.push(`-metadata:s:s:${k}`, `handler_name=${s.title}`)
+  })
+
+  // QuickTime 只认 hvc1 / dvh1 标签的 HEVC；只作用于主视频流，不碰封面
+  if (vi >= 0 && o.format === 'mp4') {
+    if (o.dolbyVision) args.push('-tag:v:0', 'dvh1', '-strict', 'unofficial')
+    else if (o.hevc) args.push('-tag:v:0', 'hvc1')
+  }
+
+  args.push('-metadata', `title=${o.title}`)
+  for (const [k, v] of Object.entries(o.metadata ?? {})) if (v) args.push('-metadata', `${k}=${v}`)
+  if (mp4Family) args.push('-movflags', '+faststart')
+  // m4a 用 mp4 封装器写（随包的静态 ffmpeg 不一定带 ipod 封装器）
+  args.push('-f', mp4Family ? 'mp4' : o.format === 'mkv' ? 'matroska' : 'flac', o.out)
+  return args
 }
 
 /**
- * 仅音频：m4a 用 mp4 封装器写（随包的静态 ffmpeg 不一定带 ipod 封装器），flac 用 flac 封装器
+ * 合并音视频并写入封面、字幕、章节。带附加内容的合并失败时（例如封面格式不受支持），
+ * 退回只合并音视频，返回 false 让调用方把附加内容改为单独保存。
  */
-export function remuxAudio(
-  input: string,
-  out: string,
-  title: string,
-  format: 'm4a' | 'flac',
-  signal?: AbortSignal
-): Promise<void> {
-  return runFfmpeg(
-    ['-i', input, '-map', '0:a:0', '-c', 'copy', '-metadata', `title=${title}`, '-f', format === 'm4a' ? 'mp4' : 'flac', out],
-    signal
-  )
+export async function mux(o: MuxOptions, signal?: AbortSignal): Promise<boolean> {
+  const hasExtras = Boolean(o.cover || o.subtitles?.length || o.chapters)
+  try {
+    await runFfmpeg(buildMuxArgs(o), signal)
+    return true
+  } catch (e) {
+    if (!hasExtras || signal?.aborted || !(e instanceof FfmpegError)) throw e
+    console.warn('嵌入附加内容失败，改为只合并音视频：', e.message)
+    await runFfmpeg(buildMuxArgs({ ...o, cover: undefined, subtitles: undefined, chapters: undefined }), signal)
+    return false
+  }
 }
