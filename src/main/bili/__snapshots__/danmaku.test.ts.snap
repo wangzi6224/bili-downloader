@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`danmaku > converts to ass 1`] = `
+"[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Danmaku,PingFang SC,50,&H33FFFFFF,&H33FFFFFF,&H33000000,&H33000000,1,0,0,0,100,100,0,0,1,1.5,0,7,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 2,0:00:00.50,0:00:04.50,Danmaku,,0,0,0,,{\\an8\\pos(960,0)\\c&H0000FF&}顶部 & 红色
+Dialogue: 1,0:00:01.50,0:00:09.50,Danmaku,,0,0,0,,{\\an7\\move(1920,0,-150,0)}第一条
+Dialogue: 2,0:00:02.00,0:00:06.00,Danmaku,,0,0,0,,{\\an2\\pos(960,1080)\\c&H00FF00&\\fs36}底部小字
+"
+`;
