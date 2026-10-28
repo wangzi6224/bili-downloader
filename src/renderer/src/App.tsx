@@ -3,6 +3,7 @@ import { Header } from './components/Header'
 import { LoginDialog } from './components/LoginDialog'
 import { SelectionDialog } from './components/SelectionDialog'
 import { SettingsPanel } from './components/SettingsPanel'
+import { SubscriptionsPanel } from './components/SubscriptionsPanel'
 import { TaskList } from './components/TaskList'
 import { UrlInput } from './components/UrlInput'
 import { api, useStore } from './store'
@@ -32,6 +33,7 @@ export default function App() {
       <TaskList />
       {s.parse && <SelectionDialog result={s.parse} />}
       {s.settingsOpen && <SettingsPanel />}
+      {s.subsOpen && <SubscriptionsPanel />}
       {s.loginOpen && <LoginDialog />}
     </div>
   )

@@ -349,3 +349,57 @@ export async function expandLazy(items: MediaItem[], onProgress?: (done: number,
   }
   return out
 }
+
+// ---------------- 每周必看、排行榜 ----------------
+
+interface PopularVideo {
+  aid: number
+  bvid: string
+  cid: number
+  title: string
+  pic: string
+  duration: number
+  pubdate: number
+  videos?: number
+  desc?: string
+  owner?: { mid: number; name: string }
+}
+
+export async function parseWeekly(number?: number): Promise<ParseResult> {
+  let n = number
+  if (!n) {
+    const list = await api<{ list: { number: number }[] }>('https://api.bilibili.com/x/web-interface/popular/series/list')
+    n = list.list[0]?.number
+    if (!n) throw new BiliError('没有拿到每周必看的期数')
+  }
+  const d = await api<{ config: { label?: string; name?: string; subject?: string }; list: PopularVideo[] }>(
+    'https://api.bilibili.com/x/web-interface/popular/series/one',
+    { number: n }
+  )
+  const items = d.list.map((v, i) => lazyVideo(v, i + 1, v.owner, v.cid, v.videos))
+  const title = `每周必看 第 ${n} 期${d.config.subject ? `：${d.config.subject}` : ''}`
+  return {
+    kind: 'ugc',
+    title,
+    cover: items[0]?.cover ?? '',
+    meta: { url: `https://www.bilibili.com/v/popular/weekly?num=${n}` },
+    groups: [{ id: 'weekly', title: `${d.config.label ?? title}（${items.length} 个）`, items }],
+    defaultSelected: []
+  }
+}
+
+export async function parseRank(slug: string, rank: { rid: number; type: string; label: string }): Promise<ParseResult> {
+  const d = await api<{ list: PopularVideo[] }>('https://api.bilibili.com/x/web-interface/ranking/v2', {
+    rid: rank.rid,
+    type: rank.type
+  })
+  const items = d.list.map((v, i) => lazyVideo(v, i + 1, v.owner, v.cid, v.videos))
+  return {
+    kind: 'ugc',
+    title: `排行榜 · ${rank.label}`,
+    cover: items[0]?.cover ?? '',
+    meta: { url: `https://www.bilibili.com/v/popular/rank/${slug}` },
+    groups: [{ id: 'rank', title: `${rank.label}排行（${items.length} 个）`, items }],
+    defaultSelected: []
+  }
+}

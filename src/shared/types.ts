@@ -102,6 +102,8 @@ export interface ParseResult {
   groups: MediaGroup[]
   defaultSelected: string[]
   paging?: Paging
+  /** 用户输入的原始链接（订阅时用） */
+  input?: string
   /** 多个链接一起解析的结果 */
   batch?: boolean
   /** 批量解析里失败的链接 */
@@ -225,6 +227,43 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 /** 选中的内容里有已经下载过的 */
 export type DuplicateAction = 'ask' | 'skip' | 'download'
 
+export type ProxyMode = 'direct' | 'system' | 'manual'
+
+export interface McpSettings {
+  enabled: boolean
+  port: number
+  /** 客户端需要带上的访问令牌 */
+  token: string
+}
+
+/** 订阅：定期检查收藏夹、合集、UP 主等来源，有新内容就自动下载 */
+export interface Subscription {
+  id: string
+  input: string
+  title: string
+  kind: MediaKind
+  intervalMin: number
+  enabled: boolean
+  options: DownloadOptions
+  /** 已经见过的条目 key，只有之后新增的才会下载 */
+  seen: string[]
+  createdAt: number
+  lastCheck?: number
+  lastNew?: number
+  lastError?: string
+}
+
+export interface NewSubscription {
+  input: string
+  title: string
+  kind: MediaKind
+  options: DownloadOptions
+  intervalMin: number
+  /** 现在已有的内容也下载 */
+  includeExisting: boolean
+  currentKeys: string[]
+}
+
 export interface Settings {
   downloadDir: string
   concurrency: number
@@ -246,6 +285,10 @@ export interface Settings {
   /** 队列全部结束后发系统通知 */
   notify: boolean
   theme: ThemeMode
+  proxy: { mode: ProxyMode; url: string }
+  /** 首选的 CDN 节点，空为使用接口返回的地址 */
+  cdn: string
+  mcp: McpSettings
 }
 
 export interface HistoryEntry {
@@ -315,7 +358,32 @@ export interface BiliApi {
     set(patch: Partial<Settings>): Promise<Settings>
     chooseDir(): Promise<Settings>
   }
+  subs: {
+    list(): Promise<Subscription[]>
+    add(req: NewSubscription): Promise<Subscription[]>
+    update(id: string, patch: Partial<Pick<Subscription, 'enabled' | 'intervalMin' | 'options'>>): Promise<Subscription[]>
+    remove(id: string): Promise<Subscription[]>
+    check(id: string): Promise<Subscription[]>
+    onUpdate(cb: (subs: Subscription[]) => void): () => void
+  }
+  net: {
+    /** 当前网络连接方式的说明，例如“通过 http://127.0.0.1:7890 连接” */
+    status(): Promise<string>
+    /** 测试能否连上 B站，返回耗时毫秒 */
+    test(): Promise<number>
+    cdnHosts(): Promise<{ host: string; label: string }[]>
+    pingCdn(): Promise<{ host: string; ms: number | null }[]>
+  }
+  config: {
+    exportTo(): Promise<string | null>
+    importFrom(): Promise<string | null>
+  }
+  mcp: {
+    status(): Promise<{ running: boolean; error?: string }>
+    regenerateToken(): Promise<Settings>
+  }
   readClipboard(): Promise<string>
+  writeClipboard(text: string): Promise<void>
   showInFolder(path: string): Promise<void>
   openFullDiskAccessSettings(): Promise<void>
 }

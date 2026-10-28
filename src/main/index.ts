@@ -2,14 +2,19 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeTheme, Notification, screen, shell } from 'electron'
 import type { TaskInfo } from '@shared/types'
 import { checkAuth, checkAuthThrottled, onAuthRequired, onLoggedIn, requireLogin } from './auth/authGuard'
+import { resolveInput } from './bili/resolve'
 import { DownloadManager } from './download/manager'
+import { makeEnqueue } from './enqueue'
 import { recordDownload } from './history'
 import { limiter } from './download/rateLimiter'
 import { registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
+import { McpServer } from './mcp'
+import { applyNetwork } from './net/network'
 import { applyPower } from './power'
 import { getSettings, onSettingsChange } from './settings'
 import { readJson, writeJson } from './store'
+import { SubscriptionManager } from './subscriptions'
 import { getMainWindow, send, setMainWindow } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
@@ -110,14 +115,22 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', showMainWindow)
-  app.whenReady().then(start)
+  app.whenReady().then(() => start())
 }
 
-function start(): void {
+function notify(title: string, body: string): void {
+  if (!getSettings().notify || !Notification.isSupported()) return
+  const n = new Notification({ title, body })
+  n.on('click', showMainWindow)
+  n.show()
+}
+
+async function start(): Promise<void> {
   initLogger()
   const settings = getSettings()
   nativeTheme.themeSource = settings.theme
   limiter.setLimit(settings.speedLimit)
+  await applyNetwork(settings, true)
 
   const manager = new DownloadManager(
     join(app.getPath('userData'), 'tmp'),
@@ -129,27 +142,44 @@ function start(): void {
     recordDownload({ key: t.item.key, title: t.title, groupTitle: t.groupTitle, path: t.outputPath ?? '', at: Date.now() })
   )
   manager.on('active', (active: boolean) => applyPower(active, getSettings().powerMode))
-  manager.on('idle', ({ done, failed }: { done: number; failed: number }) => {
-    if (!getSettings().notify || !Notification.isSupported()) return
-    const n = new Notification({
-      title: failed ? '下载结束，有任务失败' : '下载完成',
-      body: failed ? `完成 ${done} 个，失败 ${failed} 个` : `${done} 个任务已全部完成`
-    })
-    n.on('click', showMainWindow)
-    n.show()
+  manager.on('idle', ({ done, failed }: { done: number; failed: number }) =>
+    notify(failed ? '下载结束，有任务失败' : '下载完成', failed ? `完成 ${done} 个，失败 ${failed} 个` : `${done} 个任务已全部完成`)
+  )
+
+  const enqueue = makeEnqueue(manager)
+  const subs = new SubscriptionManager(enqueue)
+  subs.on('update', (list) => send('subs:update', list))
+  subs.on('found', ({ title, count }: { title: string; count: number }) => notify('订阅有更新', `“${title}”有 ${count} 个新内容，已加入下载`))
+  subs.start()
+
+  const mcp = new McpServer({
+    parse: resolveInput,
+    enqueue,
+    tasks: () => manager.list(),
+    pause: (id) => manager.pause(id),
+    resume: (id) => manager.resume(id),
+    settings: getSettings
   })
+  void mcp.apply(settings.mcp)
+
   onSettingsChange((s) => {
     nativeTheme.themeSource = s.theme
     limiter.setLimit(s.speedLimit)
+    void applyNetwork(s)
+    void mcp.apply(s.mcp)
     applyPower(manager.list().some((t) => ['fetching', 'downloading', 'merging', 'extras'].includes(t.status)), s.powerMode)
     manager.schedule()
   })
   onAuthRequired(() => manager.blockForAuth())
   onLoggedIn(() => manager.unblockAuth())
 
-  app.on('before-quit', () => manager.flush())
+  app.on('before-quit', () => {
+    manager.flush()
+    subs.stop()
+    void mcp.stop()
+  })
 
-  registerIpc(manager)
+  registerIpc({ manager, subs, mcp, enqueue })
   buildMenu()
   createWindow()
 

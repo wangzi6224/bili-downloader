@@ -6,6 +6,7 @@ interface State {
   auth: AuthState | null
   loginOpen: boolean
   settingsOpen: boolean
+  subsOpen: boolean
   settings: Settings | null
   tasks: TaskInfo[]
   parse: ParseResult | null
@@ -22,6 +23,7 @@ export const useStore = create<State>((set) => ({
   auth: null,
   loginOpen: false,
   settingsOpen: false,
+  subsOpen: false,
   settings: null,
   tasks: [],
   parse: null,

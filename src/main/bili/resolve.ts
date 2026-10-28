@@ -1,9 +1,9 @@
-import { parseInput, type Target } from '@shared/parseUrl'
+import { parseInput, RANK_SLUGS, type Target } from '@shared/parseUrl'
 import type { MediaGroup, ParseResult } from '@shared/types'
 import { parseAudio, parseAudioMenu } from './audio'
 import { parseCheese } from './cheese'
 import { BASE_HEADERS } from './http'
-import { parseFav, parseSpace, parseSpaceSeason, parseSpaceSeries, parseWatchLater } from './lists'
+import { parseFav, parseRank, parseSpace, parseSpaceSeason, parseSpaceSeries, parseWatchLater, parseWeekly } from './lists'
 import { parsePgc } from './pgc'
 import { parseUgc } from './ugc'
 
@@ -40,6 +40,10 @@ export async function resolveInput(input: string): Promise<ParseResult> {
       return parseAudio(t.sid)
     case 'audioMenu':
       return parseAudioMenu(t.amid)
+    case 'weekly':
+      return parseWeekly(t.number)
+    case 'rank':
+      return parseRank(t.slug, RANK_SLUGS[t.slug])
   }
 }
 

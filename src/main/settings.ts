@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { DEFAULT_TEMPLATES, validateTemplate } from '@shared/naming'
@@ -21,7 +22,10 @@ function defaults(): Settings {
     speedLimit: 0,
     autoRetry: 5,
     notify: true,
-    theme: 'system'
+    theme: 'system',
+    proxy: { mode: 'direct', url: '' },
+    cdn: '',
+    mcp: { enabled: false, port: 39231, token: randomBytes(24).toString('hex') }
   }
 }
 
@@ -49,13 +53,23 @@ function migrate(saved: Partial<Settings> & LegacySettings, d: Settings): Settin
   for (const k of Object.keys(naming) as (keyof typeof naming)[]) {
     if (validateTemplate(naming[k])) naming[k] = d.naming[k]
   }
-  return { ...d, ...rest, defaults: opts, naming, danmaku: { ...d.danmaku, ...saved.danmaku } }
+  return {
+    ...d,
+    ...rest,
+    defaults: opts,
+    naming,
+    danmaku: { ...d.danmaku, ...saved.danmaku },
+    proxy: { ...d.proxy, ...saved.proxy },
+    mcp: { ...d.mcp, ...saved.mcp }
+  }
 }
 
 export function getSettings(): Settings {
   if (!cache) {
     const d = defaults()
     cache = migrate(readJson<Partial<Settings> & LegacySettings>(file()) ?? {}, d)
+    // 立即落盘：迁移结果和新生成的 MCP 令牌在下次启动时保持不变
+    writeJson(file(), cache)
   }
   return cache
 }
@@ -67,6 +81,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   next.threads = clamp(next.threads, 1, 8)
   next.autoRetry = clamp(next.autoRetry, 0, 20)
   next.speedLimit = Math.max(0, Math.round(next.speedLimit) || 0)
+  next.mcp = { ...next.mcp, port: clamp(next.mcp.port, 1024, 65535) }
   if (patch.defaults) {
     const { qn: _qn, ...opts } = normalizeOptions(patch.defaults)
     next.defaults = opts
