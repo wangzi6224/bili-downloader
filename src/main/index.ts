@@ -15,6 +15,7 @@ import { applyPower } from './power'
 import { getSettings, onSettingsChange } from './settings'
 import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
+import { Updater } from './update/updater'
 import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
@@ -189,25 +190,29 @@ async function start(): Promise<void> {
   onAuthRequired(() => manager.blockForAuth())
   onLoggedIn(() => manager.unblockAuth())
 
+  const updater = new Updater(join(app.getPath('userData'), 'update'), join(app.getPath('userData'), 'updater.json'))
+
   app.on('before-quit', () => {
     manager.flush()
     subs.stop()
     void mcp.stop()
+    updater.stop()
   })
 
-  registerIpc({ manager, subs, mcp, enqueue })
+  registerIpc({ manager, subs, mcp, enqueue, updater })
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   createWindow()
 
-  // 启动时确认登录状态，未登录就弹出登录
+  // 启动时确认登录状态，未登录就弹出登录；稍后再检查更新，免得和登录弹窗挤在一起
   getMainWindow()?.webContents.once('did-finish-load', () => {
     checkAuth()
       .then((s) => {
         if (!s.loggedIn) requireLogin()
       })
       .catch(() => {})
+    setTimeout(() => updater.start(() => getSettings().autoCheckUpdate), 3000)
   })
 
   app.on('activate', showMainWindow)

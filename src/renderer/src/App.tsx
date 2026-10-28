@@ -7,6 +7,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { SubscriptionsPage } from './components/SubscriptionsPage'
 import { TaskList } from './components/TaskList'
+import { UpdateDialog } from './components/UpdateDialog'
 import { UrlInput } from './components/UrlInput'
 import { api, useStore } from './store'
 
@@ -18,11 +19,14 @@ export default function App() {
     void api.settings.get().then((settings) => set({ settings }))
     void api.download.list().then((tasks) => set({ tasks: [...tasks] }))
     void api.auth.check().then((auth) => set({ auth }))
+    void api.update.state().then((update) => set({ update }))
     const offs = [
       api.auth.onRequired(() => set({ loginOpen: true })),
       api.auth.onChanged((auth) => set(auth.loggedIn ? { auth, loginOpen: false } : { auth })),
       api.download.onUpdate((tasks) => set({ tasks: [...tasks] })),
-      api.app.onCloseRequested(() => set({ closeAsk: true }))
+      api.app.onCloseRequested(() => set({ closeAsk: true })),
+      api.update.onState((update) => set({ update })),
+      api.update.onPrompt(() => set({ updateOpen: true }))
     ]
     // ⌘, 打开设置，和其他 Mac 应用一致
     const onKey = (e: KeyboardEvent): void => {
@@ -56,6 +60,8 @@ export default function App() {
       {s.parse && <SelectionDialog result={s.parse} />}
       {s.loginOpen && <LoginDialog />}
       {s.closeAsk && <CloseDialog />}
+      {/* 不打断正在进行的登录、选择和关闭询问，等它们结束再弹 */}
+      {s.updateOpen && !s.parse && !s.loginOpen && !s.closeAsk && <UpdateDialog />}
     </div>
   )
 }

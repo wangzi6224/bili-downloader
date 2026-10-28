@@ -85,6 +85,17 @@ const api: BiliApi = {
     onCloseRequested: on('app:closeRequested'),
     close: (action, remember) => invoke('app:close', action, remember)
   },
+  update: {
+    state: () => invoke('update:state'),
+    check: () => invoke('update:check'),
+    download: () => invoke('update:download'),
+    cancel: () => invoke('update:cancel'),
+    install: () => invoke('update:install'),
+    skip: () => invoke('update:skip'),
+    openPage: () => invoke('update:openPage'),
+    onState: on('update:state'),
+    onPrompt: on('update:prompt')
+  },
   readClipboard: () => invoke('clipboard:read'),
   writeClipboard: (text) => invoke('clipboard:write', text),
   showInFolder: (path) => invoke('shell:showInFolder', path),

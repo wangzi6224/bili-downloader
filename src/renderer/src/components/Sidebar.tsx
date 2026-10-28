@@ -1,4 +1,18 @@
-import { ChevronsUpDown, Download, History, KeyRound, Loader2, LogIn, LogOut, Rss, Settings, type LucideIcon } from 'lucide-react'
+import {
+  ChevronsUpDown,
+  CircleAlert,
+  CircleArrowUp,
+  Download,
+  History,
+  KeyRound,
+  Loader2,
+  LogIn,
+  LogOut,
+  RotateCw,
+  Rss,
+  Settings,
+  type LucideIcon
+} from 'lucide-react'
 import { api, useStore, type View } from '../store'
 import { Logo } from './Logo'
 import { ACTIVE } from './TaskList'
@@ -27,6 +41,31 @@ function NavItem({ view, label, icon: Icon, count }: { view: View; label: string
           {count}
         </span>
       ) : null}
+    </button>
+  )
+}
+
+/** 有新版本时显示在设置上方，点开更新弹窗 */
+function UpdateEntry() {
+  const u = useStore((s) => s.update)
+  const set = useStore((s) => s.set)
+  if (!u || !('info' in u) || !u.info) return null
+  if (u.status === 'available' && u.info.skipped) return null
+  const [Icon, label] = {
+    available: [CircleArrowUp, `新版本 ${u.info.version}`],
+    downloading: [Loader2, `下载更新 ${u.status === 'downloading' && u.total ? Math.floor((u.done / u.total) * 100) : 0}%`],
+    ready: [RotateCw, '重启以完成更新'],
+    installing: [Loader2, '正在安装更新…'],
+    error: [CircleAlert, '更新失败']
+  }[u.status] as [LucideIcon, string]
+  return (
+    <button
+      type="button"
+      onClick={() => set({ updateOpen: true })}
+      className="flex h-8 w-full items-center gap-2.5 rounded-lg bg-bili/10 px-2.5 text-[13px] font-medium text-bili-dark transition-colors hover:bg-bili/15 dark:text-bili"
+    >
+      <Icon size={17} strokeWidth={STROKE} className={`shrink-0 ${Icon === Loader2 ? 'animate-spin' : ''}`} />
+      <span className="flex-1 truncate text-left tabular-nums">{label}</span>
     </button>
   )
 }
@@ -125,6 +164,7 @@ export function Sidebar() {
       </nav>
       <div className="drag flex-1" />
       <div className="flex flex-col gap-2 px-3 pb-3">
+        <UpdateEntry />
         <NavItem view="settings" label="设置" icon={Settings} />
         <Account />
       </div>
