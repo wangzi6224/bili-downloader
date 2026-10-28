@@ -170,6 +170,8 @@ export function Sidebar() {
       <div className="flex flex-col gap-2 px-3 pb-3">
         <UpdateEntry />
         <NavItem view="settings" label="设置" icon={Settings} />
+        {/* 账号单独成块，和上面的导航分开 */}
+        <div className="mx-2.5 border-t border-line" />
         <Account />
       </div>
     </aside>
