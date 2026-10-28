@@ -1,5 +1,6 @@
 import { clipboard, dialog, ipcMain, shell } from 'electron'
-import type { EnqueueRequest, MediaItem, PagedSource, Settings } from '@shared/types'
+import { randomBytes } from 'node:crypto'
+import type { EnqueueRequest, MediaItem, NewSubscription, PagedSource, Settings, Subscription } from '@shared/types'
 import { checkAuth, ensureLoggedIn, getAuthState, requireLogin } from './auth/authGuard'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
 import { importCookieText } from './auth/cookieImport'
@@ -9,7 +10,12 @@ import { AUDIO_STREAM_INFO } from './bili/audio'
 import { expandLazy, loadPage, myFavFolders } from './bili/lists'
 import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
 import { resolveBatch, resolveInput } from './bili/resolve'
+import { exportConfig, importConfig } from './config'
 import type { DownloadManager } from './download/manager'
+import type { McpServer } from './mcp'
+import { CDN_HOSTS, pingHost } from './net/cdn'
+import { networkStatus } from './net/network'
+import type { SubscriptionManager } from './subscriptions'
 import {
   clearDownloads,
   clearParses,
@@ -69,7 +75,14 @@ function handle(channel: string, fn: (...args: never[]) => unknown): void {
   })
 }
 
-export function registerIpc(manager: DownloadManager): void {
+export interface IpcDeps {
+  manager: DownloadManager
+  subs: SubscriptionManager
+  mcp: McpServer
+  enqueue: (req: EnqueueRequest) => Promise<string | undefined>
+}
+
+export function registerIpc({ manager, subs, mcp, enqueue }: IpcDeps): void {
   handle('auth:check', async () => checkAuth().catch(() => getAuthState()))
   handle('auth:login', () => openLoginWindow())
   handle('auth:listBrowsers', () => listBrowserProfiles())
@@ -84,7 +97,7 @@ export function registerIpc(manager: DownloadManager): void {
 
   handle('parse', async (input: string) => {
     await ensureLoggedIn()
-    const result = await resolveInput(input)
+    const result = { ...(await resolveInput(input)), input: input.trim() }
     recordParse({
       input: input.trim(),
       title: result.title,
@@ -122,13 +135,7 @@ export function registerIpc(manager: DownloadManager): void {
   handle('history:removeParse', (input: string) => removeParse(input))
   handle('history:clearParses', () => clearParses())
 
-  handle('dl:enqueue', async (req: EnqueueRequest) => {
-    // 收藏夹、UP 主投稿里的视频要先查出分P才能下载
-    const items = await expandLazy(req.items, (done, total) => progress(done, total, '正在获取视频分P'))
-    const failed = items.filter((i) => i.unavailable)
-    manager.enqueue({ ...req, items: items.filter((i) => !i.unavailable) })
-    return failed.length ? `${failed.length} 个视频无法获取（${failed[0].unavailable}）` : undefined
-  })
+  handle('dl:enqueue', (req: EnqueueRequest) => enqueue(req))
   handle('dl:list', () => manager.list())
   handle('dl:pause', (id: string) => manager.pause(id))
   handle('dl:resume', (id: string) => manager.resume(id))
@@ -151,7 +158,34 @@ export function registerIpc(manager: DownloadManager): void {
     return r.canceled || !r.filePaths[0] ? getSettings() : updateSettings({ downloadDir: r.filePaths[0] })
   })
 
+  handle('subs:list', () => subs.list())
+  handle('subs:add', (req: NewSubscription) => subs.add(req))
+  handle('subs:update', (id: string, patch: Partial<Pick<Subscription, 'enabled' | 'intervalMin' | 'options'>>) =>
+    subs.update(id, patch)
+  )
+  handle('subs:remove', (id: string) => subs.remove(id))
+  handle('subs:check', (id: string) => subs.check(id))
+
+  handle('net:status', () => networkStatus())
+  handle('net:test', async () => {
+    const t = Date.now()
+    const res = await fetch('https://api.bilibili.com/x/web-interface/nav', { signal: AbortSignal.timeout(10_000) })
+    await res.body?.cancel()
+    return Date.now() - t
+  })
+  handle('net:cdnHosts', () => CDN_HOSTS)
+  handle('net:pingCdn', () => Promise.all(CDN_HOSTS.map(async (h) => ({ host: h.host, ms: await pingHost(h.host) }))))
+
+  handle('config:export', () => exportConfig(getMainWindow(), subs))
+  handle('config:import', () => importConfig(getMainWindow(), subs))
+
+  handle('mcp:status', () => mcp.status())
+  handle('mcp:regenerateToken', () =>
+    updateSettings({ mcp: { ...getSettings().mcp, token: randomBytes(24).toString('hex') } })
+  )
+
   handle('clipboard:read', () => clipboard.readText())
+  handle('clipboard:write', (text: string) => clipboard.writeText(text))
   handle('shell:showInFolder', (path: string) => shell.showItemInFolder(path))
   handle('shell:openFullDiskAccess', () =>
     shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles')

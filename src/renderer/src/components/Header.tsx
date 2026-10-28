@@ -38,6 +38,9 @@ export function Header() {
             {auth === null ? '检查登录…' : auth.expired ? '登录已过期，重新登录' : '登录'}
           </Button>
         )}
+        <Button variant="ghost" onClick={() => set({ subsOpen: true })}>
+          订阅
+        </Button>
         <Button variant="ghost" onClick={() => set({ settingsOpen: true })}>
           设置
         </Button>

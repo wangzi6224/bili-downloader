@@ -6,6 +6,7 @@ import { fmtDuration, thumb } from '../format'
 import { api, useStore } from '../store'
 import { Button, Modal } from './Modal'
 import { OptionsEditor, Section, summaryTags, type EditableOptions } from './OptionsEditor'
+import { INTERVALS } from './SubscriptionsPanel'
 
 // 取不到清晰度列表时的兜底选项
 const FALLBACK: QualityOption[] = [
@@ -49,6 +50,9 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
     audioKind ? { ...settings.defaults, output: 'audio' } : settings.defaults
   )
   const [submitting, setSubmitting] = useState(false)
+  const [subForm, setSubForm] = useState(false)
+  const [subInterval, setSubInterval] = useState(360)
+  const [subExisting, setSubExisting] = useState(false)
 
   useEffect(() => {
     void api.history.downloadedKeys().then((keys) => setDownloaded(new Set(keys)))
@@ -226,6 +230,28 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
       type: { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' }[src.kind]
     })}.${ext}`
   }, [all, groups, selected, settings.naming, result, opts, chosen, selectedCount, audioKind])
+
+  // 列表类来源（收藏夹、合集、番剧、UP 主等）可以订阅更新
+  const subscribable = Boolean(result.input && !result.batch && (paging || all.length > 1 || result.kind === 'pgc' || result.kind === 'cheese'))
+
+  const subscribe = async (): Promise<void> => {
+    try {
+      await api.subs.add({
+        input: result.input!,
+        title: result.title,
+        kind: result.kind,
+        options: { qn, ...opts, output: audioKind ? 'audio' : opts.output },
+        intervalMin: subInterval,
+        includeExisting: subExisting,
+        currentKeys: all.map((i) => i.key)
+      })
+      const label = INTERVALS.find((i) => i.min === subInterval)?.label
+      set({ notice: `已订阅“${result.title}”，应用运行期间每 ${label} 检查一次，有新内容会自动下载` })
+      close()
+    } catch (e) {
+      set({ error: (e as Error).message })
+    }
+  }
 
   const downloadedCount = all.filter(isDownloaded).length
   const lazyCount = all.filter((i) => selected.has(i.key) && i.lazy).length
@@ -431,6 +457,42 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
             <div className="mt-2 truncate text-xs text-neutral-500" title={`${settings.downloadDir}/${preview}`}>
               保存为 {preview || '—'}
             </div>
+            {subscribable && !subForm && (
+              <button className="mt-2 text-xs text-sky hover:underline" onClick={() => setSubForm(true)}>
+                订阅更新：以后有新内容自动下载…
+              </button>
+            )}
+            {subForm && (
+              <div className="mt-2 rounded-lg border border-neutral-200 p-2 text-xs dark:border-neutral-700">
+                <div className="flex items-center gap-2">
+                  检查间隔
+                  <select
+                    value={subInterval}
+                    onChange={(e) => setSubInterval(Number(e.target.value))}
+                    className="rounded border border-neutral-300 bg-white px-1 py-0.5 dark:border-neutral-700 dark:bg-neutral-900"
+                  >
+                    {INTERVALS.map((i) => (
+                      <option key={i.min} value={i.min}>
+                        每 {i.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label className="mt-1.5 flex items-center gap-1.5">
+                  <input type="checkbox" className="accent-bili" checked={subExisting} onChange={(e) => setSubExisting(e.target.checked)} />
+                  现在已有的也一起下载（否则只下载以后新增的）
+                </label>
+                <div className="mt-1 text-neutral-500">使用上面选好的清晰度和格式；只在应用运行时检查</div>
+                <div className="mt-2 flex gap-2">
+                  <Button variant="primary" onClick={subscribe}>
+                    订阅
+                  </Button>
+                  <Button variant="ghost" onClick={() => setSubForm(false)}>
+                    取消
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

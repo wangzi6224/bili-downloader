@@ -10,6 +10,30 @@ export type Target =
   | { type: 'watchlater' }
   | { type: 'audio'; sid: number }
   | { type: 'audioMenu'; amid: number }
+  | { type: 'weekly'; number?: number }
+  | { type: 'rank'; slug: string }
+
+/** 排行榜分区：网页地址里的英文名 → 接口参数 */
+export const RANK_SLUGS: Record<string, { rid: number; type: string; label: string }> = {
+  all: { rid: 0, type: 'all', label: '全站' },
+  douga: { rid: 1, type: 'all', label: '动画' },
+  music: { rid: 3, type: 'all', label: '音乐' },
+  dance: { rid: 129, type: 'all', label: '舞蹈' },
+  game: { rid: 4, type: 'all', label: '游戏' },
+  knowledge: { rid: 36, type: 'all', label: '知识' },
+  tech: { rid: 188, type: 'all', label: '科技' },
+  sports: { rid: 234, type: 'all', label: '运动' },
+  car: { rid: 223, type: 'all', label: '汽车' },
+  life: { rid: 160, type: 'all', label: '生活' },
+  food: { rid: 211, type: 'all', label: '美食' },
+  animal: { rid: 217, type: 'all', label: '动物圈' },
+  kichiku: { rid: 119, type: 'all', label: '鬼畜' },
+  fashion: { rid: 155, type: 'all', label: '时尚' },
+  ent: { rid: 5, type: 'all', label: '娱乐' },
+  cinephile: { rid: 181, type: 'all', label: '影视' },
+  origin: { rid: 0, type: 'origin', label: '原创' },
+  rookie: { rid: 0, type: 'rookie', label: '新人' }
+}
 
 const SHORT_HOSTS = /^(?:https?:\/\/)?(?:b23\.tv|bili2233\.cn|bili22\.cn|bili23\.cn|bili33\.cn)\/\S+/i
 const URL_RE =
@@ -28,6 +52,8 @@ export function parseInput(input: string): Target | null {
   const text = input.trim()
   if (!text) return null
   if (/^(稍后再看|watchlater)$/i.test(text)) return { type: 'watchlater' }
+  if (/^每周必看$/.test(text)) return { type: 'weekly' }
+  if (/^排行榜$/.test(text)) return { type: 'rank', slug: 'all' }
   const raw = text.match(URL_RE)?.[0] ?? text
   const u = urlOf(raw)
   const q = (k: string): string | null => u?.searchParams.get(k) ?? null
@@ -59,6 +85,12 @@ export function parseInput(input: string): Target | null {
   if (am) return { type: 'audioMenu', amid: Number(am[1]) }
 
   if (/bilibili\.com\/(list\/)?watchlater/i.test(raw)) return { type: 'watchlater' }
+  if (/\/v\/popular\/weekly/i.test(raw)) {
+    const num = Number(q('num'))
+    return num > 0 ? { type: 'weekly', number: num } : { type: 'weekly' }
+  }
+  const rank = raw.match(/\/v\/popular\/rank\/(\w+)/i)
+  if (rank && RANK_SLUGS[rank[1].toLowerCase()]) return { type: 'rank', slug: rank[1].toLowerCase() }
 
   // 播放列表页带着 bvid 时，用户要的是正在看的那个视频
   let page: number | undefined

@@ -10,6 +10,7 @@ import {
 } from '@shared/naming'
 import type { DuplicateAction, PowerMode, ThemeMode } from '@shared/types'
 import { api, updateSettings, useStore } from '../store'
+import { AdvancedSettings } from './AdvancedSettings'
 import { Button, Modal } from './Modal'
 import { OptionsEditor } from './OptionsEditor'
 
@@ -37,12 +38,13 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 const selectCls =
   'rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900'
 
-type Tab = 'general' | 'download' | 'format' | 'naming'
+type Tab = 'general' | 'download' | 'format' | 'naming' | 'advanced'
 const TABS: { value: Tab; label: string }[] = [
   { value: 'general', label: '常规' },
   { value: 'download', label: '下载' },
   { value: 'format', label: '默认格式' },
-  { value: 'naming', label: '命名' }
+  { value: 'naming', label: '命名' },
+  { value: 'advanced', label: '网络与高级' }
 ]
 
 const NAMING_ROWS: { key: keyof NamingTemplates; label: string; hint: string }[] = [
@@ -351,6 +353,7 @@ export function SettingsPanel() {
         )}
 
         {tab === 'naming' && <NamingEditor />}
+        {tab === 'advanced' && <AdvancedSettings />}
       </div>
       <div className="flex justify-end border-t border-neutral-100 px-6 py-4 dark:border-neutral-800">
         <Button variant="primary" onClick={() => set({ settingsOpen: false })}>

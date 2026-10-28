@@ -49,7 +49,11 @@ describe('parseInput', () => {
     ['https://www.bilibili.com/cheese/play/ss1', { type: 'cheese', seasonId: 1 }],
     ['https://www.bilibili.com/audio/au13598', { type: 'audio', sid: 13598 }],
     ['au13598', { type: 'audio', sid: 13598 }],
-    ['https://www.bilibili.com/audio/am10624', { type: 'audioMenu', amid: 10624 }]
+    ['https://www.bilibili.com/audio/am10624', { type: 'audioMenu', amid: 10624 }],
+    ['https://www.bilibili.com/v/popular/weekly?num=396', { type: 'weekly', number: 396 }],
+    ['每周必看', { type: 'weekly' }],
+    ['https://www.bilibili.com/v/popular/rank/knowledge', { type: 'rank', slug: 'knowledge' }],
+    ['排行榜', { type: 'rank', slug: 'all' }]
   ])('%s', (input, expected) => {
     expect(parseInput(input)).toEqual(expected)
   })

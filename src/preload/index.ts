@@ -59,7 +59,30 @@ const api: BiliApi = {
     set: (patch) => invoke('settings:set', patch),
     chooseDir: () => invoke('settings:chooseDir')
   },
+  subs: {
+    list: () => invoke('subs:list'),
+    add: (req) => invoke('subs:add', req),
+    update: (id, patch) => invoke('subs:update', id, patch),
+    remove: (id) => invoke('subs:remove', id),
+    check: (id) => invoke('subs:check', id),
+    onUpdate: on('subs:update')
+  },
+  net: {
+    status: () => invoke('net:status'),
+    test: () => invoke('net:test'),
+    cdnHosts: () => invoke('net:cdnHosts'),
+    pingCdn: () => invoke('net:pingCdn')
+  },
+  config: {
+    exportTo: () => invoke('config:export'),
+    importFrom: () => invoke('config:import')
+  },
+  mcp: {
+    status: () => invoke('mcp:status'),
+    regenerateToken: () => invoke('mcp:regenerateToken')
+  },
   readClipboard: () => invoke('clipboard:read'),
+  writeClipboard: (text) => invoke('clipboard:write', text),
   showInFolder: (path) => invoke('shell:showInFolder', path),
   openFullDiskAccessSettings: () => invoke('shell:openFullDiskAccess')
 }

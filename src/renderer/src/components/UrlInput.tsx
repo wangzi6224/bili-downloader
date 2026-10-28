@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { extractInputs, parseInput } from '@shared/parseUrl'
+import { extractInputs, parseInput, RANK_SLUGS } from '@shared/parseUrl'
 import { api, parseBatch, parseLink, useStore } from '../store'
 import { Button, Modal } from './Modal'
 import { ParseHistory } from './ParseHistory'
@@ -33,7 +33,7 @@ function MyMenu({ onPick }: { onPick: (input: string) => void }) {
 
   return (
     <div className="relative" ref={box}>
-      <Button className="h-11" disabled={!loggedIn} onClick={() => setOpen(!open)} title="稍后再看、我的收藏夹">
+      <Button className="h-11" disabled={!loggedIn} onClick={() => setOpen(!open)} title="稍后再看、热门、我的收藏夹">
         我的
       </Button>
       {open && (
@@ -44,6 +44,24 @@ function MyMenu({ onPick }: { onPick: (input: string) => void }) {
           >
             稍后再看
           </button>
+          <div className="px-3 pt-2 pb-1 text-xs text-neutral-500">热门</div>
+          <button
+            onClick={() => pick('每周必看')}
+            className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800"
+          >
+            每周必看（最新一期）
+          </button>
+          <div className="flex flex-wrap gap-1 px-3 py-1.5">
+            {['all', 'knowledge', 'tech', 'music', 'game', 'douga', 'life', 'cinephile'].map((slug) => (
+              <button
+                key={slug}
+                onClick={() => pick(`https://www.bilibili.com/v/popular/rank/${slug}`)}
+                className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs hover:bg-bili/15 dark:bg-neutral-800"
+              >
+                {RANK_SLUGS[slug].label}排行
+              </button>
+            ))}
+          </div>
           <div className="px-3 pt-2 pb-1 text-xs text-neutral-500">我的收藏夹</div>
           {!folders && !error && <div className="px-3 py-2 text-xs text-neutral-400">加载中…</div>}
           {error && <div className="px-3 py-2 text-xs text-red-600">{error}</div>}

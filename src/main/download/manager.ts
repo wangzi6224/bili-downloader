@@ -8,6 +8,7 @@ import type { EnqueueRequest, Settings, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
+import { preferCdn } from '../net/cdn'
 import { readJson, writeJson } from '../store'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
 import { placeSidecars, prepareExtras } from './extras'
@@ -54,7 +55,7 @@ interface StreamPlan {
 }
 
 /** 决定要下载哪些流：音频区直接取音频地址，视频走 DASH 选流 */
-async function planStreams(t: TaskInfo): Promise<StreamPlan> {
+async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
   if (t.item.kind === 'audio') {
     const s = await getAudioStream(t.item.cid, t.options.audio)
     return {
@@ -71,7 +72,7 @@ async function planStreams(t: TaskInfo): Promise<StreamPlan> {
   const estimate = (s: DashStream): number => Math.round((s.bandwidth * (t.item.duration ?? 0)) / 8)
   const part = (name: string, s: DashStream) => ({
     name,
-    urls: streamUrls(s),
+    urls: preferCdn(streamUrls(s), cdn),
     fingerprint: `${s.id}-${s.codecs}-${s.bandwidth}`,
     estimate: estimate(s)
   })
@@ -346,7 +347,7 @@ export class DownloadManager extends EventEmitter {
     }
     try {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0 })
-      const plan = await planStreams(t)
+      const plan = await planStreams(t, this.settings().cdn)
       check()
       this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel })
       mkdirSync(tmp, { recursive: true })
