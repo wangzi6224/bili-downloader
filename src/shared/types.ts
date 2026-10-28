@@ -293,7 +293,42 @@ export interface Settings {
   /** 首选的 CDN 节点，空为使用接口返回的地址 */
   cdn: string
   mcp: McpSettings
+  /** 启动时（以及之后每天）检查新版本 */
+  autoCheckUpdate: boolean
 }
+
+/** 某个版本的更新说明（Markdown） */
+export interface ReleaseNote {
+  version: string
+  date: string
+  body: string
+}
+
+export interface UpdateInfo {
+  version: string
+  date: string
+  /** 比当前版本新的各版本说明，新的在前 */
+  notes: ReleaseNote[]
+  /** 发布页面，不能自动安装时去这里手动下载 */
+  page: string
+  /** 当前架构安装包的大小（字节） */
+  size: number
+  /** 不能自动安装的原因（开发模式、在磁盘映像里运行等） */
+  blocker?: string
+  /** 用户选择过跳过这个版本 */
+  skipped: boolean
+}
+
+export type UpdateState = { current: string; checkedAt?: number } & (
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'latest' }
+  | { status: 'available'; info: UpdateInfo }
+  | { status: 'downloading'; info: UpdateInfo; done: number; total: number }
+  | { status: 'ready'; info: UpdateInfo }
+  | { status: 'installing'; info: UpdateInfo }
+  | { status: 'error'; error: string; info?: UpdateInfo }
+)
 
 export interface HistoryEntry {
   key: string
@@ -390,6 +425,20 @@ export interface BiliApi {
     /** 用户点了关闭按钮，需要询问退出还是后台运行 */
     onCloseRequested(cb: () => void): () => void
     close(action: Exclude<CloseAction, 'ask'>, remember: boolean): Promise<void>
+  }
+  update: {
+    state(): Promise<UpdateState>
+    /** 手动检查，跳过的版本也会提示 */
+    check(): Promise<UpdateState>
+    download(): Promise<void>
+    cancel(): Promise<void>
+    /** 退出、替换应用并重新打开 */
+    install(): Promise<void>
+    skip(): Promise<void>
+    openPage(): Promise<void>
+    onState(cb: (state: UpdateState) => void): () => void
+    /** 自动检查发现了没跳过的新版本 */
+    onPrompt(cb: () => void): () => void
   }
   readClipboard(): Promise<string>
   writeClipboard(text: string): Promise<void>

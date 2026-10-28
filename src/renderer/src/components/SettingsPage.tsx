@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Download, Film, FileType, FolderOpen, Globe, Monitor, Moon, SlidersHorizontal, Sun } from 'lucide-react'
+import { Download, Film, FileType, FolderOpen, Globe, Monitor, Moon, RefreshCw, SlidersHorizontal, Sun } from 'lucide-react'
 import {
   DEFAULT_TEMPLATES,
   MEDIA_LIBRARY_PGC,
@@ -140,6 +140,51 @@ function NamingEditor() {
   )
 }
 
+function UpdateGroup() {
+  const s = useStore((st) => st.settings)!
+  const u = useStore((st) => st.update)
+  const set = useStore((st) => st.set)
+  const [busy, setBusy] = useState(false)
+  const info = u && 'info' in u ? u.info : undefined
+  const at = u?.checkedAt ? `（${new Date(u.checkedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 检查）` : ''
+  const hint = !u ? null : {
+    idle: '还没有检查过',
+    checking: '正在检查…',
+    latest: `已是最新版本${at}`,
+    available: `发现新版本 ${info?.version}${info?.skipped ? '（已跳过）' : ''}`,
+    downloading: `正在下载 ${info?.version}`,
+    ready: `${info?.version} 已下载，重启即可完成更新`,
+    installing: '正在安装…',
+    error: <span className="text-red-600 dark:text-red-400">{u.status === 'error' ? u.error : ''}</span>
+  }[u.status]
+
+  const check = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const next = await api.update.check()
+      set({ update: next, updateOpen: 'info' in next && Boolean(next.info) })
+    } catch (e) {
+      set({ error: (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Group title="更新">
+      <Row label={`当前版本 ${u?.current ?? ''}`} hint={hint}>
+        {info && <Button onClick={() => set({ updateOpen: true })}>查看新版本</Button>}
+        <Button icon={RefreshCw} disabled={busy || u?.status === 'checking'} onClick={check}>
+          检查更新
+        </Button>
+      </Row>
+      <Row label="自动检查更新" hint="启动时检查一次，后台运行时每天再查一次；跳过的版本不再提醒，手动检查时仍会显示">
+        <Switch checked={s.autoCheckUpdate} onChange={(autoCheckUpdate) => updateSettings({ autoCheckUpdate })} />
+      </Row>
+    </Group>
+  )
+}
+
 export function SettingsPage() {
   const s = useStore((st) => st.settings)!
   const set = useStore((st) => st.set)
@@ -214,6 +259,7 @@ export function SettingsPage() {
                   </Button>
                 </Row>
               </Group>
+              <UpdateGroup />
             </>
           )}
 

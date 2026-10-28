@@ -24,6 +24,7 @@ import type { McpServer } from './mcp'
 import { CDN_HOSTS, pingHost } from './net/cdn'
 import { networkStatus } from './net/network'
 import type { SubscriptionManager } from './subscriptions'
+import type { Updater } from './update/updater'
 import {
   clearDownloads,
   clearParses,
@@ -88,9 +89,10 @@ export interface IpcDeps {
   subs: SubscriptionManager
   mcp: McpServer
   enqueue: (req: EnqueueRequest) => Promise<string | undefined>
+  updater: Updater
 }
 
-export function registerIpc({ manager, subs, mcp, enqueue }: IpcDeps): void {
+export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): void {
   handle('auth:check', async () => checkAuth().catch(() => getAuthState()))
   handle('auth:login', () => openLoginWindow())
   handle('auth:listBrowsers', () => listBrowserProfiles())
@@ -197,6 +199,14 @@ export function registerIpc({ manager, subs, mcp, enqueue }: IpcDeps): void {
     if (action === 'quit') app.quit()
     else hideMainWindow()
   })
+
+  handle('update:state', () => updater.getState())
+  handle('update:check', () => updater.check(true))
+  handle('update:download', () => updater.download())
+  handle('update:cancel', () => updater.cancel())
+  handle('update:install', () => updater.install())
+  handle('update:skip', () => updater.skip())
+  handle('update:openPage', () => updater.openPage())
 
   handle('clipboard:read', () => clipboard.readText())
   handle('clipboard:write', (text: string) => clipboard.writeText(text))

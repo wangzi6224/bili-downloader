@@ -26,7 +26,8 @@ function defaults(): Settings {
     theme: 'system',
     proxy: { mode: 'direct', url: '' },
     cdn: '',
-    mcp: { enabled: false, port: 39231, token: randomBytes(24).toString('hex') }
+    mcp: { enabled: false, port: 39231, token: randomBytes(24).toString('hex') },
+    autoCheckUpdate: true
   }
 }
 
