@@ -15,9 +15,11 @@ import { applyPower } from './power'
 import { getSettings, onSettingsChange } from './settings'
 import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
-import { getMainWindow, send, setMainWindow } from './windows'
+import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
+/** ⌘Q、程序坞“退出”等真正退出时，关窗口不再拦截 */
+let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
 
 type Bounds = { x: number; y: number; width: number; height: number }
@@ -52,8 +54,15 @@ function createWindow(): BrowserWindow {
   })
   setMainWindow(win)
   win.once('ready-to-show', () => win.show())
-  win.on('close', () => {
+  win.on('close', (e) => {
     if (!win.isFullScreen() && !win.isMinimized()) writeJson(windowStateFile(), win.getNormalBounds())
+    // 页面崩了就没法弹询问，照常关掉
+    if (quitting || win.webContents.isCrashed()) return
+    e.preventDefault()
+    const action = getSettings().closeAction
+    if (action === 'quit') app.quit()
+    else if (action === 'background') hideMainWindow()
+    else send('app:closeRequested')
   })
   win.on('closed', () => setMainWindow(null))
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -109,6 +118,9 @@ function buildMenu(): void {
 }
 
 app.setName('B站下载器')
+app.on('before-quit', () => {
+  quitting = true
+})
 
 // 只允许运行一个实例：再次打开时激活已有窗口
 if (!app.requestSingleInstanceLock()) {

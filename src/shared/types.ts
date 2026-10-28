@@ -227,6 +227,9 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 /** 选中的内容里有已经下载过的 */
 export type DuplicateAction = 'ask' | 'skip' | 'download'
 
+/** 点窗口关闭按钮时：每次询问、隐藏到后台、完全退出 */
+export type CloseAction = 'ask' | 'background' | 'quit'
+
 export type ProxyMode = 'direct' | 'system' | 'manual'
 
 export interface McpSettings {
@@ -284,6 +287,7 @@ export interface Settings {
   autoRetry: number
   /** 队列全部结束后发系统通知 */
   notify: boolean
+  closeAction: CloseAction
   theme: ThemeMode
   proxy: { mode: ProxyMode; url: string }
   /** 首选的 CDN 节点，空为使用接口返回的地址 */
@@ -381,6 +385,11 @@ export interface BiliApi {
   mcp: {
     status(): Promise<{ running: boolean; error?: string }>
     regenerateToken(): Promise<Settings>
+  }
+  app: {
+    /** 用户点了关闭按钮，需要询问退出还是后台运行 */
+    onCloseRequested(cb: () => void): () => void
+    close(action: Exclude<CloseAction, 'ask'>, remember: boolean): Promise<void>
   }
   readClipboard(): Promise<string>
   writeClipboard(text: string): Promise<void>

@@ -17,7 +17,7 @@ const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   unsupported: { label: '无法下载', color: 'text-red-600' }
 }
 
-const ACTIVE = new Set<TaskStatus>(['fetching', 'downloading', 'merging', 'extras'])
+export const ACTIVE = new Set<TaskStatus>(['fetching', 'downloading', 'merging', 'extras'])
 
 const POWER: { value: PowerMode; label: string }[] = [
   { value: 'off', label: '允许休眠' },

@@ -22,6 +22,7 @@ function defaults(): Settings {
     speedLimit: 0,
     autoRetry: 5,
     notify: true,
+    closeAction: 'ask',
     theme: 'system',
     proxy: { mode: 'direct', url: '' },
     cdn: '',
