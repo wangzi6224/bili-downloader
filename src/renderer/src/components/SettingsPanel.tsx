@@ -8,7 +8,7 @@ import {
   validateTemplate,
   type NamingTemplates
 } from '@shared/naming'
-import type { DuplicateAction, PowerMode, ThemeMode } from '@shared/types'
+import type { CloseAction, DuplicateAction, PowerMode, ThemeMode } from '@shared/types'
 import { api, updateSettings, useStore } from '../store'
 import { AdvancedSettings } from './AdvancedSettings'
 import { Button, Modal } from './Modal'
@@ -191,6 +191,17 @@ export function SettingsPanel() {
                 <option value="off">允许休眠</option>
                 <option value="system">阻止系统睡眠（允许熄屏）</option>
                 <option value="display">保持屏幕常亮</option>
+              </select>
+            </Row>
+            <Row label="关闭窗口时" hint="后台运行时下载和订阅照常进行，点程序坞图标重新打开；⌘Q 总是完全退出">
+              <select
+                className={selectCls}
+                value={s.closeAction}
+                onChange={(e) => updateSettings({ closeAction: e.target.value as CloseAction })}
+              >
+                <option value="ask">每次询问</option>
+                <option value="background">后台运行</option>
+                <option value="quit">完全退出</option>
               </select>
             </Row>
             <Row label="完成通知">

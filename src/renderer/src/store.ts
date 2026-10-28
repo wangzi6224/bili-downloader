@@ -7,6 +7,8 @@ interface State {
   loginOpen: boolean
   settingsOpen: boolean
   subsOpen: boolean
+  /** 点了关闭按钮，询问退出还是后台运行 */
+  closeAsk: boolean
   settings: Settings | null
   tasks: TaskInfo[]
   parse: ParseResult | null
@@ -24,6 +26,7 @@ export const useStore = create<State>((set) => ({
   loginOpen: false,
   settingsOpen: false,
   subsOpen: false,
+  closeAsk: false,
   settings: null,
   tasks: [],
   parse: null,

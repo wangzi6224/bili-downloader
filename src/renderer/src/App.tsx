@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { CloseDialog } from './components/CloseDialog'
 import { Header } from './components/Header'
 import { LoginDialog } from './components/LoginDialog'
 import { SelectionDialog } from './components/SelectionDialog'
@@ -19,7 +20,8 @@ export default function App() {
     const offs = [
       api.auth.onRequired(() => set({ loginOpen: true })),
       api.auth.onChanged((auth) => set(auth.loggedIn ? { auth, loginOpen: false } : { auth })),
-      api.download.onUpdate((tasks) => set({ tasks: [...tasks] }))
+      api.download.onUpdate((tasks) => set({ tasks: [...tasks] })),
+      api.app.onCloseRequested(() => set({ closeAsk: true }))
     ]
     return () => offs.forEach((off) => off())
   }, [])
@@ -35,6 +37,7 @@ export default function App() {
       {s.settingsOpen && <SettingsPanel />}
       {s.subsOpen && <SubscriptionsPanel />}
       {s.loginOpen && <LoginDialog />}
+      {s.closeAsk && <CloseDialog />}
     </div>
   )
 }

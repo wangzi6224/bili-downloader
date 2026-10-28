@@ -81,6 +81,10 @@ const api: BiliApi = {
     status: () => invoke('mcp:status'),
     regenerateToken: () => invoke('mcp:regenerateToken')
   },
+  app: {
+    onCloseRequested: on('app:closeRequested'),
+    close: (action, remember) => invoke('app:close', action, remember)
+  },
   readClipboard: () => invoke('clipboard:read'),
   writeClipboard: (text) => invoke('clipboard:write', text),
   showInFolder: (path) => invoke('shell:showInFolder', path),

@@ -1,6 +1,14 @@
-import { clipboard, dialog, ipcMain, shell } from 'electron'
+import { app, clipboard, dialog, ipcMain, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
-import type { EnqueueRequest, MediaItem, NewSubscription, PagedSource, Settings, Subscription } from '@shared/types'
+import type {
+  CloseAction,
+  EnqueueRequest,
+  MediaItem,
+  NewSubscription,
+  PagedSource,
+  Settings,
+  Subscription
+} from '@shared/types'
 import { checkAuth, ensureLoggedIn, getAuthState, requireLogin } from './auth/authGuard'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
 import { importCookieText } from './auth/cookieImport'
@@ -25,7 +33,7 @@ import {
   removeParse
 } from './history'
 import { getSettings, updateSettings } from './settings'
-import { getMainWindow, send } from './windows'
+import { getMainWindow, hideMainWindow, send } from './windows'
 
 const progress = (done: number, total: number, title?: string): void => send('parse:progress', { done, total, title })
 
@@ -183,6 +191,12 @@ export function registerIpc({ manager, subs, mcp, enqueue }: IpcDeps): void {
   handle('mcp:regenerateToken', () =>
     updateSettings({ mcp: { ...getSettings().mcp, token: randomBytes(24).toString('hex') } })
   )
+
+  handle('app:close', (action: Exclude<CloseAction, 'ask'>, remember: boolean) => {
+    if (remember) updateSettings({ closeAction: action })
+    if (action === 'quit') app.quit()
+    else hideMainWindow()
+  })
 
   handle('clipboard:read', () => clipboard.readText())
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
