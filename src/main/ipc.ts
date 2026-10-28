@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, shell } from 'electron'
+import { clipboard, dialog, ipcMain, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
 import type {
   CloseAction,
@@ -33,6 +33,7 @@ import {
   recordParse,
   removeParse
 } from './history'
+import { quitConfirmed } from './quitGuard'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
 
@@ -199,7 +200,8 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
 
   handle('app:close', (action: Exclude<CloseAction, 'ask'>, remember: boolean) => {
     if (remember) updateSettings({ closeAction: action })
-    if (action === 'quit') app.quit()
+    // 询问框里已经提醒过未完成的任务，不再二次确认
+    if (action === 'quit') quitConfirmed()
     else hideMainWindow()
   })
 

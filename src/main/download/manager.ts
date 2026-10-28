@@ -133,6 +133,11 @@ export class DownloadManager extends EventEmitter {
     return this.tasks
   }
 
+  /** 退出后会变成暂停的任务数：运行中、排队、等待登录 */
+  pendingCount(): number {
+    return this.tasks.filter((t) => RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth').length
+  }
+
   enqueue(req: EnqueueRequest): void {
     const settings = this.settings()
     const multi = req.items.length > 1

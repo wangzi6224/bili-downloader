@@ -12,6 +12,7 @@ import { initLogger, logDir } from './logger'
 import { McpServer } from './mcp'
 import { applyNetwork } from './net/network'
 import { applyPower } from './power'
+import { allowQuit } from './quitGuard'
 import { getSettings, onSettingsChange } from './settings'
 import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
@@ -19,7 +20,7 @@ import { Updater } from './update/updater'
 import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
-/** ⌘Q、程序坞“退出”等真正退出时，关窗口不再拦截 */
+/** ⌘Q、程序坞“退出”等真正退出（确认放行后）时，关窗口不再拦截 */
 let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
 
@@ -123,9 +124,6 @@ function buildMenu(): void {
 }
 
 app.setName('B站下载器')
-app.on('before-quit', () => {
-  quitting = true
-})
 
 // 只允许运行一个实例：再次打开时激活已有窗口
 if (!app.requestSingleInstanceLock()) {
@@ -193,7 +191,10 @@ async function start(): Promise<void> {
 
   const updater = new Updater(join(app.getPath('userData'), 'update'), join(app.getPath('userData'), 'updater.json'))
 
-  app.on('before-quit', () => {
+  // 只注册这一个：退出被取消时其他监听器照样会执行，会把 quitting 置上、把后台服务停掉
+  app.on('before-quit', (e) => {
+    if (!allowQuit(e, manager.pendingCount())) return
+    quitting = true
     manager.flush()
     subs.stop()
     void mcp.stop()

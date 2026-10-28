@@ -7,6 +7,7 @@ import type { ReadableStream } from 'node:stream/web'
 import { app, shell } from 'electron'
 import type { UpdateInfo, UpdateState } from '@shared/types'
 import { logDir } from '../logger'
+import { quitConfirmed } from '../quitGuard'
 import { readJson, writeJson } from '../store'
 import { send } from '../windows'
 import { installBlocker, replaceAfterExit, unpack } from './install'
@@ -154,7 +155,8 @@ export class Updater {
       const next = await unpack(zip, join(this.dir, 'stage'), info.version)
       replaceAfterExit(next, this.dir, join(logDir(), 'update.log'))
       console.info(`更新：退出并安装 ${info.version}`)
-      app.quit()
+      // 更新弹窗里已经提醒过未完成的任务；安装脚本已经在等进程退出，不能再被取消
+      quitConfirmed()
     } catch (e) {
       console.error('安装更新失败', e)
       this.set({ status: 'error', error: `安装更新失败：${message(e)}`, info })
