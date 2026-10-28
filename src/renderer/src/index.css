@@ -4,6 +4,69 @@
   --color-bili: #fb7299;
   --color-bili-dark: #e45c84;
   --color-sky: #00aeec;
+
+  --animate-fade: fade 0.16s ease-out;
+  --animate-pop: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.97) translateY(4px);
+    }
+  }
+}
+
+/* 语义色：浅色 / 深色各一套，组件里写 bg-canvas、text-muted 这样的类，不用到处写 dark: */
+:root {
+  --canvas: #ffffff;
+  --surface: #f7f7f9;
+  --elevated: #ffffff;
+  --field: #ffffff;
+  --line: rgb(0 0 0 / 0.07);
+  --line-strong: rgb(0 0 0 / 0.12);
+  --hover: rgb(0 0 0 / 0.045);
+  --track: rgb(0 0 0 / 0.055);
+  --thumb: #ffffff;
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --subtle: #a1a1a6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #1e1e20;
+    --surface: #252528;
+    --elevated: #2b2b2e;
+    --field: #262629;
+    --line: rgb(255 255 255 / 0.07);
+    --line-strong: rgb(255 255 255 / 0.13);
+    --hover: rgb(255 255 255 / 0.06);
+    --track: rgb(255 255 255 / 0.08);
+    --thumb: #4a4a4e;
+    --fg: #f2f2f4;
+    --muted: #a1a1a8;
+    --subtle: #6c6c72;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-field: var(--field);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-hover: var(--hover);
+  --color-track: var(--track);
+  --color-thumb: var(--thumb);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
 }
 
 html,
@@ -16,15 +79,41 @@ body {
   margin: 0;
   font-family:
     -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
-  background: #f6f7f8;
-  color: #18191c;
+  font-size: 13px;
+  /* 透明：侧边栏透出窗口的毛玻璃 */
+  background: transparent;
+  color: var(--fg);
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  cursor: default;
 }
 
 input,
 textarea {
   user-select: text;
+}
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-bili) 55%, transparent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--line-strong) content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--subtle);
 }
 
 .drag {
@@ -35,9 +124,11 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #17181a;
-    color: #e3e5e7;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

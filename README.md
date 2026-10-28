@@ -34,6 +34,8 @@ npm run build:mac
 
 会先下载两个架构的静态 ffmpeg（固定 sha256 校验），再在 `dist/` 里分别生成 `x64` 和 `arm64` 的 dmg 和 zip。应用使用 ad-hoc 签名、没有公证，第一次打开需要在“访达”里右键 →“打开”。
 
+应用图标的源文件是 `build/icon.svg`，改完后运行 `npm run icons` 重新生成 `build/icon.icns` 和 `build/icon.png`（生成物已提交，平时打包不需要这一步）。
+
 ## 关于浏览器导入
 
 Chrome、Edge、Brave 的数据目录受 macOS 隐私保护。要从这些浏览器导入，需要在“系统设置 → 隐私与安全性 → 完全磁盘访问权限”里打开本应用并重启应用；导入 Chrome 系浏览器时还会弹出钥匙串授权。如果不想授权，可以直接用应用内登录。

@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { CloseDialog } from './components/CloseDialog'
-import { Header } from './components/Header'
+import { HistoryPage } from './components/HistoryPage'
 import { LoginDialog } from './components/LoginDialog'
 import { SelectionDialog } from './components/SelectionDialog'
-import { SettingsPanel } from './components/SettingsPanel'
-import { SubscriptionsPanel } from './components/SubscriptionsPanel'
+import { SettingsPage } from './components/SettingsPage'
+import { Sidebar } from './components/Sidebar'
+import { SubscriptionsPage } from './components/SubscriptionsPage'
 import { TaskList } from './components/TaskList'
 import { UrlInput } from './components/UrlInput'
 import { api, useStore } from './store'
@@ -23,19 +24,36 @@ export default function App() {
       api.download.onUpdate((tasks) => set({ tasks: [...tasks] })),
       api.app.onCloseRequested(() => set({ closeAsk: true }))
     ]
-    return () => offs.forEach((off) => off())
+    // ⌘, 打开设置，和其他 Mac 应用一致
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.metaKey && e.key === ',') {
+        e.preventDefault()
+        set({ view: 'settings' })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      offs.forEach((off) => off())
+      window.removeEventListener('keydown', onKey)
+    }
   }, [])
 
   if (!s.settings) return null
 
   return (
-    <div className="flex h-full flex-col">
-      <Header />
-      <UrlInput />
-      <TaskList />
+    <div className="flex h-full">
+      <Sidebar />
+      <main className="flex min-w-0 flex-1 flex-col border-l border-black/10 bg-canvas dark:border-black/40">
+        {/* 下载页一直挂着：切到别的页面再回来，输入框内容和剪贴板检测都还在 */}
+        <div className={s.view === 'downloads' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+          <UrlInput />
+          <TaskList />
+        </div>
+        {s.view === 'subs' && <SubscriptionsPage />}
+        {s.view === 'history' && <HistoryPage />}
+        {s.view === 'settings' && <SettingsPage />}
+      </main>
       {s.parse && <SelectionDialog result={s.parse} />}
-      {s.settingsOpen && <SettingsPanel />}
-      {s.subsOpen && <SubscriptionsPanel />}
       {s.loginOpen && <LoginDialog />}
       {s.closeAsk && <CloseDialog />}
     </div>

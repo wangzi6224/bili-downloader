@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
-    "build:mac": "npm run fetch-ffmpeg && electron-vite build && electron-builder --mac --x64 --arm64"
+    "build:mac": "npm run fetch-ffmpeg && electron-vite build && electron-builder --mac --x64 --arm64",
+    "icons": "node scripts/build-icons.mjs"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",
@@ -23,6 +25,7 @@
     "electron": "^45.1.0",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
+    "lucide-react": "^1.63.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.3",
