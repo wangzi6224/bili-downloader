@@ -1,72 +1,190 @@
-# B站下载器
+<div align="center">
 
-粘贴 B站链接即可下载视频、分P、合集、番剧和电影的 macOS 桌面应用（Electron，支持 Intel 和 Apple 芯片）。
+<img src="build/icon.png" width="128" alt="Bili Downloader icon">
 
-## 功能
+# Bili Downloader
 
-- 识别普通视频（BV / av）、分P、合集、番剧和电影（ep / ss / md），以及 b23.tv 短链和带标题的分享文案
-- 合集、分P、剧集按分组勾选，支持全选、反选、Shift 连选
-- 清晰度列表来自接口（8K / 杜比视界 / HDR / 4K / 1080P60 …），标出需要大会员的档位；编码偏好可选 AVC / HEVC / AV1
-- 登录：从 Chrome / Edge / Brave / Arc / Vivaldi / Chromium / Firefox 导入 cookie，或在应用内打开 B站官方登录页（扫码 / 密码 / 短信）
-- 启动、切回窗口、解析链接、接口返回 -101 时检测登录状态，过期后自动弹出登录对话框；下载队列暂停取流，重新登录后自动继续
-- 下载队列：并发数可调，支持暂停、继续、断点续传（重启后仍可续传），合并用 ffmpeg 直接复制流，不重新编码
-- 附加内容：封面、CC 字幕（.srt）、弹幕（.ass）、仅音频（m4a / 无损 flac）
-- 下载期间可以阻止系统睡眠或保持屏幕常亮，队列空闲后自动恢复
+A macOS desktop app for downloading from bilibili: paste a link to get videos, multi-part videos, collections, anime and movies.
 
-不支持：带 DRM 加密的片源、地区限制的内容，以及账号没有权限观看的内容（应用会把这些任务标为“无法下载”并写明原因）。仅供下载你本人账号有权观看的内容，用于个人用途。
+[![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
+![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
+![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+[![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
-## 开发
+**English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
+
+</div>
+
+<p align="center">
+  <img src="docs/screenshots/queue.png" width="49%" alt="Download queue">
+  <img src="docs/screenshots/select.png" width="49%" alt="Choosing episodes, quality and extras">
+</p>
+
+> [!NOTE]
+> This is an unofficial project and is not affiliated with or endorsed by bilibili. Only download content your own account is allowed to watch, for personal use, and respect the rights of creators and bilibili's terms of service.
+
+## Features
+
+### Supported links
+
+- Videos (BV / av), multi-part videos, collections, anime and movies (ep / ss / md), and paid courses
+- Favorites folders, Watch Later, an uploader's videos, collections and series (with keyword filtering)
+- Audio tracks and audio playlists (au / am), Weekly Must-Watch, and the popularity rankings by category
+- Short links (b23.tv and others) and share text that has the title mixed in with the link
+- Parse several links at once, and load paged lists (favorites, uploader pages) page by page
+
+### Quality and formats
+
+- The quality list comes from the API (8K / Dolby Vision / HDR / 4K / 1080P60 / …), with premium-only (大会员) tiers marked
+- Codec priority AVC / HEVC / AV1, with audio up to Dolby Atmos and Hi-Res lossless FLAC
+- Full video, audio only, or video only; MP4 or MKV
+- ffmpeg copies the streams straight into the output file, with no re-encoding
+
+### Extras
+
+- Cover: save it as an image and/or embed it in the file
+- CC subtitles: save them as `.srt` and/or embed them in the video
+- Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
+- The chapter markers on bilibili's progress bar, written as real chapters
+- NFO metadata for Kodi / Jellyfin media libraries
+
+### Queue and network
+
+- Adjustable concurrency, multi-threaded segmented downloads, speed limit, automatic retry on network errors
+- Pause, resume, and resume after a restart; clear notes for tasks that cannot be downloaded
+- Proxy: direct, system, or manual; pick the fastest bilibili CDN node with a built-in latency test
+- Optionally keep the Mac (or the display) awake while downloading, and send a notification when the queue finishes
+
+### Organizing and automation
+
+- Naming templates with variables (`{title}`, `{series}`, `{index:03}`, `{pubdate:YYYY-MM-DD}`, …), optional segments and folder levels, set separately for single videos, collections and anime
+- Spots items you have already downloaded, and asks / skips / downloads again
+- Subscriptions: check favorites, collections or uploaders on a schedule and download new items automatically
+- Parse history, clipboard watching, light / dark theme, run in the background, import / export settings
+- In-app updates from GitHub Releases, with release notes and an option to skip a version
+
+### AI integration
+
+- A local [MCP](https://modelcontextprotocol.io) server lets AI clients such as Claude parse links, queue downloads and check progress (see **MCP server** below)
+
+## Installation
+
+1. Download the latest `.dmg` from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest):
+   - Apple Silicon (M1 and later): `bili-downloader-<version>-arm64.dmg`
+   - Intel: `bili-downloader-<version>-x64.dmg`
+2. Open the dmg and drag **B站下载器** into **Applications**.
+3. The app is ad-hoc signed but not notarized, so macOS blocks it the first time. Try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. (Since macOS 15, right-click → Open no longer works.) Alternatively, run:
+
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
+   ```
+
+Requires macOS 12 or later. The interface is currently available in Simplified Chinese only; the labels mentioned below are given in Chinese with an English translation.
+
+Once installed, the app checks for updates itself and can install them in place.
+
+## Quick start
+
+1. Sign in to your bilibili account (see **Signing in** below). The app needs an account to parse links.
+2. Copy a bilibili link. The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> in the input box and click **解析** (Parse).
+3. Choose the items to download. Select all, invert the selection, <kbd>Shift</kbd>-click to select a range, or filter by title or by index (e.g. `1-5,7`).
+4. Pick the quality, output type and extras, then click **下载** (Download).
+
+You can also type these keywords instead of a link: `稍后再看` or `watchlater` (Watch Later), `每周必看` (Weekly Must-Watch), `排行榜` (rankings).
+
+## Signing in
+
+Logging in gives you the qualities and content your own account has access to (1080P and above, premium content). There are three ways to do it:
+
+- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc, Vivaldi, Chromium or Firefox. macOS protects the data of Chrome, Edge and Brave, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
+- **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
+- **手动粘贴 Cookie** (Paste cookies): a semicolon-separated cookie string, or the JSON exported by a browser extension.
+
+The app checks the login state on launch, when you return to the window, while parsing, and whenever the API reports an expired session. If the login has expired, it asks you to sign in again, pauses fetching new streams, and resumes the queue once you are back. Signing out only clears the app's own cookies. It does not sign you out of your browser.
+
+## MCP server
+
+The app can run a local [Model Context Protocol](https://modelcontextprotocol.io) server so that AI clients can work with your download queue.
+
+1. Go to **设置 → 网络与高级 → MCP 服务** (Settings → Network & Advanced → MCP server) and turn it on.
+2. Use the buttons in the same section to copy the client configuration (JSON) or the Claude Code command, which already include your access token.
+
+```json
+{
+  "mcpServers": {
+    "bili-downloader": {
+      "type": "http",
+      "url": "http://127.0.0.1:39231/mcp",
+      "headers": { "Authorization": "Bearer <your-token>" }
+    }
+  }
+}
+```
 
 ```bash
+claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --header "Authorization: Bearer <your-token>"
+```
+
+| Tool | Description |
+| --- | --- |
+| `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…) and return its title and items |
+| `download` | Add items to the queue, by index or all of them, with an optional quality (`qn`) and output (`full` / `audio` / `video`) |
+| `list_tasks` | List the download queue, optionally filtered by status |
+| `pause_task` | Pause a task |
+| `resume_task` | Resume or retry a task |
+
+The server listens only on `127.0.0.1` (the port is configurable), requires the Bearer token, and checks the `Host` / `Origin` headers to prevent DNS rebinding. You can regenerate the token at any time.
+
+## Limitations
+
+- DRM-protected content, region-locked content, and content your account is not allowed to watch cannot be downloaded. Those tasks are marked as **无法下载** (cannot be downloaded) with the reason.
+- macOS only.
+
+## Building from source
+
+Requires macOS, Node.js 22.12 or later, and npm.
+
+```bash
+git clone https://github.com/wangzi6224/bili-downloader.git
+cd bili-downloader
 npm install
-npm run dev        # 开发模式，主进程改动会自动重启
-npm test           # 单元测试
-npm run typecheck
+npm run dev          # development mode
+npm test             # unit tests
+npm run typecheck    # type check
+npm run build:mac    # build x64 and arm64 dmg / zip into dist/
 ```
 
-开发时用 `resources/ffmpeg/<arch>/ffmpeg`，找不到时退回 Homebrew 安装的 ffmpeg。开发模式下菜单栏有“调试 → 模拟登录过期 / 恢复真实登录”。
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [docs/RELEASING.md](docs/RELEASING.md) (in Chinese) for packaging and releases.
 
-## 打包
-
-```bash
-npm run build:mac
-```
-
-会先下载两个架构的静态 ffmpeg（固定 sha256 校验），再在 `dist/` 里分别生成 `x64` 和 `arm64` 的 dmg 和 zip。打开 dmg 后把应用图标拖到“应用程序”即可安装。应用使用 ad-hoc 签名、没有公证，第一次打开会被拦截，需要到“系统设置 → 隐私与安全性”里点“仍要打开”（macOS 15 起右键 →“打开”已不再有效）。
-
-应用图标的源文件是 `build/icon.svg`，dmg 安装窗口背景的源文件是 `build/dmg-background.svg`，改完后运行 `npm run icons` 重新生成 `build/icon.icns`、`build/icon.png` 和 `build/background{,@2x}.png`（生成物已提交，平时打包不需要这一步）。背景里图标的位置要和 `electron-builder.yml` 里 `dmg.contents` 的坐标一致。
-
-## 发布新版本
-
-新版本发布在本仓库的 GitHub Releases 里（仓库需要是公开的，应用不带令牌访问）。应用启动时、以及后台运行期间每天读取 `releases/latest/download/update.json`，发现新版本就弹出更新说明，用户可以跳过这个版本、以后再说，或者下载安装。下载的是当前架构的 zip，按 sha512 校验后解压，确认是本应用的对应版本，退出时由一个独立脚本替换 `.app` 并重新打开；替换失败会恢复旧版本，日志在 `logs/update.log`。应用没有开发者证书，electron-updater（Squirrel.Mac）要求正式签名，所以没有用它。
-
-应用不在可写的位置时（直接从 dmg 或“下载”文件夹里打开、没有 `/Applications` 写权限）不能自动安装，弹窗里会改为“前往下载页面”。
-
-发布步骤：
-
-1. 改 `package.json` 里的 `version`
-2. 在 `CHANGELOG.md` 里把“未发布”改成 `## 新版本号 - 日期`，这段会显示在应用的更新弹窗和 Release 页面上
-3. 提交并 `git push`
-4. 运行 `npm run release`：打包两个架构，生成 `dist/update.json`，用 `gh` 创建 `v版本号` 的 Release 并上传 zip、dmg 和 `update.json`
-
-带后缀的版本号（如 `1.0.0-beta.1`）会发布成预发布版本，已安装的正式版不会收到。
-
-在本地测试更新流程：用旧版本号打包一份运行，再用新版本号打包，`node scripts/release.mjs --dry-run` 只生成 `dist/update.json` 不上传；把其中的下载地址改成本机地址后，在 `dist/` 里起一个静态服务器，用 `BILI_UPDATE_FEED=http://127.0.0.1:端口/update.json` 启动旧版本（直接运行 `.app/Contents/MacOS/` 里的可执行文件）。这个环境变量只放行本机的 http 地址。
-
-## 关于浏览器导入
-
-Chrome、Edge、Brave 的数据目录受 macOS 隐私保护。要从这些浏览器导入，需要在“系统设置 → 隐私与安全性 → 完全磁盘访问权限”里打开本应用并重启应用；导入 Chrome 系浏览器时还会弹出钥匙串授权。如果不想授权，可以直接用应用内登录。
-
-退出登录只清除应用自己的 cookie，不会调用 B站的退出接口，所以不会把浏览器里的登录也一起退出。
-
-## 目录
+## Project structure
 
 ```
-src/main/auth       登录：cookie 存储、应用内登录窗口、浏览器导入、过期检测
-src/main/bili       B站接口：WBI 签名、视频/番剧解析、取流、字幕、弹幕
-src/main/download   下载队列、断点续传、ffmpeg 合并、附加内容
-src/main/update     应用内更新：检查 update.json、下载校验、替换 .app
-src/shared          三端共用的类型和链接识别
-src/renderer        界面（React + Tailwind + zustand）
-scripts             打包前下载 ffmpeg、生成图标、发布新版本
+src/main/auth               Sign-in: cookie storage, in-app login window, browser import, expiry detection
+src/main/bili               bilibili APIs: WBI signing, video / anime / course / list parsing, streams, subtitles, danmaku
+src/main/download           Download queue, resumable downloads, ffmpeg muxing, extras (cover, subtitles, NFO…)
+src/main/net                Proxy and CDN selection
+src/main/update             In-app updates: check update.json, verify the download, replace the .app
+src/main/mcp.ts             Local MCP server
+src/main/subscriptions.ts   Subscriptions
+src/shared                  Types, link parsing and naming templates shared by all processes
+src/renderer                User interface (React + Tailwind CSS + zustand)
+scripts                     Fetch ffmpeg, generate icons, publish releases
 ```
+
+## Contributing
+
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+## Acknowledgements
+
+- [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) for its documentation of the bilibili APIs
+- [FFmpeg](https://ffmpeg.org) and [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
+- [Electron](https://www.electronjs.org), [electron-vite](https://electron-vite.org), [electron-builder](https://www.electron.build)
+- [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [zustand](https://github.com/pmndrs/zustand), [Lucide](https://lucide.dev)
+
+## License
+
+[MIT](LICENSE) © wangzi6224
+
+The app bundles static FFmpeg binaries from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg runs as a separate program under its own license and is not covered by the MIT license above. Its license text ships inside the app at `Contents/Resources/ffmpeg/LICENSE`; see also [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
