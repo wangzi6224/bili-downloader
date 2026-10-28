@@ -12,7 +12,12 @@ function defaults(): Settings {
     defaultCodec: 'avc',
     extras: { cover: false, subtitle: true, danmaku: false },
     danmaku: { fontSize: 25, opacity: 0.8, duration: 8 },
-    clipboardWatch: true
+    clipboardWatch: true,
+    threads: 4,
+    speedLimit: 0,
+    autoRetry: 5,
+    notify: true,
+    theme: 'system'
   }
 }
 
@@ -36,7 +41,11 @@ export function getSettings(): Settings {
 
 export function updateSettings(patch: Partial<Settings>): Settings {
   const next = { ...getSettings(), ...patch }
-  next.concurrency = Math.min(5, Math.max(1, Math.round(next.concurrency)))
+  const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Math.round(n) || lo))
+  next.concurrency = clamp(next.concurrency, 1, 5)
+  next.threads = clamp(next.threads, 1, 8)
+  next.autoRetry = clamp(next.autoRetry, 0, 20)
+  next.speedLimit = Math.max(0, Math.round(next.speedLimit) || 0)
   cache = next
   writeJson(file(), next)
   for (const fn of listeners) fn(next)

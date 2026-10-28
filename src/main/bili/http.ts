@@ -47,13 +47,14 @@ export async function biliFetch(url: string, init: RequestInit = {}, retries = 3
   let lastErr: unknown
   for (let i = 0; i <= retries; i++) {
     try {
-      const started = Date.now()
-      const res = await fetch(url, {
-        ...init,
-        headers: { ...BASE_HEADERS, Cookie: await cookieHeader(), ...init.headers }
-      })
-      const ms = Date.now() - started
-      if (ms > 1500) console.warn(`[slow] ${ms}ms HTTP ${res.status} ${url.split('?')[0]}`)
+      const t0 = Date.now()
+      const cookie = await cookieHeader()
+      const t1 = Date.now()
+      const res = await fetch(url, { ...init, headers: { ...BASE_HEADERS, Cookie: cookie, ...init.headers } })
+      const t2 = Date.now()
+      if (t2 - t0 > 1500) {
+        console.warn(`[slow] cookie ${t1 - t0}ms + 请求 ${t2 - t1}ms HTTP ${res.status} ${url.split('?')[0]}`)
+      }
       if (res.status === 412) throw new BiliError('请求被 B站风控拦截（HTTP 412），请稍后再试', 412)
       if (res.status >= 500) throw new BiliError(`B站服务器错误（HTTP ${res.status}）`, res.status)
       return res

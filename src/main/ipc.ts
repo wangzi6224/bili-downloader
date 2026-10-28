@@ -81,6 +81,7 @@ export function registerIpc(manager: DownloadManager): void {
   handle('dl:resumeAll', () => manager.resumeAll())
   handle('dl:cancel', (id: string) => manager.cancel(id))
   handle('dl:retry', (id: string) => manager.resume(id))
+  handle('dl:redownload', (id: string) => manager.redownload(id))
   handle('dl:clearFinished', () => manager.clearFinished())
 
   handle('settings:get', () => getSettings())

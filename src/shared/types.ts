@@ -107,10 +107,18 @@ export interface TaskInfo {
   /** 不影响主文件的提示，例如“没有 CC 字幕” */
   note?: string
   outputPath?: string
+  /** 创建任务时的下载目录，之后改设置不影响已在队列中的任务 */
+  dir?: string
+  /** 已自动重试的次数 */
+  retries?: number
+  /** 下次自动重试的时间戳 */
+  retryAt?: number
   createdAt: number
 }
 
 export type PowerMode = 'off' | 'system' | 'display'
+
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 export interface Settings {
   downloadDir: string
@@ -121,6 +129,15 @@ export interface Settings {
   extras: { cover: boolean; subtitle: boolean; danmaku: boolean }
   danmaku: { fontSize: number; opacity: number; duration: number }
   clipboardWatch: boolean
+  /** 每个文件分几段并行下载 */
+  threads: number
+  /** 全局限速 KB/s，0 为不限 */
+  speedLimit: number
+  /** 网络错误自动重试次数，0 为关闭 */
+  autoRetry: number
+  /** 队列全部完成后发系统通知 */
+  notify: boolean
+  theme: ThemeMode
 }
 
 /** preload 通过 contextBridge 暴露给渲染进程的接口 */
@@ -145,6 +162,8 @@ export interface BiliApi {
     resumeAll(): Promise<void>
     cancel(id: string): Promise<void>
     retry(id: string): Promise<void>
+    /** 删除已下载的部分，从头开始 */
+    redownload(id: string): Promise<void>
     clearFinished(): Promise<void>
     onUpdate(cb: (tasks: TaskInfo[]) => void): () => void
   }
