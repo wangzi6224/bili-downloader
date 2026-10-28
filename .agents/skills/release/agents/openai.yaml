@@ -1,0 +1,4 @@
+# Codex 应用里显示的名称和简介；Claude Code 和 Copilot 只读 SKILL.md
+interface:
+  display_name: 发布新版本
+  short_description: 定版本号、写更新日志、推送 tag，由 GitHub Actions 自动打包发布

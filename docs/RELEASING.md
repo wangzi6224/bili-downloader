@@ -39,6 +39,8 @@ npm run build:mac
 
 改了打包相关的配置，想先确认能打出包：在 Actions 页面手动运行“发布”工作流（Run workflow），它只打包不发布，安装包和 `update.json` 作为这次运行的产物上传，保留 7 天。
 
+用 AI 编程助手发布时，直接说“发布新版本”即可：项目里的 `release` skill 写了上面整套步骤，推送 tag 前会先请你确认。它放在 `.agents/skills/release/`（Codex 和 GitHub Copilot 读这里），`.claude/skills/release` 是指向它的软链接（Claude Code 读这里），改流程时只改 `.agents/skills/release/SKILL.md` 一处。
+
 Actions 不可用时，也可以在本机发布：提交并推送后运行 `npm run release`，它会先做同样的检查，再打包，用 `gh` 创建 `v版本号` 的 Release（tag 不存在会自动创建）并上传。
 
 ## 在本地测试更新流程
