@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bili: #fb7299;
+  --color-bili-dark: #e45c84;
+  --color-sky: #00aeec;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  background: #f6f7f8;
+  color: #18191c;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #17181a;
+    color: #e3e5e7;
+  }
+}
