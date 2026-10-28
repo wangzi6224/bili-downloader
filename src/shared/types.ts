@@ -389,7 +389,8 @@ export interface BiliApi {
     retry(id: string): Promise<void>
     /** 删除已下载的部分，从头开始 */
     redownload(id: string): Promise<void>
-    clearFinished(): Promise<void>
+    /** 清除已完成和无法下载的任务；deleteFiles 时同时永久删除已完成任务的视频和附加文件 */
+    clearFinished(deleteFiles: boolean): Promise<void>
     onUpdate(cb: (tasks: TaskInfo[]) => void): () => void
   }
   history: {

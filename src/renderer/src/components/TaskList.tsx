@@ -31,7 +31,23 @@ import { fmtBytes, fmtEta, fmtSpeed, thumb } from '../format'
 import { api, updateSettings, useStore } from '../store'
 import { ACTIVE, buildEntries } from '../taskOrder'
 import { Logo } from './Logo'
-import { Badge, Dropdown, EmptyState, IconButton, Input, MenuItem, MenuLabel, Progress, Segmented, STROKE } from './ui'
+import {
+  Badge,
+  Banner,
+  Button,
+  Dropdown,
+  EmptyState,
+  IconButton,
+  Input,
+  MenuItem,
+  MenuLabel,
+  Modal,
+  ModalFooter,
+  ModalHeader,
+  Progress,
+  Segmented,
+  STROKE
+} from './ui'
 
 const SKY = 'text-sky-600 dark:text-sky-400'
 const STATUS: Record<TaskStatus, { label: string; color: string; icon: LucideIcon; spin?: boolean }> = {
@@ -392,6 +408,57 @@ function PowerMenu({ running }: { running: boolean }) {
   )
 }
 
+/** 清除已完成：默认只清空任务列表，勾选“同时删除原文件”才会永久删除下载好的文件 */
+function ClearDialog({ onClose }: { onClose: () => void }) {
+  const tasks = useStore((s) => s.tasks)
+  const [deleteFiles, setDeleteFiles] = useState(false)
+  const count = tasks.filter(settled).length
+  const files = tasks.filter((t) => t.status === 'done' && t.outputPath).length
+
+  const submit = (): void => {
+    onClose()
+    api.download.clearFinished(deleteFiles).catch((e: Error) => useStore.getState().set({ error: e.message }))
+  }
+
+  return (
+    <Modal onClose={onClose} className="max-w-md">
+      <ModalHeader icon={ListX} title="清除已完成" subtitle={`从下载列表移除 ${count} 个已完成的任务。`} onClose={onClose} />
+      <div className="flex flex-col gap-3 px-6 pt-4">
+        <label className={`flex items-start gap-2 text-[13px] ${files ? 'cursor-pointer' : 'opacity-50'}`}>
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-bili"
+            checked={deleteFiles}
+            disabled={!files}
+            onChange={(e) => setDeleteFiles(e.target.checked)}
+          />
+          <span>
+            同时删除原文件
+            <span className="mt-0.5 block text-xs text-muted">不勾选只清空任务列表，下载好的文件保留在原处</span>
+          </span>
+        </label>
+        {deleteFiles && (
+          <Banner tone="warn">{files} 个视频文件及封面、字幕、弹幕等附加文件会被永久删除，无法恢复。</Banner>
+        )}
+      </div>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose}>
+          取消
+        </Button>
+        {deleteFiles ? (
+          <Button variant="danger" icon={Trash2} onClick={submit}>
+            清空并删除文件
+          </Button>
+        ) : (
+          <Button variant="primary" icon={ListX} autoFocus onClick={submit}>
+            仅清空列表
+          </Button>
+        )}
+      </ModalFooter>
+    </Modal>
+  )
+}
+
 /** 底部状态栏：总速度、各状态数量、下载目录 */
 function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
   const settings = useStore((s) => s.settings)!
@@ -439,6 +506,7 @@ export function TaskList() {
   const [query, setQuery] = useState('')
   /** 展开着的合集，默认都折叠 */
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [clearing, setClearing] = useState(false)
   const running = tasks.some((t) => ACTIVE.has(t.status))
   const canPause = tasks.some(pausable)
   const canResume = tasks.some(resumable)
@@ -500,7 +568,7 @@ export function TaskList() {
         <PowerMenu running={running} />
         <IconButton icon={Pause} label="全部暂停" disabled={!canPause} onClick={() => api.download.pauseAll()} />
         <IconButton icon={Play} label="全部继续" disabled={!canResume} onClick={() => api.download.resumeAll()} />
-        <IconButton icon={ListX} label="清除已完成" disabled={!finished} onClick={() => api.download.clearFinished()} />
+        <IconButton icon={ListX} label="清除已完成" disabled={!finished} onClick={() => setClearing(true)} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {entries.length ? (
@@ -524,6 +592,7 @@ export function TaskList() {
         )}
       </div>
       <StatusBar tasks={tasks} />
+      {clearing && <ClearDialog onClose={() => setClearing(false)} />}
     </div>
   )
 }

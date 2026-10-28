@@ -47,7 +47,7 @@ const api: BiliApi = {
     remove: (ids, deleteFiles) => invoke('dl:remove', ids, deleteFiles),
     retry: (id) => invoke('dl:retry', id),
     redownload: (id) => invoke('dl:redownload', id),
-    clearFinished: () => invoke('dl:clearFinished'),
+    clearFinished: (deleteFiles) => invoke('dl:clearFinished', deleteFiles),
     onUpdate: on('dl:update')
   },
   history: {

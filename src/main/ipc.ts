@@ -157,7 +157,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   handle('dl:remove', (ids: string[], deleteFiles: boolean) => manager.remove(ids, deleteFiles))
   handle('dl:retry', (id: string) => manager.resume(id))
   handle('dl:redownload', (id: string) => manager.redownload(id))
-  handle('dl:clearFinished', () => manager.clearFinished())
+  handle('dl:clearFinished', (deleteFiles: boolean) => manager.clearFinished(deleteFiles))
 
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch: Partial<Settings>) => updateSettings(patch))

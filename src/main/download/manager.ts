@@ -283,9 +283,12 @@ export class DownloadManager extends EventEmitter {
     if (failed.length) throw new Error(`有 ${failed.length} 个文件没能删除：${failed.join('、')}`)
   }
 
-  clearFinished(): void {
-    this.tasks = this.tasks.filter((t) => !SETTLED.has(t.status))
-    this.changed()
+  /** 清除已完成和无法下载的任务；deleteFiles 时同时永久删除已完成任务的视频和附加文件 */
+  clearFinished(deleteFiles: boolean): void {
+    this.remove(
+      this.tasks.filter((t) => SETTLED.has(t.status)).map((t) => t.id),
+      deleteFiles
+    )
   }
 
   /** 登录失效：不再开始新的取流，等待重新登录 */
