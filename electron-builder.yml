@@ -1,0 +1,25 @@
+appId: com.wangzi6224.bili-downloader
+productName: B站下载器
+artifactName: bili-downloader-${version}-${arch}.${ext}
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# 每个架构只带自己的 ffmpeg
+extraResources:
+  - from: resources/ffmpeg/${arch}
+    to: ffmpeg
+npmRebuild: false
+mac:
+  category: public.app-category.video
+  target:
+    - dmg
+    - zip
+  # 没有开发者证书，用 ad-hoc 签名；Apple 芯片上未签名的 app 无法启动
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+dmg:
+  title: B站下载器 ${version}
