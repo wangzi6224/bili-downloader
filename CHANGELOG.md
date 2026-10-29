@@ -4,9 +4,9 @@
 推送版本 tag 后，GitHub Actions 会把当前版本这一段作为 GitHub Release 的说明，并把最近的各段写进 `update.json`，
 应用内的更新弹窗会显示用户当前版本之后的所有段落。还没发布的改动先记在“未发布”下面。
 
-## 未发布
+## 0.5.0 - 2026-10-29
 
-- MCP 服务改为方便 AI agent 批量下载。**和旧版不兼容**：去掉了 `download`、`pause_task`、`resume_task`，改用下面的新工具
+- MCP 服务改为方便 AI agent 批量下载。**和旧版不兼容**：去掉了 `download`、`pause_task`、`resume_task`，改用下面这些工具：
   - `parse_link` 自动翻页，合集、收藏夹、UP 主投稿不再只返回第一页；条目带稳定的 id 和“已下载”“已在队列”标记，可以分段读取、展开分P
   - 新增 `download_batch`：整个合集一次提交，返回批次 id；默认跳过已下载的，重复提交不会重复下载；列表里的视频在后台分段获取分P，先获取到的先开始下载
   - 新增 `get_batch_status`、`list_batches`：查看整批的进度、速度、剩余时间、实际清晰度和失败原因，可以一直等到下载结束再返回

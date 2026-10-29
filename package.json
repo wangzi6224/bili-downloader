@@ -1,7 +1,7 @@
 {
   "name": "bili-downloader",
   "productName": "B站下载器",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "license": "MIT",
   "description": "粘贴 B站链接即可下载视频、合集、番剧与电影的 macOS 桌面应用",
