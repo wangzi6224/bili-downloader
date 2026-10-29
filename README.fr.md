@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-Une application de bureau macOS pour télécharger depuis bilibili : collez un lien pour récupérer des vidéos, des vidéos en plusieurs parties, des collections, des animés et des films.
+Une application de bureau pour macOS et Linux permettant de télécharger depuis bilibili : collez un lien pour récupérer des vidéos, des vidéos en plusieurs parties, des collections, des animés et des films.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | **Français** | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
@@ -54,7 +55,7 @@ Une application de bureau macOS pour télécharger depuis bilibili : collez un l
 - Téléchargements simultanés, téléchargement multithread par segments, limite de débit et nouvelle tentative automatique en cas d'erreur réseau, tous réglables
 - Pause, reprise, et reprise même après un redémarrage ; les tâches impossibles à télécharger indiquent clairement pourquoi
 - Proxy : direct, système ou manuel ; test de latence intégré pour choisir le nœud CDN bilibili le plus rapide
-- Empêcher la mise en veille du Mac (ou de l'écran) pendant les téléchargements, et notification quand la file est terminée
+- Empêcher la mise en veille de l'ordinateur (ou de l'écran) pendant les téléchargements, et notification quand la file est terminée
 
 ### Organisation et automatisation
 
@@ -70,6 +71,8 @@ Une application de bureau macOS pour télécharger depuis bilibili : collez un l
 
 ## Installation
 
+### macOS
+
 1. Téléchargez le dernier `.dmg` depuis les [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) :
    - Apple Silicon (M1 et ultérieurs) : `bili-downloader-<version>-arm64.dmg`
    - Intel : `bili-downloader-<version>-x64.dmg`
@@ -80,14 +83,34 @@ Une application de bureau macOS pour télécharger depuis bilibili : collez un l
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
    ```
 
-macOS 12 ou ultérieur est requis. L'interface n'existe pour l'instant qu'en chinois simplifié ; les libellés cités ci-dessous sont donnés en chinois avec leur traduction.
+macOS 12 ou ultérieur est requis.
 
-Une fois installée, l'application vérifie elle-même les mises à jour et peut les installer directement.
+### Linux
+
+Téléchargez l'un de ces fichiers depuis les [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) (x86 64 bits uniquement) :
+
+- **AppImage** (toutes distributions, se met à jour d'elle-même) : `bili-downloader-<version>-x86_64.AppImage`. Rendez-la exécutable puis lancez-la :
+
+  ```bash
+  chmod +x bili-downloader-*-x86_64.AppImage
+  ./bili-downloader-*-x86_64.AppImage
+  ```
+
+  Les AppImage nécessitent FUSE 2. Si elle ne démarre pas, installez-le (`sudo apt install libfuse2t64` sur Ubuntu 24.04 et versions ultérieures, `libfuse2` sur les versions plus anciennes), ou lancez-la avec `--appimage-extract-and-run`.
+- **deb** (Debian, Ubuntu et dérivées) : `bili-downloader-<version>-amd64.deb`. Installez-le avec `sudo apt install ./bili-downloader-<version>-amd64.deb` ; **B站下载器** apparaît ensuite dans le menu des applications.
+
+Quand la fenêtre est fermée et que l'application continue en arrière-plan, cliquez sur son icône dans la zone de notification pour la faire réapparaître. Sous GNOME, il faut pour cela l'extension AppIndicator (installée par défaut sur Ubuntu). La barre de menus est masquée ; appuyez sur <kbd>Alt</kbd> pour l'afficher.
+
+### Mises à jour
+
+Une fois installée, l'application vérifie elle-même les mises à jour. L'application macOS et l'AppImage Linux les installent directement ; la version deb affiche les notes de version et vous renvoie vers la page de téléchargement.
+
+L'interface n'existe pour l'instant qu'en chinois simplifié ; les libellés cités ci-dessous sont donnés en chinois avec leur traduction.
 
 ## Démarrage rapide
 
 1. Connectez-vous à votre compte bilibili (voir **Connexion** plus bas). L'application a besoin d'un compte pour analyser les liens.
-2. Copiez un lien bilibili. L'application le récupère dans le presse-papiers quand vous revenez dessus ; vous pouvez aussi appuyer sur <kbd>⌘</kbd><kbd>V</kbd> dans le champ de saisie puis cliquer sur **解析** (Analyser).
+2. Copiez un lien bilibili. L'application le récupère dans le presse-papiers quand vous revenez dessus ; vous pouvez aussi appuyer sur <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> sous Linux) dans le champ de saisie puis cliquer sur **解析** (Analyser).
 3. Choisissez les éléments à télécharger : tout sélectionner, inverser la sélection, <kbd>Maj</kbd>-clic pour une plage, ou filtrer par titre ou par numéro (par ex. `1-5,7`).
 4. Choisissez la qualité, le type de sortie et les extras, puis cliquez sur **下载** (Télécharger).
 
@@ -97,7 +120,9 @@ Vous pouvez aussi saisir ces mots-clés à la place d'un lien : `稍后再看` o
 
 Une fois connecté, vous obtenez les qualités et contenus auxquels votre compte a accès (1080P et plus, contenus premium). Trois méthodes sont possibles :
 
-- **从浏览器导入** (Importer depuis le navigateur) : réutilise les cookies de connexion de Chrome, Edge, Brave, Arc, Vivaldi, Chromium ou Firefox. macOS protège les données de Chrome, Edge et Brave : activez d'abord l'application dans **Réglages Système → Confidentialité et sécurité → Accès complet au disque**, puis redémarrez-la. L'import depuis un navigateur basé sur Chromium demande aussi l'accès au trousseau.
+- **从浏览器导入** (Importer depuis le navigateur) : réutilise les cookies de connexion de Chrome, Edge, Brave, Arc (macOS uniquement), Vivaldi, Chromium ou Firefox.
+  - macOS protège les données de Chrome, Edge et Brave : activez d'abord l'application dans **Réglages Système → Confidentialité et sécurité → Accès complet au disque**, puis redémarrez-la. L'import depuis un navigateur basé sur Chromium demande aussi l'accès au trousseau.
+  - Sous Linux, les navigateurs basés sur Chromium conservent la clé des cookies dans le trousseau du système (GNOME Keyring / libsecret). L'application la lit avec `secret-tool` (`sudo apt install libsecret-tools`), et le trousseau peut demander à être déverrouillé. Les versions Snap et Flatpak de Firefox, ainsi que Chromium en Snap, sont également prises en charge.
 - **在应用内登录** (Se connecter dans l'application) : ouvre la page de connexion officielle de bilibili, avec connexion par QR code, mot de passe ou SMS.
 - **手动粘贴 Cookie** (Coller les cookies) : une chaîne de cookies séparés par des points-virgules, ou le JSON exporté par une extension de navigateur.
 
@@ -139,11 +164,11 @@ Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le je
 ## Limitations
 
 - Les contenus protégés par DRM, soumis à des restrictions géographiques ou que votre compte n'est pas autorisé à regarder ne peuvent pas être téléchargés. Ces tâches sont marquées **无法下载** (téléchargement impossible) avec la raison.
-- macOS uniquement.
+- macOS et Linux (x64) uniquement ; il n'existe pas de version Windows. Sous Linux, seule l'AppImage se met à jour d'elle-même.
 
 ## Compiler depuis les sources
 
-Nécessite macOS, Node.js 22.12 ou ultérieur et npm.
+Nécessite macOS ou Linux, Node.js 22.12 ou ultérieur et npm.
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -152,7 +177,8 @@ npm install
 npm run dev          # mode développement
 npm test             # tests unitaires
 npm run typecheck    # vérification des types
-npm run build:mac    # génère les dmg / zip x64 et arm64 dans dist/
+npm run build:mac    # sous macOS : génère les dmg / zip x64 et arm64 dans dist/
+npm run build:linux  # sous Linux : génère l'AppImage / le deb x64 dans dist/
 ```
 
 Voir [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais) pour le flux de développement et [docs/RELEASING.md](docs/RELEASING.md) (en chinois) pour l'empaquetage et les publications.
@@ -164,7 +190,7 @@ src/main/auth               Connexion : stockage des cookies, fenêtre de connex
 src/main/bili               API bilibili : signature WBI, analyse des vidéos / animés / cours / listes, flux, sous-titres, danmaku
 src/main/download           File de téléchargement, reprise, multiplexage ffmpeg, extras (couverture, sous-titres, NFO…)
 src/main/net                Proxy et choix du CDN
-src/main/update             Mises à jour intégrées : vérification de update.json, contrôle du téléchargement, remplacement du .app
+src/main/update             Mises à jour intégrées : vérification de update.json, contrôle du téléchargement, remplacement du .app ou de l'AppImage
 src/main/mcp.ts             Serveur MCP local
 src/main/subscriptions.ts   Abonnements
 src/shared                  Types, analyse des liens et modèles de nommage partagés entre les processus
@@ -187,4 +213,4 @@ Les issues et pull requests sont les bienvenues. Merci de lire d'abord [CONTRIBU
 
 [MIT](LICENSE) © wangzi6224
 
-L'application intègre des binaires FFmpeg statiques issus de [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg s'exécute comme un programme distinct sous sa propre licence et n'est pas couvert par la licence MIT ci-dessus. Le texte de sa licence est fourni dans l'application, dans `Contents/Resources/ffmpeg/LICENSE` ; voir aussi [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+L'application intègre des binaires FFmpeg statiques issus de [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg s'exécute comme un programme distinct sous sa propre licence et n'est pas couvert par la licence MIT ci-dessus. Le texte de sa licence est fourni dans l'application, dans `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Linux) ; voir aussi [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).

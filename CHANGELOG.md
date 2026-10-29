@@ -4,6 +4,11 @@
 推送版本 tag 后，GitHub Actions 会把当前版本这一段作为 GitHub Release 的说明，并把最近的各段写进 `update.json`，
 应用内的更新弹窗会显示用户当前版本之后的所有段落。还没发布的改动先记在“未发布”下面。
 
+## 未发布
+
+- 新增 Linux 版（x64）：提供 AppImage 和 deb 两种安装包，随包带 ffmpeg；AppImage 版支持应用内自动更新，deb 版有新版本时提示去下载页面
+- Linux 上可以从 Chrome、Edge、Brave、Vivaldi、Chromium、Firefox 导入登录；关闭窗口转到后台后，点托盘图标重新打开
+
 ## 0.4.2 - 2026-10-28
 
 - 侧边栏里，账号和上面的设置之间加了一条分隔线

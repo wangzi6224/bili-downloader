@@ -8,38 +8,76 @@ import type { AuthState, BrowserProfile } from '@shared/types'
 import { replaceLogin } from './cookieImport'
 import { isBiliHost, type PlainCookie, type SameSite } from './session'
 
-const SUPPORT = join(homedir(), 'Library/Application Support')
+const IS_MAC = process.platform === 'darwin'
 
 interface ChromiumBrowser {
   key: string
   name: string
+  /** 数据文件夹 */
   root: string
-  keychain: string
+  /** 加密 Cookie 的密码存在哪：macOS 是钥匙串里的条目名，Linux 是密钥环里 application 属性的值 */
+  secret: string
 }
 
-const CHROMIUM: ChromiumBrowser[] = [
-  { key: 'chrome', name: 'Chrome', root: 'Google/Chrome', keychain: 'Chrome Safe Storage' },
-  { key: 'edge', name: 'Edge', root: 'Microsoft Edge', keychain: 'Microsoft Edge Safe Storage' },
-  { key: 'brave', name: 'Brave', root: 'BraveSoftware/Brave-Browser', keychain: 'Brave Safe Storage' },
-  { key: 'arc', name: 'Arc', root: 'Arc/User Data', keychain: 'Arc Safe Storage' },
-  { key: 'vivaldi', name: 'Vivaldi', root: 'Vivaldi', keychain: 'Vivaldi Safe Storage' },
-  { key: 'chromium', name: 'Chromium', root: 'Chromium', keychain: 'Chromium Safe Storage' }
-]
+// 数据文件夹在模块加载时按 HOME 算好（测试里换了 HOME 要重新加载模块）
+const SUPPORT = join(homedir(), 'Library/Application Support')
+const CONFIG = join(homedir(), '.config')
 
-const FIREFOX_PROFILES = join(SUPPORT, 'Firefox/Profiles')
+const CHROMIUM: ChromiumBrowser[] = IS_MAC
+  ? [
+      { key: 'chrome', name: 'Chrome', root: join(SUPPORT, 'Google/Chrome'), secret: 'Chrome Safe Storage' },
+      { key: 'edge', name: 'Edge', root: join(SUPPORT, 'Microsoft Edge'), secret: 'Microsoft Edge Safe Storage' },
+      { key: 'brave', name: 'Brave', root: join(SUPPORT, 'BraveSoftware/Brave-Browser'), secret: 'Brave Safe Storage' },
+      { key: 'arc', name: 'Arc', root: join(SUPPORT, 'Arc/User Data'), secret: 'Arc Safe Storage' },
+      { key: 'vivaldi', name: 'Vivaldi', root: join(SUPPORT, 'Vivaldi'), secret: 'Vivaldi Safe Storage' },
+      { key: 'chromium', name: 'Chromium', root: join(SUPPORT, 'Chromium'), secret: 'Chromium Safe Storage' }
+    ]
+  : // Edge 和 Vivaldi 在 Linux 上沿用 Chromium、Chrome 的密钥环条目
+    [
+      { key: 'chrome', name: 'Chrome', root: join(CONFIG, 'google-chrome'), secret: 'chrome' },
+      { key: 'edge', name: 'Edge', root: join(CONFIG, 'microsoft-edge'), secret: 'chromium' },
+      { key: 'brave', name: 'Brave', root: join(CONFIG, 'BraveSoftware/Brave-Browser'), secret: 'brave' },
+      { key: 'vivaldi', name: 'Vivaldi', root: join(CONFIG, 'vivaldi'), secret: 'chrome' },
+      { key: 'chromium', name: 'Chromium', root: join(CONFIG, 'chromium'), secret: 'chromium' },
+      // Ubuntu 软件商店（snap）装的 Chromium
+      { key: 'chromium-snap', name: 'Chromium', root: join(homedir(), 'snap/chromium/common/chromium'), secret: 'chromium' }
+    ]
+
+/** 放 Firefox 配置档的文件夹 */
+const FIREFOX_ROOTS: string[] = IS_MAC
+  ? [join(SUPPORT, 'Firefox/Profiles')]
+  : [
+      join(homedir(), '.mozilla/firefox'),
+      // 新版 Firefox 新建的配置档放在 XDG 目录里
+      join(CONFIG, 'mozilla/firefox'),
+      // Ubuntu 默认的 snap 版、flatpak 版
+      join(homedir(), 'snap/firefox/common/.mozilla/firefox'),
+      join(homedir(), '.var/app/org.mozilla.firefox/.mozilla/firefox')
+    ]
 
 // ---------- Chromium 解密（导出供单元测试） ----------
 
-export function chromiumKey(password: string): Buffer {
-  return pbkdf2Sync(password, 'saltysalt', 1003, 16, 'sha1')
+/** 加密密钥由密码经 PBKDF2 得到：macOS 迭代 1003 次，Linux 1 次 */
+export function chromiumKey(password: string, iterations = IS_MAC ? 1003 : 1): Buffer {
+  return pbkdf2Sync(password, 'saltysalt', iterations, 16, 'sha1')
 }
 
-/** v10 前缀 + AES-128-CBC（IV 为 16 个空格）；meta version ≥ 24 时明文前 32 字节是域名哈希 */
-export function decryptChromiumValue(enc: Uint8Array, key: Buffer, metaVersion: number): string {
+/** v10、v11 两种前缀各自用的密钥。macOS 上两种都用钥匙串里的密码；Linux 上 v10 用固定密码 peanuts，v11 用密钥环里的密码 */
+export type ChromiumKeys = Partial<Record<'v10' | 'v11', Buffer>>
+
+const encryptedPrefix = (enc: Uint8Array): 'v10' | 'v11' | undefined => {
+  const prefix = Buffer.from(enc.subarray(0, 3)).toString('latin1')
+  return prefix === 'v10' || prefix === 'v11' ? prefix : undefined
+}
+
+/** 前缀 + AES-128-CBC（IV 为 16 个空格）；meta version ≥ 24 时明文前 32 字节是域名哈希 */
+export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVersion: number): string {
   const buf = Buffer.from(enc)
   if (buf.length === 0) return ''
-  const prefix = buf.subarray(0, 3).toString('latin1')
-  if (prefix !== 'v10' && prefix !== 'v11') return buf.toString('utf8')
+  const prefix = encryptedPrefix(buf)
+  if (!prefix) return buf.toString('utf8')
+  const key = keys[prefix]
+  if (!key) throw new Error(`缺少解密 ${prefix} 的密钥`)
   const decipher = createDecipheriv('aes-128-cbc', key, Buffer.alloc(16, ' '))
   let out = Buffer.concat([decipher.update(buf.subarray(3)), decipher.final()])
   if (metaVersion >= 24) out = out.subarray(32)
@@ -87,7 +125,7 @@ interface Found {
 
 const isPermissionError = (e: unknown): boolean => ['EPERM', 'EACCES'].includes((e as { code?: string }).code ?? '')
 
-/** 浏览器目录存在但被 macOS 隐私保护拦截时，返回一条占位记录 */
+/** 浏览器目录存在但没有权限读取（macOS 的隐私保护拦截，或文件夹权限不允许）时，返回一条占位记录 */
 function blockedEntry(key: string, browser: string): Found {
   return {
     browser: 'firefox',
@@ -97,10 +135,9 @@ function blockedEntry(key: string, browser: string): Found {
 }
 
 function chromiumProfiles(b: ChromiumBrowser): Found[] {
-  const root = join(SUPPORT, b.root)
-  if (!existsSync(root)) return []
+  if (!existsSync(b.root)) return []
   try {
-    return readChromiumProfiles(b, root)
+    return readChromiumProfiles(b, b.root)
   } catch (e) {
     if (isPermissionError(e)) return [blockedEntry(b.key, b.name)]
     throw e
@@ -128,20 +165,20 @@ function readChromiumProfiles(b: ChromiumBrowser, root: string): Found[] {
   return out
 }
 
-function firefoxProfiles(): Found[] {
-  if (!existsSync(FIREFOX_PROFILES)) return []
+function firefoxProfiles(root: string): Found[] {
+  if (!existsSync(root)) return []
   let dirs: string[]
   try {
-    dirs = readdirSync(FIREFOX_PROFILES)
+    dirs = readdirSync(root)
   } catch (e) {
     if (isPermissionError(e)) return [blockedEntry('firefox', 'Firefox')]
     throw e
   }
   return dirs
-    .filter((dir) => existsSync(join(FIREFOX_PROFILES, dir, 'cookies.sqlite')))
+    .filter((dir) => existsSync(join(root, dir, 'cookies.sqlite')))
     .map((dir) => ({
       browser: 'firefox' as const,
-      cookieFile: join(FIREFOX_PROFILES, dir, 'cookies.sqlite'),
+      cookieFile: join(root, dir, 'cookies.sqlite'),
       profile: {
         id: `firefox::${dir}`,
         browser: 'Firefox',
@@ -152,7 +189,7 @@ function firefoxProfiles(): Found[] {
 }
 
 function findAll(): Found[] {
-  return [...CHROMIUM.flatMap(chromiumProfiles), ...firefoxProfiles()]
+  return [...CHROMIUM.flatMap(chromiumProfiles), ...FIREFOX_ROOTS.flatMap(firefoxProfiles)]
 }
 
 function hasSessData(f: Found): boolean {
@@ -202,33 +239,57 @@ function keychainPassword(service: string): Promise<string> {
   })
 }
 
+/** Linux：Chrome 系浏览器存在 GNOME 密钥环（libsecret）里的密码，用 secret-tool 读 */
+function keyringPassword(application: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // 密钥环锁着时会弹出解锁窗口，留足时间
+    execFile('secret-tool', ['lookup', 'application', application], { timeout: 120_000 }, (err, stdout) => {
+      if ((err as { code?: unknown } | null)?.code === 'ENOENT') {
+        reject(
+          new Error(
+            '读取 Chrome 系浏览器的登录信息需要 secret-tool，请先安装（Debian / Ubuntu：sudo apt install libsecret-tools），或改用应用内登录'
+          )
+        )
+      } else if (err || !stdout.trim()) {
+        reject(new Error(`系统密钥环里没有找到浏览器的密码（application=${application}），或密钥环没有解锁。也可以改用应用内登录`))
+      } else resolve(stdout.trim())
+    })
+  })
+}
+
+/** 只取实际用到的密钥：Linux 上没有 v11 的 Cookie 就不去碰密钥环 */
+async function chromiumKeys(b: ChromiumBrowser, needsV11: boolean): Promise<ChromiumKeys> {
+  if (IS_MAC) {
+    const key = chromiumKey(await keychainPassword(b.secret))
+    return { v10: key, v11: key }
+  }
+  return {
+    v10: chromiumKey('peanuts'),
+    v11: needsV11 ? chromiumKey(await keyringPassword(b.secret)) : undefined
+  }
+}
+
 async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<PlainCookie[]> {
-  const key = chromiumKey(await keychainPassword(f.browser.keychain))
-  return withDbCopy(f.cookieFile, (db) => {
+  const { version, rows } = withDbCopy(f.cookieFile, (db) => {
     const meta = db.prepare(`SELECT value FROM meta WHERE key = 'version'`).get()
-    const version = Number(meta?.value ?? 0)
     const stmt = db.prepare(
       `SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, samesite FROM cookies`
     )
     stmt.setReadBigInts(true)
-    const out: PlainCookie[] = []
-    for (const r of stmt.all()) {
-      const host = String(r.host_key)
-      if (!isBiliHost(host)) continue
-      const value = r.value ? String(r.value) : decryptChromiumValue(r.encrypted_value as Uint8Array, key, version)
-      out.push({
-        domain: host,
-        name: String(r.name),
-        value,
-        path: String(r.path),
-        secure: Number(r.is_secure) === 1,
-        httpOnly: Number(r.is_httponly) === 1,
-        expires: chromeTimeToUnix(r.expires_utc as bigint),
-        sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
-      })
-    }
-    return out
+    return { version: Number(meta?.value ?? 0), rows: stmt.all().filter((r) => isBiliHost(String(r.host_key))) }
   })
+  const needsV11 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v11')
+  const keys = await chromiumKeys(f.browser, needsV11)
+  return rows.map((r) => ({
+    domain: String(r.host_key),
+    name: String(r.name),
+    value: r.value ? String(r.value) : decryptChromiumValue(r.encrypted_value as Uint8Array, keys, version),
+    path: String(r.path),
+    secure: Number(r.is_secure) === 1,
+    httpOnly: Number(r.is_httponly) === 1,
+    expires: chromeTimeToUnix(r.expires_utc as bigint),
+    sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
+  }))
 }
 
 /** 新版 Firefox 的 expiry 是毫秒 */

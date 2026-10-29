@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareVersions, notesSince, parseManifest } from './manifest'
+import { assetKey, compareVersions, notesSince, parseManifest } from './manifest'
 
 describe('compareVersions', () => {
   it('按数字比较各段', () => {
@@ -153,5 +153,24 @@ describe('notesSince 预发布版本', () => {
     ]
     expect(notesSince(notes, '1.0.0-beta.1', '1.0.0').map((n) => n.version)).toEqual(['1.0.0', '1.0.0-beta.10', '1.0.0-beta.2'])
     expect(notesSince(notes, '0.9.0', '1.0.0-beta.2').map((n) => n.version)).toEqual(['1.0.0-beta.2', '1.0.0-beta.1'])
+  })
+})
+
+describe('assetKey', () => {
+  it('macOS 只用架构（已发布的旧版本就是这样取的），其他系统带上系统名', () => {
+    expect(assetKey('darwin', 'arm64')).toBe('arm64')
+    expect(assetKey('darwin', 'x64')).toBe('x64')
+    expect(assetKey('linux', 'x64')).toBe('linux-x64')
+  })
+
+  it('带 Linux 安装包的清单，macOS 旧版本照样能解析、取到自己的 zip', () => {
+    const f = (name: string) => ({ url: `https://example.com/${name}`, sha512: 'abc', size: 1 })
+    const m = parseManifest({
+      version: '0.5.0',
+      page: 'https://example.com/v0.5.0',
+      files: { arm64: f('arm64.zip'), x64: f('x64.zip'), 'linux-x64': f('x86_64.AppImage') }
+    })
+    expect(m.files.x64?.url).toBe('https://example.com/x64.zip')
+    expect(m.files[assetKey('linux', 'x64')]?.url).toBe('https://example.com/x86_64.AppImage')
   })
 })

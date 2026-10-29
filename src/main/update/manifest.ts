@@ -16,6 +16,12 @@ export interface ManifestFile {
   size: number
 }
 
+/**
+ * update.json 里各系统安装包的键：macOS 只写架构（已发布的旧版本按 process.arch 取，不能改），
+ * 其他系统带上系统名，例如 linux-x64
+ */
+export const assetKey = (platform: string, arch: string): string => (platform === 'darwin' ? arch : `${platform}-${arch}`)
+
 const VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 
 /** 比较 x.y.z 版本号；带预发布后缀（如 1.0.0-beta.1）的比正式版小 */

@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* mac:pt-0 这样的类只在 macOS 上生效，<html data-platform> 由 main.tsx 设置 */
+@custom-variant mac (&:where([data-platform='darwin'] *));
+
 @theme {
   --color-bili: #fb7299;
   --color-bili-dark: #e45c84;
@@ -78,14 +81,20 @@ body,
 body {
   margin: 0;
   font-family:
-    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'WenQuanYi Micro Hei', sans-serif;
   font-size: 13px;
-  /* 透明：侧边栏透出窗口的毛玻璃 */
-  background: transparent;
+  /* 其他系统没有毛玻璃，侧边栏用不透明的底色 */
+  background: var(--surface);
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   cursor: default;
+}
+
+/* 透明：侧边栏透出窗口的毛玻璃 */
+[data-platform='darwin'] body {
+  background: transparent;
 }
 
 input,

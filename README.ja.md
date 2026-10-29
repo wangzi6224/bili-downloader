@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-bilibili のリンクを貼り付けるだけで、動画・複数パート動画・コレクション・アニメ・映画をダウンロードできる macOS デスクトップアプリです。
+bilibili のリンクを貼り付けるだけで、動画・複数パート動画・コレクション・アニメ・映画をダウンロードできる macOS / Linux 向けデスクトップアプリです。
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | **日本語** | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
@@ -70,6 +71,8 @@ bilibili のリンクを貼り付けるだけで、動画・複数パート動�
 
 ## インストール
 
+### macOS
+
 1. [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) から最新の `.dmg` をダウンロードします：
    - Apple シリコン（M1 以降）：`bili-downloader-<version>-arm64.dmg`
    - Intel：`bili-downloader-<version>-x64.dmg`
@@ -80,14 +83,34 @@ bilibili のリンクを貼り付けるだけで、動画・複数パート動�
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
    ```
 
-macOS 12 以降が必要です。UI は現在簡体字中国語のみです。以下では画面上の表記を中国語の原文で示し、括弧内に日本語訳を添えています。
+macOS 12 以降が必要です。
 
-インストール後はアプリが自動でアップデートを確認し、そのままインストールできます。
+### Linux
+
+[Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) から次のいずれかをダウンロードします（64 ビット x86 のみ）：
+
+- **AppImage**（ディストリビューションを問わず利用可能、自動アップデート対応）：`bili-downloader-<version>-x86_64.AppImage`。実行権限を付けてから起動します：
+
+  ```bash
+  chmod +x bili-downloader-*-x86_64.AppImage
+  ./bili-downloader-*-x86_64.AppImage
+  ```
+
+  AppImage の実行には FUSE 2 が必要です。起動しない場合は FUSE 2 をインストールするか（Ubuntu 24.04 以降は `sudo apt install libfuse2t64`、それより前のリリースでは `libfuse2`）、`--appimage-extract-and-run` を付けて実行してください。
+- **deb**（Debian、Ubuntu とその派生ディストリビューション）：`bili-downloader-<version>-amd64.deb`。`sudo apt install ./bili-downloader-<version>-amd64.deb` でインストールすると、アプリケーションメニューに **B站下载器** が表示されます。
+
+ウィンドウを閉じてバックグラウンドで動作しているときは、トレイアイコンをクリックするとウィンドウが再表示されます。GNOME ではトレイアイコンの表示に AppIndicator 拡張機能が必要です（Ubuntu には標準で入っています）。メニューバーは非表示になっており、<kbd>Alt</kbd> キーを押すと表示されます。
+
+### アップデート
+
+インストール後はアプリが自動でアップデートを確認します。macOS 版と Linux の AppImage 版はそのままアップデートをインストールできます。deb 版では更新内容を表示し、ダウンロードページへ案内します。
+
+UI は現在簡体字中国語のみです。以下では画面上の表記を中国語の原文で示し、括弧内に日本語訳を添えています。
 
 ## クイックスタート
 
 1. bilibili アカウントにログインします（下記の **ログイン** を参照）。リンクの解析にはログインが必要です。
-2. bilibili のリンクをコピーします。アプリに戻るとクリップボードから自動で読み取ります。入力欄で <kbd>⌘</kbd><kbd>V</kbd> を押して **解析** をクリックすることもできます。
+2. bilibili のリンクをコピーします。アプリに戻るとクリップボードから自動で読み取ります。入力欄で <kbd>⌘</kbd><kbd>V</kbd>（Linux では <kbd>Ctrl</kbd><kbd>V</kbd>）を押して **解析** をクリックすることもできます。
 3. ダウンロードする項目を選びます。全選択、選択の反転、<kbd>Shift</kbd> による範囲選択、タイトルや番号（例：`1-5,7`）での絞り込みが可能です。
 4. 画質、出力形式、追加コンテンツを選び、**下载**（ダウンロード）をクリックします。
 
@@ -97,7 +120,9 @@ macOS 12 以降が必要です。UI は現在簡体字中国語のみです。�
 
 ログインすると、ご自身のアカウントで視聴できる画質とコンテンツ（1080P 以上、プレミアム会員向けコンテンツ）を取得できます。方法は 3 つあります：
 
-- **从浏览器导入**（ブラウザからインポート）：Chrome、Edge、Brave、Arc、Vivaldi、Chromium、Firefox のログイン Cookie を再利用します。Chrome、Edge、Brave のデータは macOS のプライバシー保護の対象のため、先に **システム設定 → プライバシーとセキュリティ → フルディスクアクセス** で本アプリを許可し、アプリを再起動してください。Chromium 系ブラウザからのインポートではキーチェーンへのアクセス許可も求められます。
+- **从浏览器导入**（ブラウザからインポート）：Chrome、Edge、Brave、Arc（macOS のみ）、Vivaldi、Chromium、Firefox のログイン Cookie を再利用します。
+  - Chrome、Edge、Brave のデータは macOS のプライバシー保護の対象のため、先に **システム設定 → プライバシーとセキュリティ → フルディスクアクセス** で本アプリを許可し、アプリを再起動してください。Chromium 系ブラウザからのインポートではキーチェーンへのアクセス許可も求められます。
+  - Linux では、Chromium 系ブラウザは Cookie の暗号化キーをシステムのキーリング（GNOME Keyring / libsecret）に保存しています。アプリは `secret-tool`（`sudo apt install libsecret-tools` でインストール）でこのキーを読み取ります。その際、キーリングのロック解除を求められることがあります。Snap 版・Flatpak 版の Firefox と Snap 版の Chromium にも対応しています。
 - **在应用内登录**（アプリ内でログイン）：bilibili 公式のログインページを開きます。QR コード、パスワード、SMS でのログインに対応しています。
 - **手动粘贴 Cookie**（Cookie を手動で貼り付け）：セミコロン区切りの Cookie 文字列、またはブラウザ拡張機能でエクスポートした JSON。
 
@@ -139,11 +164,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 ## 制限事項
 
 - DRM で保護されたコンテンツ、地域制限のあるコンテンツ、アカウントに視聴権限のないコンテンツはダウンロードできません。これらのタスクは **无法下载**（ダウンロード不可）と表示され、理由が示されます。
-- macOS 専用です。
+- 対応 OS は macOS と Linux（x64）のみで、Windows 版はありません。Linux で自動アップデートに対応しているのは AppImage 版だけです。
 
 ## ソースからのビルド
 
-macOS、Node.js 22.12 以降、npm が必要です。
+macOS または Linux、Node.js 22.12 以降、npm が必要です。
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -152,7 +177,8 @@ npm install
 npm run dev          # 開発モード
 npm test             # ユニットテスト
 npm run typecheck    # 型チェック
-npm run build:mac    # dist/ に x64 と arm64 の dmg / zip を生成
+npm run build:mac    # macOS 上で実行：dist/ に x64 と arm64 の dmg / zip を生成
+npm run build:linux  # Linux 上で実行：dist/ に x64 の AppImage / deb を生成
 ```
 
 開発の流れは [CONTRIBUTING.md](CONTRIBUTING.md)（英語）、パッケージングとリリースは [docs/RELEASING.md](docs/RELEASING.md)（中国語）を参照してください。
@@ -164,7 +190,7 @@ src/main/auth               ログイン：Cookie の保存、アプリ内ログ
 src/main/bili               bilibili API：WBI 署名、動画 / アニメ / 講座 / リストの解析、ストリーム取得、字幕、弾幕
 src/main/download           ダウンロードキュー、レジューム、ffmpeg による結合、追加コンテンツ（カバー、字幕、NFO…）
 src/main/net                プロキシと CDN の選択
-src/main/update             アプリ内アップデート：update.json の確認、ダウンロードの検証、.app の置き換え
+src/main/update             アプリ内アップデート：update.json の確認、ダウンロードの検証、.app または AppImage の置き換え
 src/main/mcp.ts             ローカル MCP サーバー
 src/main/subscriptions.ts   購読
 src/shared                  全プロセス共通の型、リンク解析、命名テンプレート
@@ -187,4 +213,4 @@ Issue やプルリクエストを歓迎します。事前に [CONTRIBUTING.md](C
 
 [MIT](LICENSE) © wangzi6224
 
-アプリには [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)（`b6.1.1`）の静的ビルドの FFmpeg が同梱されています。FFmpeg は独自のライセンスに従う独立したプログラムとして動作し、上記の MIT ライセンスの対象外です。ライセンス本文はアプリ内の `Contents/Resources/ffmpeg/LICENSE` に含まれています。[FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html) も参照してください。
+アプリには [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)（`b6.1.1`）の静的ビルドの FFmpeg が同梱されています。FFmpeg は独自のライセンスに従う独立したプログラムとして動作し、上記の MIT ライセンスの対象外です。ライセンス本文はアプリ内の `Contents/Resources/ffmpeg/LICENSE`（macOS）/ `resources/ffmpeg/LICENSE`（Linux） に含まれています。[FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html) も参照してください。

@@ -18,6 +18,7 @@ function on<A extends unknown[]>(channel: string) {
 }
 
 const api: BiliApi = {
+  platform: process.platform,
   auth: {
     check: () => invoke('auth:check'),
     openLoginWindow: () => invoke('auth:login'),

@@ -247,6 +247,11 @@ describe('shortenHome', () => {
     expect(shortenHome('/Users/alice')).toBe('~')
   })
 
+  it('Linux 上把 /home/用户名 缩写成 ~', () => {
+    expect(shortenHome('/home/alice/下载/Bilibili')).toBe('~/下载/Bilibili')
+    expect(shortenHome('/home/alice')).toBe('~')
+  })
+
   it('其它路径不变', () => {
     expect(shortenHome('/Volumes/Disk/Users/alice')).toBe('/Volumes/Disk/Users/alice')
   })

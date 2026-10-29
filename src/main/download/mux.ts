@@ -6,7 +6,7 @@ import { AbortError, FfmpegError } from './errors'
 
 let cached: string | undefined
 
-/** 打包后用随包的 ffmpeg；开发时优先用系统安装的 ffmpeg，再退回 resources/ffmpeg/<arch> */
+/** 打包后用随包的 ffmpeg；开发时优先用系统安装的 ffmpeg，再退回 resources/ffmpeg/<系统>-<架构> */
 export function ffmpegPath(): string {
   if (cached) return cached
   const candidates = app.isPackaged
@@ -14,7 +14,7 @@ export function ffmpegPath(): string {
     : [
         '/opt/homebrew/bin/ffmpeg',
         '/usr/local/bin/ffmpeg',
-        join(app.getAppPath(), 'resources', 'ffmpeg', process.arch, 'ffmpeg')
+        join(app.getAppPath(), 'resources', 'ffmpeg', `${process.platform}-${process.arch}`, 'ffmpeg')
       ]
   cached = candidates.find((p) => existsSync(p)) ?? 'ffmpeg'
   return cached

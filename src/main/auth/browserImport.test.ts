@@ -29,27 +29,40 @@ vi.mock('./session', async (importOriginal) => ({
 
 const { chromeTimeToUnix, chromiumKey, decryptChromiumValue } = await import('./browserImport')
 
-function encrypt(plain: Buffer, password: string): Buffer {
-  const cipher = createCipheriv('aes-128-cbc', chromiumKey(password), Buffer.alloc(16, ' '))
-  return Buffer.concat([Buffer.from('v10'), cipher.update(plain), cipher.final()])
+/** 默认按 macOS 的方式加密（迭代 1003 次、v10 前缀）；Linux 迭代 1 次 */
+function encrypt(plain: Buffer, password: string, iterations = 1003, prefix = 'v10'): Buffer {
+  const cipher = createCipheriv('aes-128-cbc', chromiumKey(password, iterations), Buffer.alloc(16, ' '))
+  return Buffer.concat([Buffer.from(prefix), cipher.update(plain), cipher.final()])
 }
 
 describe('chromium cookie decryption', () => {
-  const key = chromiumKey('peanuts')
+  const keys = { v10: chromiumKey('peanuts', 1003) }
 
   it('decrypts legacy values (meta version < 24)', () => {
     const enc = encrypt(Buffer.from('abc%2C123%2Cdef'), 'peanuts')
-    expect(decryptChromiumValue(enc, key, 23)).toBe('abc%2C123%2Cdef')
+    expect(decryptChromiumValue(enc, keys, 23)).toBe('abc%2C123%2Cdef')
   })
 
   it('strips the 32-byte host hash for meta version >= 24', () => {
     const hash = createHash('sha256').update('.bilibili.com').digest()
     const enc = encrypt(Buffer.concat([hash, Buffer.from('SESSVALUE')]), 'peanuts')
-    expect(decryptChromiumValue(enc, key, 24)).toBe('SESSVALUE')
+    expect(decryptChromiumValue(enc, keys, 24)).toBe('SESSVALUE')
   })
 
   it('passes through unencrypted values', () => {
-    expect(decryptChromiumValue(Buffer.from('plain'), key, 24)).toBe('plain')
+    expect(decryptChromiumValue(Buffer.from('plain'), keys, 24)).toBe('plain')
+  })
+
+  it('v10、v11 各用各的密钥，缺了要用的那个就报错', () => {
+    const both = { v10: chromiumKey('peanuts', 1), v11: chromiumKey('from-keyring', 1) }
+    expect(decryptChromiumValue(encrypt(Buffer.from('a'), 'peanuts', 1, 'v10'), both, 23)).toBe('a')
+    expect(decryptChromiumValue(encrypt(Buffer.from('b'), 'from-keyring', 1, 'v11'), both, 23)).toBe('b')
+    expect(() => decryptChromiumValue(encrypt(Buffer.from('c'), 'x', 1, 'v11'), { v10: both.v10 }, 23)).toThrow('缺少解密 v11 的密钥')
+  })
+
+  it('PBKDF2 迭代次数：macOS 1003 次，Linux 1 次', () => {
+    expect(chromiumKey('peanuts', 1003).equals(chromiumKey('peanuts', 1))).toBe(false)
+    expect(chromiumKey('peanuts').equals(chromiumKey('peanuts', process.platform === 'darwin' ? 1003 : 1))).toBe(true)
   })
 
   it('converts chrome time', () => {
@@ -59,7 +72,7 @@ describe('chromium cookie decryption', () => {
   })
 
   it('空值解出空串', () => {
-    expect(decryptChromiumValue(new Uint8Array(), key, 24)).toBe('')
+    expect(decryptChromiumValue(new Uint8Array(), keys, 24)).toBe('')
   })
 })
 
@@ -107,9 +120,18 @@ let home: string
 let tmp: string
 const locked: string[] = []
 const env = { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }
+const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 let bi: typeof import('./browserImport')
 
 const support = (...p: string[]): string => join(home, 'Library/Application Support', ...p)
+const config = (...p: string[]): string => join(home, '.config', ...p)
+
+/** 模块加载时按系统和 HOME 决定去哪找浏览器，所以换了以后要重新加载 */
+async function load(os: 'darwin' | 'linux'): Promise<void> {
+  Object.defineProperty(process, 'platform', { ...platform, value: os })
+  vi.resetModules()
+  bi = await import('./browserImport')
+}
 
 /** 建一个 Chromium 的 Cookies 库；wal 为 true 时返回仍打开着的连接（数据还在 -wal 里） */
 function chromeDb(file: string, rows: ChromeRow[], opts: { version?: number | null; wal?: boolean } = {}): DatabaseSync | undefined {
@@ -165,19 +187,22 @@ beforeEach(async () => {
   process.env.TMPDIR = tmp
   m.checkAuth.mockResolvedValue(IN)
   m.execFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: ExecCb) => cb(null, `${PASSWORD}\n`, ''))
-  // SUPPORT 在模块加载时就按 HOME 算好了，换了 HOME 要重新加载
-  vi.resetModules()
-  bi = await import('./browserImport')
 })
 
 afterEach(() => {
-  process.env.HOME = env.HOME
-  process.env.TMPDIR = env.TMPDIR
+  Object.defineProperty(process, 'platform', platform)
+  // 原本没有的变量要删掉，赋 undefined 会变成字符串 "undefined"（Linux 上默认没有 TMPDIR）
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) delete process.env[k]
+    else process.env[k] = v
+  }
   for (const p of locked.splice(0)) chmodSync(p, 0o755)
   rmSync(base, { recursive: true, force: true })
 })
 
-describe('listBrowserProfiles', () => {
+describe('listBrowserProfiles（macOS）', () => {
+  beforeEach(() => load('darwin'))
+
   it('什么浏览器都没装时返回空', () => {
     expect(bi.listBrowserProfiles()).toEqual([])
   })
@@ -286,7 +311,9 @@ describe('listBrowserProfiles', () => {
   })
 })
 
-describe('importFromBrowser', () => {
+describe('importFromBrowser（macOS）', () => {
+  beforeEach(() => load('darwin'))
+
   it('Chromium：明文和密文混合，过滤非 B站域名，字段逐一映射', async () => {
     chromeDb(support('Google/Chrome/Default/Cookies'), [
       { host: '.bilibili.com', name: 'SESSDATA', enc: encV24('.bilibili.com', 'enc-sess'), secure: 1, httpOnly: 1, sameSite: 0, expires: FUTURE },
@@ -397,5 +424,116 @@ describe('importFromBrowser', () => {
     writeFileSync(support('Firefox/Profiles/abc.default/cookies.sqlite'), 'not a database')
     await expect(bi.importFromBrowser('firefox::abc.default')).rejects.toThrow()
     expect(leftovers()).toEqual([])
+  })
+})
+
+// ---------- Linux：~/.config 下的 Chromium 系、~/.mozilla 等处的 Firefox，密码在密钥环里 ----------
+
+/** 密钥环里存的密码，和 v10 用的固定密码 peanuts 不同 */
+const KEYRING = 'keyring-secret'
+const encLinux = (value: string, prefix: 'v10' | 'v11'): Buffer =>
+  encrypt(
+    Buffer.concat([createHash('sha256').update('.bilibili.com').digest(), Buffer.from(value)]),
+    prefix === 'v10' ? 'peanuts' : KEYRING,
+    1,
+    prefix
+  )
+
+describe('listBrowserProfiles（Linux）', () => {
+  beforeEach(() => load('linux'))
+
+  it('Chromium 系在 ~/.config 下，snap 版 Chromium 在 ~/snap 下；macOS 的目录不看', () => {
+    chromeDb(config('google-chrome/Default/Cookies'), [sess()])
+    chromeDb(config('microsoft-edge/Default/Cookies'), [])
+    chromeDb(config('BraveSoftware/Brave-Browser/Profile 1/Network/Cookies'), [])
+    chromeDb(config('vivaldi/Default/Cookies'), [])
+    chromeDb(config('chromium/Default/Cookies'), [])
+    chromeDb(join(home, 'snap/chromium/common/chromium/Default/Cookies'), [sess()])
+    chromeDb(support('Google/Chrome/Default/Cookies'), [sess()])
+    chromeDb(support('Arc/User Data/Default/Cookies'), [sess()])
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.browser, p.hasBiliLogin])).toEqual([
+      ['brave::Profile 1', 'Brave', false],
+      ['chrome::Default', 'Chrome', true],
+      ['chromium-snap::Default', 'Chromium', true],
+      ['chromium::Default', 'Chromium', false],
+      ['edge::Default', 'Edge', false],
+      ['vivaldi::Default', 'Vivaldi', false]
+    ])
+  })
+
+  it('Firefox 的配置档直接放在 ~/.mozilla/firefox 下，也找 XDG、snap、flatpak 的位置', () => {
+    const row = { host: '.bilibili.com', name: 'SESSDATA', value: 's', expiry: FUTURE }
+    firefoxDb(join(home, '.mozilla/firefox/a1.default-release/cookies.sqlite'), [row])
+    firefoxDb(config('mozilla/firefox/b2.xdg/cookies.sqlite'), [])
+    firefoxDb(join(home, 'snap/firefox/common/.mozilla/firefox/c3.snap/cookies.sqlite'), [row])
+    firefoxDb(join(home, '.var/app/org.mozilla.firefox/.mozilla/firefox/d4.flatpak/cookies.sqlite'), [])
+    // 同一层的 Crash Reports 之类没有 cookies.sqlite，跳过
+    mkdirSync(join(home, '.mozilla/firefox/Crash Reports'), { recursive: true })
+    firefoxDb(support('Firefox/Profiles/e5.mac/cookies.sqlite'), [row])
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.profile, p.hasBiliLogin])).toEqual([
+      ['firefox::a1.default-release', 'default-release', true],
+      ['firefox::b2.xdg', 'xdg', false],
+      ['firefox::c3.snap', 'snap', true],
+      ['firefox::d4.flatpak', 'flatpak', false]
+    ])
+  })
+})
+
+describe('importFromBrowser（Linux）', () => {
+  beforeEach(async () => {
+    await load('linux')
+    m.execFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: ExecCb) => cb(null, KEYRING, ''))
+  })
+
+  it('只有 v10（没有密钥环时 Chrome 用固定密码）不去读密钥环', async () => {
+    chromeDb(config('google-chrome/Default/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: encLinux('v10-sess', 'v10') },
+      { host: '.bilibili.com', name: 'bili_jct', value: 'plain-jct' }
+    ])
+    expect(await bi.importFromBrowser('chrome::Default')).toBe(IN)
+    expect(m.execFile).not.toHaveBeenCalled()
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([
+      ['SESSDATA', 'v10-sess'],
+      ['bili_jct', 'plain-jct']
+    ])
+  })
+
+  it('有 v11 时用 secret-tool 从密钥环取密码，v10、v11 混在一起也能解', async () => {
+    chromeDb(config('microsoft-edge/Default/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: encLinux('v11-sess', 'v11') },
+      { host: '.bilibili.com', name: 'old', enc: encLinux('v10-old', 'v10') }
+    ])
+    await bi.importFromBrowser('edge::Default')
+    // Edge 在 Linux 上用的是 Chromium 的密钥环条目
+    expect(m.execFile).toHaveBeenCalledWith(
+      'secret-tool',
+      ['lookup', 'application', 'chromium'],
+      expect.objectContaining({ timeout: 120_000 }),
+      expect.any(Function)
+    )
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([
+      ['SESSDATA', 'v11-sess'],
+      ['old', 'v10-old']
+    ])
+  })
+
+  it('没装 secret-tool 时提示安装，或改用应用内登录', async () => {
+    chromeDb(config('google-chrome/Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: encLinux('s', 'v11') }])
+    m.execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: ExecCb) =>
+      cb(Object.assign(new Error('spawn secret-tool ENOENT'), { code: 'ENOENT' as unknown as number }), '', '')
+    )
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toThrow('sudo apt install libsecret-tools')
+    expect(m.clearBiliCookies).not.toHaveBeenCalled()
+  })
+
+  it('密钥环里没有这一项、或者没解锁', async () => {
+    chromeDb(config('BraveSoftware/Brave-Browser/Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: encLinux('s', 'v11') }])
+    m.execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: ExecCb) =>
+      cb(Object.assign(new Error('exit 1'), { code: 1 }), '', '')
+    )
+    await expect(bi.importFromBrowser('brave::Default')).rejects.toThrow('系统密钥环里没有找到浏览器的密码（application=brave）')
+    // 找到了但是空的，同样处理
+    m.execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: ExecCb) => cb(null, '\n', ''))
+    await expect(bi.importFromBrowser('brave::Default')).rejects.toThrow('application=brave')
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight, Cookie, Globe, KeyRound, Loader2, LogIn, QrCode, RefreshCw } from 'lucide-react'
 import type { BrowserProfile } from '@shared/types'
-import { api, useStore } from '../store'
+import { api, sysText, useStore } from '../store'
 import { Badge, Banner, Button, fieldCls, IconButton, Modal, ModalFooter, ModalHeader, STROKE } from './ui'
 
 export function LoginDialog() {
@@ -105,19 +105,24 @@ export function LoginDialog() {
                 </Button>
               </div>
             ))}
-            {blocked.length > 0 && (
-              <Banner
-                tone="warn"
-                actions={<Button size="sm" onClick={() => api.openFullDiskAccessSettings()}>打开系统设置</Button>}
-              >
-                macOS 不允许本应用读取 {blocked.map((p) => p.browser).join('、')} 的数据。要从这些浏览器导入，请在“系统设置 →
-                隐私与安全性 → 完全磁盘访问权限”中打开本应用，然后重启本应用。也可以直接用下面的应用内登录。
-              </Banner>
-            )}
+            {blocked.length > 0 &&
+              (sysText.isMac ? (
+                <Banner
+                  tone="warn"
+                  actions={<Button size="sm" onClick={() => api.openFullDiskAccessSettings()}>打开系统设置</Button>}
+                >
+                  macOS 不允许本应用读取 {blocked.map((p) => p.browser).join('、')} 的数据。要从这些浏览器导入，请在“系统设置 →
+                  隐私与安全性 → 完全磁盘访问权限”中打开本应用，然后重启本应用。也可以直接用下面的应用内登录。
+                </Banner>
+              ) : (
+                <Banner tone="warn">
+                  没有权限读取 {blocked.map((p) => p.browser).join('、')} 的数据（浏览器的配置文件夹不允许当前用户读取）。可以直接用下面的应用内登录。
+                </Banner>
+              ))}
             {profiles && !withLogin.length && !blocked.length && (
               <div className="text-xs leading-relaxed text-muted">
                 {profiles.length ? '找到的浏览器里都没有登录 B站' : '没有找到支持的浏览器'}
-                （支持 Chrome、Edge、Brave、Arc、Vivaldi、Chromium、Firefox；Safari 暂不支持）
+                （支持 {sysText.browsers}）
               </div>
             )}
             {withoutLogin.length > 0 && withLogin.length > 0 && (
@@ -126,7 +131,7 @@ export function LoginDialog() {
               </div>
             )}
             {withLogin.some((p) => p.browser !== 'Firefox') && (
-              <div className="text-xs text-subtle">导入 Chrome 系浏览器时 macOS 会弹出钥匙串授权，请点“允许”。</div>
+              <div className="text-xs text-subtle">{sysText.chromiumAuthHint}</div>
             )}
           </div>
         </section>

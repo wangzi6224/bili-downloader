@@ -13,7 +13,7 @@ const m = vi.hoisted(() => ({
   openExternal: vi.fn(),
   quitConfirmed: vi.fn(),
   installBlocker: vi.fn(),
-  unpack: vi.fn(),
+  prepare: vi.fn(),
   replaceAfterExit: vi.fn()
 }))
 
@@ -21,13 +21,16 @@ vi.mock('electron', () => ({ app: { getVersion: () => '0.4.0' }, shell: { openEx
 vi.mock('../logger', () => ({ logDir: () => '/logs' }))
 vi.mock('../quitGuard', () => ({ quitConfirmed: m.quitConfirmed }))
 vi.mock('../windows', () => ({ send: m.send }))
-vi.mock('./install', () => ({ installBlocker: m.installBlocker, unpack: m.unpack, replaceAfterExit: m.replaceAfterExit }))
+vi.mock('./install', () => ({ installBlocker: m.installBlocker, prepare: m.prepare, replaceAfterExit: m.replaceAfterExit }))
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void
 
 const PAYLOAD = randomBytes(256 * 1024)
 const SHA = createHash('sha512').update(PAYLOAD).digest('base64')
 const ARCH = process.arch
+/** 当前系统在 update.json 里的键和安装包后缀：macOS 是 x64 / zip，Linux 是 linux-x64 / AppImage */
+const KEY = process.platform === 'darwin' ? ARCH : `${process.platform}-${ARCH}`
+const EXT = process.platform === 'darwin' ? 'zip' : 'AppImage'
 const ORIGINAL_FEED = process.env.BILI_UPDATE_FEED
 // 假时钟会替换全局的 setTimeout，先留一份真的用来等本地 http 服务
 const realTimeout = globalThis.setTimeout.bind(globalThis)
@@ -72,7 +75,7 @@ const times =
     (n-- > 0 ? first : then)(req, res)
 
 const FILE = (): { url: string; sha512: string; size: number } => ({ url: `${base}/a.zip`, sha512: SHA, size: PAYLOAD.length })
-const manifest = (version = '0.5.0', files: Record<string, unknown> = { [ARCH]: FILE() }) => ({
+const manifest = (version = '0.5.0', files: Record<string, unknown> = { [KEY]: FILE() }) => ({
   version,
   date: '2026-10-20',
   page: `${base}/release/v${version}`,
@@ -118,7 +121,7 @@ afterEach(async () => {
 let root: string
 let dir: string
 let prefs: string
-const zipPath = (v = '0.5.0'): string => join(dir, `bili-downloader-${v}-${ARCH}.zip`)
+const zipPath = (v = '0.5.0'): string => join(dir, `bili-downloader-${v}-${ARCH}.${EXT}`)
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'bili-updater-'))
@@ -130,7 +133,7 @@ beforeEach(() => {
   m.blocker = undefined
   vi.clearAllMocks()
   m.installBlocker.mockImplementation(() => m.blocker)
-  m.unpack.mockResolvedValue('/stage/B站下载器.app')
+  m.prepare.mockResolvedValue('/stage/B站下载器.app')
 })
 
 afterEach(() => {
@@ -237,11 +240,19 @@ describe('check', () => {
     expect((await u.check(true)).status).toBe(process.getuid?.() === 0 ? 'ready' : 'available')
   })
 
+  it('macOS 和 Linux 的安装包在同一份清单里，各取各的', async () => {
+    const other = { url: 'https://example.com/other', sha512: 'x', size: 1 }
+    feed.body = manifest('0.5.0', { arm64: other, x64: other, 'linux-x64': other, [KEY]: FILE() })
+    const u = await load()
+    expect((await u.check(true)).status).toBe('available')
+    expect((u.getState() as { info: { size: number } }).info.size).toBe(PAYLOAD.length)
+  })
+
   it('新版本缺当前架构的安装包', async () => {
     feed.body = manifest('0.5.0', { 'not-this-arch': FILE() })
     const u = await load()
     await u.check(true)
-    expect(errorOf(u)).toBe(`检查更新失败：新版本 0.5.0 没有 ${ARCH} 架构的安装包`)
+    expect(errorOf(u)).toBe(`检查更新失败：新版本 0.5.0 没有 ${KEY} 的安装包`)
   })
 
   it('还没有发布过版本（404）', async () => {
@@ -274,7 +285,7 @@ describe('check', () => {
     // 后台检查发现过新版本后，再查时不先切到 checking
     expect(sentStatuses()).toEqual(['checking', 'available', 'available'])
 
-    feed.body = manifest('0.6.0', { [ARCH]: FILE() })
+    feed.body = manifest('0.6.0', { [KEY]: FILE() })
     await u.check(false)
     expect(prompts()).toBe(2)
 
@@ -356,7 +367,7 @@ describe('download', () => {
 
   it('下载并校验后就绪，只留下这次的安装包', async () => {
     mkdirSync(join(dir, 'stage'), { recursive: true })
-    for (const name of [`bili-downloader-0.4.5-${ARCH}.zip`, 'install.sh', `bili-downloader-0.6.0-${ARCH}.zip.part`]) {
+    for (const name of [`bili-downloader-0.4.5-${ARCH}.${EXT}`, 'install.sh', `bili-downloader-0.6.0-${ARCH}.${EXT}.part`]) {
       writeFileSync(join(dir, name), 'old')
     }
     const u = await available()
@@ -364,7 +375,7 @@ describe('download', () => {
     expect(u.getState()).toMatchObject({ status: 'downloading', done: 0, total: PAYLOAD.length })
     await until(() => statusOf(u) === 'ready')
     expect(readFileSync(zipPath())).toEqual(PAYLOAD)
-    expect(readdirSync(dir)).toEqual([`bili-downloader-0.5.0-${ARCH}.zip`])
+    expect(readdirSync(dir)).toEqual([`bili-downloader-0.5.0-${ARCH}.${EXT}`])
     expect(zipRequests()).toEqual([{ url: '/a.zip', range: undefined }])
   })
 
@@ -493,12 +504,12 @@ describe('install', () => {
     writeFileSync(zipPath(), Buffer.alloc(PAYLOAD.length))
     await u.install()
     expect(u.getState()).toMatchObject({ status: 'error', error: '安装更新失败：安装包已损坏，请重新下载', info: { version: '0.5.0' } })
-    expect(m.unpack).not.toHaveBeenCalled()
+    expect(m.prepare).not.toHaveBeenCalled()
   })
 
   it('解压校验出错时原样报出', async () => {
     const u = await readyUpdater()
-    m.unpack.mockRejectedValueOnce(new Error('安装包不是本应用（com.other）'))
+    m.prepare.mockRejectedValueOnce(new Error('安装包不是本应用（com.other）'))
     await u.install()
     expect(u.getState()).toMatchObject({ info: { version: '0.5.0' } })
     expect(m.quitConfirmed).not.toHaveBeenCalled()
@@ -508,7 +519,7 @@ describe('install', () => {
 
   it('非 Error 的异常也能报出来', async () => {
     const u = await readyUpdater()
-    m.unpack.mockRejectedValueOnce('坏了')
+    m.prepare.mockRejectedValueOnce('坏了')
     await u.install()
     expect(errorOf(u)).toBe('安装更新失败：坏了')
   })
@@ -516,7 +527,7 @@ describe('install', () => {
   it('解压后启动替换脚本并退出', async () => {
     const u = await readyUpdater()
     await u.install()
-    expect(m.unpack).toHaveBeenCalledWith(zipPath(), join(dir, 'stage'), '0.5.0')
+    expect(m.prepare).toHaveBeenCalledWith(zipPath(), join(dir, 'stage'), '0.5.0')
     expect(m.replaceAfterExit).toHaveBeenCalledWith('/stage/B站下载器.app', dir, join('/logs', 'update.log'))
     expect(m.quitConfirmed).toHaveBeenCalled()
     expect(statusOf(u)).toBe('installing')
@@ -525,9 +536,16 @@ describe('install', () => {
 
 describe('start / stop', () => {
   it('只留下比当前版本新的安装包', async () => {
-    const keep = [`bili-downloader-0.5.0-${ARCH}.zip`, 'bili-downloader-0.6.0-beta.1-x64.zip.part']
+    const keep = [
+      `bili-downloader-0.5.0-${ARCH}.zip`,
+      'bili-downloader-0.6.0-beta.1-x64.zip.part',
+      'bili-downloader-0.5.1-x64.AppImage',
+      'bili-downloader-0.6.0-x64.AppImage.part'
+    ]
     const drop = [
       `bili-downloader-0.4.0-${ARCH}.zip`,
+      'bili-downloader-0.4.0-x64.AppImage',
+      'bili-downloader-0.5.0-x64.deb',
       'bili-downloader-0.3.9-x64.zip',
       `bili-downloader-0.4.0-rc.1-${ARCH}.zip`,
       `bili-downloader-latest-${ARCH}.zip`,

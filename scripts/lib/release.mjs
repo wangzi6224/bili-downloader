@@ -1,7 +1,22 @@
 // release.mjs 用到的纯逻辑，单独放出来方便测试
 import { createHash } from 'node:crypto'
 
-export const ARCHS = ['arm64', 'x64']
+const MAC = { os: 'macOS', script: 'build:mac' }
+const LINUX = { os: 'Linux', script: 'build:linux' }
+
+/**
+ * 每个 Release 上传的安装包。updateKey 是它在 update.json 里的键（应用按 src/main/update/manifest.ts 的 assetKey 取），
+ * 没有 updateKey 的只给用户手动下载；build 是在哪个系统上用哪个命令打出来的。
+ * Linux 包的架构名是 electron-builder 起的：AppImage 用 x86_64，deb 用 amd64
+ */
+export const PACKAGES = [
+  { arch: 'arm64', ext: 'zip', updateKey: 'arm64', build: MAC },
+  { arch: 'arm64', ext: 'dmg', build: MAC },
+  { arch: 'x64', ext: 'zip', updateKey: 'x64', build: MAC },
+  { arch: 'x64', ext: 'dmg', build: MAC },
+  { arch: 'x86_64', ext: 'AppImage', updateKey: 'linux-x64', build: LINUX },
+  { arch: 'amd64', ext: 'deb', build: LINUX }
+]
 /** update.json 里最多带几个版本的说明，跳过了多个版本的用户能看到中间的变化 */
 export const MAX_NOTES = 30
 
@@ -18,13 +33,13 @@ export function parseChangelog(text) {
   return notes.map(({ lines, ...n }) => ({ ...n, body: lines.join('\n').trim() }))
 }
 
-/** 安装包文件名，应用内更新按这个格式找当前架构的 zip（src/main/update/updater.ts） */
+/** 安装包文件名，和 electron-builder.yml 里的 artifactName 一致 */
 export const assetName = (version, arch, ext) => `bili-downloader-${version}-${arch}.${ext}`
 
 /** 预发布版本（如 1.0.0-beta.1）不会被 releases/latest 选中，正式版用户收不到 */
 export const isPrerelease = (version) => version.includes('-')
 
-/** update.json 里一个架构的安装包：下载地址、sha512（base64，应用下载后按它校验）和大小 */
+/** update.json 里一个安装包：下载地址、sha512（base64，应用下载后按它校验）和大小 */
 export function manifestAsset(repo, version, name, data) {
   return {
     url: `https://github.com/${repo}/releases/download/v${version}/${encodeURIComponent(name)}`,

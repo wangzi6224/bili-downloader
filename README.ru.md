@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-Настольное приложение для macOS, которое скачивает с bilibili: вставьте ссылку, чтобы получить видео, многосерийные видео, подборки, аниме и фильмы.
+Настольное приложение для macOS и Linux, которое скачивает с bilibili: вставьте ссылку, чтобы получить видео, многосерийные видео, подборки, аниме и фильмы.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | **Русский** | [हिन्दी](README.hi.md)
@@ -54,7 +55,7 @@
 - Настраиваемые число одновременных загрузок, многопоточная загрузка по сегментам, ограничение скорости и автоматические повторы при сетевых ошибках
 - Пауза, продолжение и докачка даже после перезапуска; для задач, которые нельзя скачать, указывается причина
 - Прокси: напрямую, системный или вручную; встроенный тест задержки для выбора самого быстрого узла CDN bilibili
-- Запрет сна Mac (или выключения экрана) во время загрузки и уведомление, когда очередь завершена
+- Запрет сна компьютера (или выключения экрана) во время загрузки и уведомление, когда очередь завершена
 
 ### Организация и автоматизация
 
@@ -70,6 +71,8 @@
 
 ## Установка
 
+### macOS
+
 1. Скачайте последний `.dmg` со страницы [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest):
    - Apple Silicon (M1 и новее): `bili-downloader-<version>-arm64.dmg`
    - Intel: `bili-downloader-<version>-x64.dmg`
@@ -80,14 +83,34 @@
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
    ```
 
-Требуется macOS 12 или новее. Интерфейс пока доступен только на упрощённом китайском; надписи ниже приведены по-китайски с переводом.
+Требуется macOS 12 или новее.
 
-После установки приложение само проверяет обновления и может установить их на месте.
+### Linux
+
+Скачайте один из этих файлов со страницы [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) (только для 64-битной архитектуры x86):
+
+- **AppImage** (любой дистрибутив, обновляется сам): `bili-downloader-<version>-x86_64.AppImage`. Сделайте файл исполняемым и запустите его:
+
+  ```bash
+  chmod +x bili-downloader-*-x86_64.AppImage
+  ./bili-downloader-*-x86_64.AppImage
+  ```
+
+  Для AppImage нужен FUSE 2. Если AppImage не запускается, установите FUSE 2 (`sudo apt install libfuse2t64` в Ubuntu 24.04 и новее, `libfuse2` в более старых версиях) или запустите файл с ключом `--appimage-extract-and-run`.
+- **deb** (Debian, Ubuntu и производные): `bili-downloader-<version>-amd64.deb`. Установите его командой `sudo apt install ./bili-downloader-<version>-amd64.deb` — после этого **B站下载器** появится в меню приложений.
+
+Если окно закрыто и приложение работает в фоне, вернуть его можно щелчком по значку в трее. В GNOME для этого нужно расширение AppIndicator (в Ubuntu оно есть по умолчанию). Строка меню скрыта; чтобы показать её, нажмите <kbd>Alt</kbd>.
+
+### Обновления
+
+После установки приложение само проверяет обновления. Приложение для macOS и AppImage для Linux устанавливают их на месте; версия deb показывает описание изменений и предлагает перейти на страницу загрузки.
+
+Интерфейс пока доступен только на упрощённом китайском; надписи ниже приведены по-китайски с переводом.
 
 ## Быстрый старт
 
 1. Войдите в свой аккаунт bilibili (см. **Вход** ниже). Без аккаунта приложение не может разбирать ссылки.
-2. Скопируйте ссылку на bilibili. Приложение подхватит её из буфера обмена, когда вы вернётесь в его окно; также можно нажать <kbd>⌘</kbd><kbd>V</kbd> в поле ввода и нажать **解析** (Разобрать).
+2. Скопируйте ссылку на bilibili. Приложение подхватит её из буфера обмена, когда вы вернётесь в его окно; также можно нажать <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> в Linux) в поле ввода и нажать **解析** (Разобрать).
 3. Выберите, что скачать: выделить всё, инвертировать выделение, выделить диапазон с <kbd>Shift</kbd> или отфильтровать по названию или номеру (например, `1-5,7`).
 4. Выберите качество, тип результата и дополнительные материалы, затем нажмите **下载** (Скачать).
 
@@ -97,7 +120,9 @@
 
 После входа вам доступны качество и контент, разрешённые вашему аккаунту (1080P и выше, премиум-контент). Войти можно тремя способами:
 
-- **从浏览器导入** (Импорт из браузера): использует cookie входа из Chrome, Edge, Brave, Arc, Vivaldi, Chromium или Firefox. macOS защищает данные Chrome, Edge и Brave, поэтому сначала разрешите приложению доступ в **Системные настройки → Конфиденциальность и безопасность → Доступ к диску** и перезапустите его. При импорте из браузеров на базе Chromium также запрашивается доступ к Связке ключей.
+- **从浏览器导入** (Импорт из браузера): использует cookie входа из Chrome, Edge, Brave, Arc (только macOS), Vivaldi, Chromium или Firefox.
+  - macOS защищает данные Chrome, Edge и Brave, поэтому сначала разрешите приложению доступ в **Системные настройки → Конфиденциальность и безопасность → Доступ к диску** и перезапустите его. При импорте из браузеров на базе Chromium также запрашивается доступ к Связке ключей.
+  - В Linux браузеры на базе Chromium хранят ключ cookie в системной связке ключей (GNOME Keyring / libsecret). Приложение читает его через `secret-tool` (`sudo apt install libsecret-tools`); при этом может потребоваться разблокировать связку ключей. Также поддерживаются Firefox из Snap и Flatpak и Chromium из Snap.
 - **在应用内登录** (Вход в приложении): открывает официальную страницу входа bilibili — по QR-коду, паролю или SMS.
 - **手动粘贴 Cookie** (Вставить cookie вручную): строка cookie через точку с запятой или JSON, экспортированный расширением браузера.
 
@@ -139,11 +164,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 ## Ограничения
 
 - Контент с DRM, с региональными ограничениями или недоступный вашему аккаунту скачать нельзя. Такие задачи помечаются как **无法下载** (скачать невозможно) с указанием причины.
-- Только macOS.
+- Только macOS и Linux (x64); сборки для Windows нет. В Linux сам обновляется только AppImage.
 
 ## Сборка из исходников
 
-Нужны macOS, Node.js 22.12 или новее и npm.
+Нужны macOS или Linux, Node.js 22.12 или новее и npm.
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -152,7 +177,8 @@ npm install
 npm run dev          # режим разработки
 npm test             # модульные тесты
 npm run typecheck    # проверка типов
-npm run build:mac    # собрать dmg / zip для x64 и arm64 в dist/
+npm run build:mac    # в macOS: собрать dmg / zip для x64 и arm64 в dist/
+npm run build:linux  # в Linux: собрать AppImage / deb для x64 в dist/
 ```
 
 Процесс разработки описан в [CONTRIBUTING.md](CONTRIBUTING.md) (на английском), упаковка и выпуск версий — в [docs/RELEASING.md](docs/RELEASING.md) (на китайском).
@@ -164,7 +190,7 @@ src/main/auth               Вход: хранение cookie, окно вход
 src/main/bili               API bilibili: подпись WBI, разбор видео / аниме / курсов / списков, потоки, субтитры, данмаку
 src/main/download           Очередь загрузок, докачка, сведение через ffmpeg, дополнительные материалы (обложка, субтитры, NFO…)
 src/main/net                Прокси и выбор CDN
-src/main/update             Встроенные обновления: проверка update.json, проверка загрузки, замена .app
+src/main/update             Встроенные обновления: проверка update.json, проверка загрузки, замена .app или AppImage
 src/main/mcp.ts             Локальный сервер MCP
 src/main/subscriptions.ts   Подписки
 src/shared                  Общие для всех процессов типы, разбор ссылок и шаблоны имён
@@ -187,4 +213,4 @@ Issues и pull requests приветствуются. Пожалуйста, сн
 
 [MIT](LICENSE) © wangzi6224
 
-В приложение входят статические сборки FFmpeg из [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg работает как отдельная программа под собственной лицензией и не подпадает под указанную выше лицензию MIT. Текст его лицензии поставляется вместе с приложением в `Contents/Resources/ffmpeg/LICENSE`; см. также [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+В приложение входят статические сборки FFmpeg из [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg работает как отдельная программа под собственной лицензией и не подпадает под указанную выше лицензию MIT. Текст его лицензии поставляется вместе с приложением в `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Linux); см. также [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).

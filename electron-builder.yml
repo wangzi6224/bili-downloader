@@ -7,9 +7,9 @@ directories:
 files:
   - out/**
   - package.json
-# 每个架构只带自己的 ffmpeg
+# 每个系统和架构只带自己的 ffmpeg（${platform} 是打包机的系统，mac 包在 mac 上打、Linux 包在 Linux 上打）
 extraResources:
-  - from: resources/ffmpeg/${arch}
+  - from: resources/ffmpeg/${platform}-${arch}
     to: ffmpeg
 npmRebuild: false
 mac:
@@ -29,3 +29,26 @@ dmg:
   contents:
     - { x: 140, y: 148, type: file }
     - { x: 400, y: 148, type: link, path: /Applications, name: 应用程序 }
+linux:
+  # AppImage 单文件、能应用内自动更新；deb 给 Debian / Ubuntu 用户直接安装
+  target:
+    - AppImage
+    - deb
+  category: AudioVideo
+  # deb 的一行简介；description 是 .desktop 的 Comment 和 deb 的详细说明
+  synopsis: B站视频下载器
+  description: 粘贴 B站链接即可下载视频、合集、番剧与电影
+  executableName: bili-downloader
+  # 各尺寸的 png 由 npm run icons 生成
+  icon: build/icons
+  maintainer: wangzi6224 <wangzi6224@gmail.com>
+  # .desktop 文件名取 package.json 的 desktopName，和 Electron 的 app_id / WM_CLASS 一致，任务栏才能把窗口认成这个应用
+  syncDesktopName: true
+  desktop:
+    entry:
+      Name: B站下载器
+      Keywords: bilibili;B站;下载;视频;
+  # 窗口、托盘和通知用的图标（Linux 上没有 .app 里的 icns）
+  extraResources:
+    - from: build/icons/256x256.png
+      to: icon.png

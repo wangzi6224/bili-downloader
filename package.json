@@ -4,8 +4,10 @@
   "version": "0.4.2",
   "private": true,
   "license": "MIT",
-  "description": "粘贴 B站链接即可下载视频、合集、番剧与电影的 macOS 桌面应用",
+  "description": "粘贴 B站链接即可下载视频、合集、番剧与电影的桌面应用（macOS、Linux）",
+  "homepage": "https://github.com/wangzi6224/bili-downloader",
   "main": "./out/main/index.js",
+  "desktopName": "bili-downloader.desktop",
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "npm run verify && electron-vite build",
@@ -16,6 +18,7 @@
     "verify": "npm run typecheck && npm run test:coverage",
     "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "build:mac": "npm run build && npm run fetch-ffmpeg && electron-builder --mac --x64 --arm64 --publish never",
+    "build:linux": "npm run build && npm run fetch-ffmpeg && electron-builder --linux --x64 --publish never",
     "release": "node scripts/release.mjs --check && npm run build:mac && node scripts/release.mjs",
     "icons": "node scripts/build-icons.mjs"
   },

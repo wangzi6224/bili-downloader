@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { ArrowUp } from 'lucide-react'
 import type { AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo } from '@shared/types'
+import { sysText } from '../store'
 import { actualCodec, AUDIO_LABEL, moveUp, type EditableOptions } from '../viewLogic'
 import { IconButton, Segmented, Select } from './ui'
 
 const CODEC_LABEL: Record<CodecPref, string> = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' }
-const CODEC_HINT: Record<CodecPref, string> = { avc: '兼容性最好', hevc: '体积更小', av1: '最省空间，需 M1 以后的 Mac' }
+const CODEC_HINT: Record<CodecPref, string> = { avc: '兼容性最好', hevc: '体积更小', av1: sysText.av1Hint }
 
 const OUTPUTS: { value: OutputKind; label: string; hint: string }[] = [
   { value: 'full', label: '完整视频', hint: '画面和声音合成一个文件' },

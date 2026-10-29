@@ -56,7 +56,12 @@ type Fn = (...args: unknown[]) => unknown
 /** api 里的所有函数，键是 “auth.check” 这样的路径 */
 function functions(obj: object, prefix = ''): [string, Fn][] {
   return Object.entries(obj).flatMap(([k, v]): [string, Fn][] =>
-    typeof v === 'function' ? [[`${prefix}${k}`, v as Fn]] : functions(v as object, `${prefix}${k}.`)
+    typeof v === 'function'
+      ? [[`${prefix}${k}`, v as Fn]]
+      : // platform 这样的普通值不走 IPC
+        typeof v === 'object'
+        ? functions(v as object, `${prefix}${k}.`)
+        : []
   )
 }
 
@@ -71,6 +76,10 @@ describe('preload', () => {
   it('以 window.api 暴露给渲染进程', () => {
     expect(exposeCalls).toBe(1)
     expect(exposedAs).toBe('api')
+  })
+
+  it('把当前系统告诉渲染进程', () => {
+    expect(api.platform).toBe(process.platform)
   })
 
   it('invoke 解开 { ok, data }', async () => {

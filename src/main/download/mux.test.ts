@@ -174,7 +174,7 @@ describe('ffmpegPath', () => {
   })
 
   it('系统里没有时用项目 resources 里的，再没有就交给 PATH', async () => {
-    const bundled = join('/app', 'resources', 'ffmpeg', process.arch, 'ffmpeg')
+    const bundled = join('/app', 'resources', 'ffmpeg', `${process.platform}-${process.arch}`, 'ffmpeg')
     h.existsSync.mockImplementation((p) => p === bundled)
     expect((await load()).ffmpegPath()).toBe(bundled)
     h.existsSync.mockReturnValue(false)

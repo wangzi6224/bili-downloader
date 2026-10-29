@@ -11,7 +11,7 @@ import {
 } from '@shared/naming'
 import type { CloseAction, DuplicateAction, PowerMode, ThemeMode } from '@shared/types'
 import { insertAt } from '../format'
-import { api, updateSettings, useStore } from '../store'
+import { api, sysText, updateSettings, useStore } from '../store'
 import { updateHint } from '../viewLogic'
 import { AdvancedSettings } from './AdvancedSettings'
 import { OptionsEditor } from './OptionsEditor'
@@ -212,7 +212,10 @@ export function SettingsPage() {
                     <option value="display">保持屏幕常亮</option>
                   </Select>
                 </Row>
-                <Row label="关闭窗口时" hint="后台运行时下载和订阅照常进行，点程序坞图标重新打开；⌘Q 总是完全退出">
+                <Row
+                  label="关闭窗口时"
+                  hint={`后台运行时下载和订阅照常进行，点${sysText.reopenFrom}重新打开；${sysText.quitKey} 总是完全退出`}
+                >
                   <Select value={s.closeAction} onChange={(e) => updateSettings({ closeAction: e.target.value as CloseAction })}>
                     <option value="ask">每次询问</option>
                     <option value="background">后台运行</option>

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AuthState, ParseResult, Settings, TaskInfo, UpdateState } from '@shared/types'
+import { platformText } from './platform'
 
 export type View = 'downloads' | 'subs' | 'history' | 'settings'
 
@@ -44,6 +45,8 @@ export const useStore = create<State>((set) => ({
 }))
 
 export const api = window.api
+/** 和系统有关的文案（访达 / 文件管理器、⌘ / Ctrl 等） */
+export const sysText = platformText(api.platform)
 
 export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   try {

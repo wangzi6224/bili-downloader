@@ -4,12 +4,13 @@
 
 # B站下载器
 
-粘贴 B站链接，就能下载视频、分P、合集、番剧和电影的 macOS 桌面应用。
+粘贴 B站链接，就能下载视频、分P、合集、番剧和电影的桌面应用，支持 macOS 和 Linux。
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
 [English](README.md) | **简体中文** | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
@@ -70,6 +71,8 @@
 
 ## 安装
 
+### macOS
+
 1. 从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载最新的 `.dmg`：
    - Apple 芯片（M1 及以后）：`bili-downloader-<version>-arm64.dmg`
    - Intel 芯片：`bili-downloader-<version>-x64.dmg`
@@ -80,14 +83,34 @@
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
    ```
 
-需要 macOS 12 或更高版本。界面目前只有简体中文。
+需要 macOS 12 或更高版本。
 
-安装后应用会自动检查更新，并可以直接下载安装新版本。
+### Linux
+
+从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载以下任意一种（仅支持 64 位 x86）：
+
+- **AppImage**（各发行版通用，可自动更新）：`bili-downloader-<version>-x86_64.AppImage`。添加可执行权限后运行：
+
+  ```bash
+  chmod +x bili-downloader-*-x86_64.AppImage
+  ./bili-downloader-*-x86_64.AppImage
+  ```
+
+  AppImage 依赖 FUSE 2。如果无法启动，请先安装它（Ubuntu 24.04 及以后用 `sudo apt install libfuse2t64`，更早的版本用 `libfuse2`），或者加上 `--appimage-extract-and-run` 参数运行。
+- **deb**（Debian、Ubuntu 及其衍生发行版）：`bili-downloader-<version>-amd64.deb`。用 `sudo apt install ./bili-downloader-<version>-amd64.deb` 安装，之后 **B站下载器** 会出现在应用菜单里。
+
+关闭窗口转入后台运行后，点击托盘图标即可重新打开。GNOME 桌面需要 AppIndicator 扩展才能显示托盘图标（Ubuntu 默认已自带）。菜单栏默认隐藏，按 <kbd>Alt</kbd> 键显示。
+
+### 更新
+
+安装后应用会自动检查更新。macOS 版和 Linux 的 AppImage 版可以直接下载安装新版本；deb 版会显示更新说明，并引导你前往下载页面。
+
+界面目前只有简体中文。
 
 ## 快速上手
 
 1. 登录 B站账号（见下文 **登录**）。应用需要登录后才能解析链接。
-2. 复制 B站链接。切回应用时会自动识别剪贴板，也可以在输入框里按 <kbd>⌘</kbd><kbd>V</kbd> 粘贴后点 **解析**。
+2. 复制 B站链接。切回应用时会自动识别剪贴板，也可以在输入框里按 <kbd>⌘</kbd><kbd>V</kbd>（Linux 上为 <kbd>Ctrl</kbd><kbd>V</kbd>）粘贴后点 **解析**。
 3. 勾选要下载的条目：支持全选、反选、<kbd>Shift</kbd> 连选，以及按标题或序号（如 `1-5,7`）筛选。
 4. 选择清晰度、下载内容和附加内容，点 **下载**。
 
@@ -97,7 +120,9 @@
 
 登录后才能拿到你自己账号可以观看的清晰度和内容（1080P 及以上、大会员内容）。有三种方式：
 
-- **从浏览器导入**：复用 Chrome、Edge、Brave、Arc、Vivaldi、Chromium 或 Firefox 里的登录 cookie。Chrome、Edge、Brave 的数据受 macOS 隐私保护，需要先在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里打开本应用并重启应用；导入 Chromium 系浏览器时还会弹出钥匙串授权。
+- **从浏览器导入**：复用 Chrome、Edge、Brave、Arc（仅 macOS）、Vivaldi、Chromium 或 Firefox 里的登录 cookie。
+  - Chrome、Edge、Brave 的数据受 macOS 隐私保护，需要先在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里打开本应用并重启应用；导入 Chromium 系浏览器时还会弹出钥匙串授权。
+  - 在 Linux 上，Chromium 系浏览器把 cookie 加密密钥存放在系统密钥环（GNOME Keyring / libsecret）里。应用通过 `secret-tool` 读取密钥（用 `sudo apt install libsecret-tools` 安装），密钥环可能会弹窗要求解锁。也支持 Snap 和 Flatpak 安装的 Firefox，以及 Snap 版 Chromium。
 - **在应用内登录**：打开 B站官方登录页，支持扫码、密码和短信登录。
 - **手动粘贴 Cookie**：分号分隔的 cookie 字符串，或浏览器插件导出的 JSON。
 
@@ -139,11 +164,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 ## 限制
 
 - 不支持带 DRM 加密的片源、地区限制的内容，以及账号没有权限观看的内容。这些任务会标为 **无法下载** 并写明原因。
-- 仅支持 macOS。
+- 仅支持 macOS 和 Linux（x64），没有 Windows 版本。Linux 上只有 AppImage 版可以自动更新。
 
 ## 从源码构建
 
-需要 macOS、Node.js 22.12 或更高版本以及 npm。
+需要 macOS 或 Linux、Node.js 22.12 或更高版本以及 npm。
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -152,7 +177,8 @@ npm install
 npm run dev          # 开发模式
 npm test             # 单元测试
 npm run typecheck    # 类型检查
-npm run build:mac    # 在 dist/ 里生成 x64 和 arm64 的 dmg / zip
+npm run build:mac    # 在 macOS 上运行：在 dist/ 里生成 x64 和 arm64 的 dmg / zip
+npm run build:linux  # 在 Linux 上运行：在 dist/ 里生成 x64 的 AppImage / deb
 ```
 
 开发流程见 [CONTRIBUTING.md](CONTRIBUTING.md)（英文），打包和发布见 [docs/RELEASING.md](docs/RELEASING.md)。
@@ -164,7 +190,7 @@ src/main/auth               登录：cookie 存储、应用内登录窗口、浏
 src/main/bili               B站接口：WBI 签名、视频 / 番剧 / 课程 / 列表解析、取流、字幕、弹幕
 src/main/download           下载队列、断点续传、ffmpeg 合并、附加内容（封面、字幕、NFO…）
 src/main/net                代理和 CDN 选择
-src/main/update             应用内更新：检查 update.json、下载校验、替换 .app
+src/main/update             应用内更新：检查 update.json、下载校验、替换 .app 或 AppImage
 src/main/mcp.ts             本地 MCP 服务
 src/main/subscriptions.ts   订阅
 src/shared                  各进程共用的类型、链接识别和命名模板
@@ -187,4 +213,4 @@ scripts                     下载 ffmpeg、生成图标、发布新版本
 
 [MIT](LICENSE) © wangzi6224
 
-应用内置了来自 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)（`b6.1.1`）的静态 FFmpeg。FFmpeg 作为独立程序运行，遵循它自己的许可证，不在上面的 MIT 许可范围内。它的许可证文本随应用附带，位于 `Contents/Resources/ffmpeg/LICENSE`，另见 [FFmpeg 许可与法律说明](https://ffmpeg.org/legal.html)。
+应用内置了来自 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)（`b6.1.1`）的静态 FFmpeg。FFmpeg 作为独立程序运行，遵循它自己的许可证，不在上面的 MIT 许可范围内。它的许可证文本随应用附带，位于 `Contents/Resources/ffmpeg/LICENSE`（macOS）/ `resources/ffmpeg/LICENSE`（Linux），另见 [FFmpeg 许可与法律说明](https://ffmpeg.org/legal.html)。

@@ -10,8 +10,8 @@ import { logDir } from '../logger'
 import { quitConfirmed } from '../quitGuard'
 import { readJson, writeJson } from '../store'
 import { send } from '../windows'
-import { installBlocker, replaceAfterExit, unpack } from './install'
-import { compareVersions, notesSince, parseManifest, type ManifestFile } from './manifest'
+import { installBlocker, prepare, replaceAfterExit } from './install'
+import { assetKey, compareVersions, notesSince, parseManifest, type ManifestFile } from './manifest'
 
 /** 新版本发布在这个仓库的 Releases 里，每个 Release 都带一份 update.json（见 scripts/release.mjs） */
 const REPO = 'wangzi6224/bili-downloader'
@@ -23,6 +23,8 @@ const RECHECK_MS = 24 * 3600_000
 /** 这么久没收到数据就断开重连 */
 const STALL_MS = 60_000
 const RETRIES = 4
+/** 自动更新下载的安装包：macOS 是 zip，Linux 是 AppImage */
+const PACKAGE_EXT = process.platform === 'darwin' ? 'zip' : 'AppImage'
 
 /** 去掉 current / checkedAt 之后的各个状态 */
 type Body = UpdateState extends infer S ? (S extends unknown ? Omit<S, 'current' | 'checkedAt'> : never) : never
@@ -66,7 +68,7 @@ export class Updater {
   start(enabled: () => boolean): void {
     // 比当前版本新的安装包（包括下载到一半的）留着，下次可以直接用
     this.cleanup((name) => {
-      const v = /^bili-downloader-(.+)-\w+\.zip(\.part)?$/.exec(name)?.[1]
+      const v = /^bili-downloader-(.+)-\w+\.(?:zip|AppImage)(\.part)?$/.exec(name)?.[1]
       try {
         return !!v && compareVersions(v, this.current) > 0
       } catch {
@@ -101,8 +103,9 @@ export class Updater {
         this.set({ status: 'latest' }, checkedAt)
         return this.state
       }
-      const file = m.files[process.arch]
-      if (!file) throw new Error(`新版本 ${m.version} 没有 ${process.arch} 架构的安装包`)
+      const key = assetKey(process.platform, process.arch)
+      const file = m.files[key]
+      if (!file) throw new Error(`新版本 ${m.version} 没有 ${key} 的安装包`)
       this.file = file
       const info: UpdateInfo = {
         version: m.version,
@@ -114,7 +117,7 @@ export class Updater {
         skipped: readJson<{ skipVersion?: string }>(this.prefsFile)?.skipVersion === m.version
       }
       // 之前已经下载并校验过同一个安装包，直接可以安装
-      const cached = !info.blocker && (await matches(this.zipPath(info.version), file).catch(() => false))
+      const cached = !info.blocker && (await matches(this.packagePath(info.version), file).catch(() => false))
       this.set({ status: cached ? 'ready' : 'available', info }, checkedAt)
       console.info(`更新：发现新版本 ${m.version}${info.skipped ? '（已跳过）' : ''}`)
       if (!manual && !info.skipped && this.prompted !== m.version) {
@@ -150,9 +153,9 @@ export class Updater {
     const { info } = s
     this.set({ status: 'installing', info })
     try {
-      const zip = this.zipPath(info.version)
-      if (!(await matches(zip, this.file))) throw new Error('安装包已损坏，请重新下载')
-      const next = await unpack(zip, join(this.dir, 'stage'), info.version)
+      const pkg = this.packagePath(info.version)
+      if (!(await matches(pkg, this.file))) throw new Error('安装包已损坏，请重新下载')
+      const next = await prepare(pkg, join(this.dir, 'stage'), info.version)
       replaceAfterExit(next, this.dir, join(logDir(), 'update.log'))
       console.info(`更新：退出并安装 ${info.version}`)
       // 更新弹窗里已经提醒过未完成的任务；安装脚本已经在等进程退出，不能再被取消
@@ -175,8 +178,8 @@ export class Updater {
     void shell.openExternal('info' in s && s.info ? s.info.page : `https://github.com/${REPO}/releases/latest`)
   }
 
-  private zipPath(version: string): string {
-    return join(this.dir, `bili-downloader-${version}-${process.arch}.zip`)
+  private packagePath(version: string): string {
+    return join(this.dir, `bili-downloader-${version}-${process.arch}.${PACKAGE_EXT}`)
   }
 
   private set(body: Body, checkedAt = this.state.checkedAt): void {
@@ -192,7 +195,7 @@ export class Updater {
   }
 
   private async runDownload(info: UpdateInfo, file: ManifestFile): Promise<void> {
-    const dest = this.zipPath(info.version)
+    const dest = this.packagePath(info.version)
     const part = `${dest}.part`
     const abort = (this.abort = new AbortController())
     this.set({ status: 'downloading', info, done: 0, total: file.size })

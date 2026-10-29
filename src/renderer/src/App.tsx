@@ -9,6 +9,7 @@ import { SubscriptionsPage } from './components/SubscriptionsPage'
 import { TaskList } from './components/TaskList'
 import { UpdateDialog } from './components/UpdateDialog'
 import { UrlInput } from './components/UrlInput'
+import { isSettingsShortcut } from './platform'
 import { api, useStore } from './store'
 
 export default function App() {
@@ -28,9 +29,9 @@ export default function App() {
       api.update.onState((update) => set({ update })),
       api.update.onPrompt(() => set({ updateOpen: true }))
     ]
-    // ⌘, 打开设置，和其他 Mac 应用一致
+    // ⌘, / Ctrl+, 打开设置，和系统上的其他应用一致
     const onKey = (e: KeyboardEvent): void => {
-      if (e.metaKey && e.key === ',') {
+      if (isSettingsShortcut(e, api.platform)) {
         e.preventDefault()
         set({ view: 'settings' })
       }

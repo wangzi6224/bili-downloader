@@ -509,7 +509,7 @@ export function Row({
 /** 页面标题栏：同时是窗口的拖拽区 */
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="drag flex shrink-0 items-end gap-4 px-8 pt-8 pb-4">
+    <div className="drag flex shrink-0 items-end gap-4 px-8 pt-6 pb-4 mac:pt-8">
       <div className="min-w-0 flex-1">
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <div className="mt-1 text-[13px] leading-relaxed text-muted">{subtitle}</div>}

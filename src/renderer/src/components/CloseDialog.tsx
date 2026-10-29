@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AppWindow, LogOut, MonitorDown } from 'lucide-react'
 import type { CloseAction } from '@shared/types'
-import { api, useStore } from '../store'
+import { api, sysText, useStore } from '../store'
 import { unfinishedCount } from '../taskStatus'
 import { Banner, Button, Modal, ModalFooter, ModalHeader } from './ui'
 
@@ -26,7 +26,7 @@ export function CloseDialog() {
       <ModalHeader
         icon={AppWindow}
         title="关闭窗口"
-        subtitle="后台运行时下载和订阅检查会继续，点程序坞图标可以重新打开窗口。"
+        subtitle={`后台运行时下载和订阅检查会继续，点${sysText.reopenFrom}可以重新打开窗口。`}
         onClose={() => set({ closeAsk: false })}
       />
       <div className="flex flex-col gap-3 px-6 pt-4">

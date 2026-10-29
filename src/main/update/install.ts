@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
-import { accessSync, constants, mkdirSync, openSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { accessSync, chmodSync, constants, copyFileSync, mkdirSync, openSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { app } from 'electron'
 
@@ -39,13 +39,48 @@ touch "$target"
 open "$target"
 `
 
+/**
+ * Linux 版：应用退出后用新的 AppImage 覆盖原来的文件（路径不变，用户建的启动器照样能用），再重新打开。
+ * 新文件事先已经放在同一个目录里，mv 是原子的；替换失败就删掉新文件、保留旧版本。
+ * 用 bash 跑：要关掉 9 号以后的文件描述符，dash 做不到（AppImage 的启动脚本本来就要 bash）
+ * 参数：要等待退出的进程号、新的 AppImage、要替换的 AppImage
+ */
+export const APPIMAGE_SCRIPT = `#!/bin/bash
+pid="$1"; new="$2"; target="$3"
+n=0
+while kill -0 "$pid" 2>/dev/null; do
+  n=$((n + 1))
+  if [ "$n" -gt 600 ]; then echo "$(date) 等待旧版本退出超时"; rm -f "$new"; exit 1; fi
+  sleep 0.1
+done
+if mv -f "$new" "$target"; then
+  echo "$(date) 已替换为新版本"
+else
+  echo "$(date) 替换失败，保持旧版本"
+  rm -f "$new"
+fi
+(
+  # 旧版本打开的文件（app.asar 等，在旧 AppImage 的挂载目录里）会一路传到这里，带给新版本的话旧版本就一直卸载不掉
+  for fd in /dev/fd/*; do
+    fd="\${fd##*/}"
+    [ "$fd" -gt 2 ] 2>/dev/null && eval "exec $fd>&-" 2>/dev/null
+  done
+  # 这些变量是旧版本的 AppImage 运行时设的，指向已经卸载的目录
+  cd "$(dirname "$target")" && exec env -u APPDIR -u APPIMAGE -u ARGV0 -u OWD "$target"
+) >/dev/null 2>&1 &
+`
+
 /** 正在运行的 .app，例如 /Applications/B站下载器.app */
 export const appBundle = (): string => resolve(app.getPath('exe'), '../../..')
+
+/** 正在运行的 AppImage 文件：AppImage 运行时会设置这个变量，deb 等方式安装的没有 */
+const appImage = (): string | undefined => process.env.APPIMAGE
 
 /** 不能自动替换应用的原因；可以替换时返回 undefined */
 export function installBlocker(): string | undefined {
   if (!app.isPackaged) return '开发模式下不能自动安装，请用打包后的应用测试'
-  if (process.platform !== 'darwin') return '自动安装只支持 macOS'
+  if (process.platform === 'linux') return appImageBlocker()
+  if (process.platform !== 'darwin') return '自动安装只支持 macOS 和 Linux'
   const bundle = appBundle()
   if (!bundle.endsWith('.app')) return `找不到应用所在的位置（${bundle}）`
   // 没拖进“应用程序”就直接打开时，macOS 会把应用放到一个只读的随机路径里运行
@@ -56,6 +91,18 @@ export function installBlocker(): string | undefined {
     accessSync(bundle, constants.W_OK)
   } catch {
     return bundle.startsWith('/Volumes/') ? `应用正在磁盘映像里运行，${moveFirst}` : `没有权限修改 ${dirname(bundle)}`
+  }
+  return undefined
+}
+
+function appImageBlocker(): string | undefined {
+  const file = appImage()
+  if (!file) return '只有 AppImage 版支持自动安装'
+  try {
+    accessSync(dirname(file), constants.W_OK)
+    accessSync(file, constants.W_OK)
+  } catch {
+    return `没有权限修改 ${dirname(file)}`
   }
   return undefined
 }
@@ -84,10 +131,34 @@ export async function unpack(zip: string, dir: string, version: string): Promise
   return next
 }
 
+/**
+ * 把校验过的新 AppImage 复制到原来的 AppImage 旁边（同一个文件系统，替换时才能原子地 mv），返回它的路径。
+ * 下载的安装包已经按 update.json 里的 sha512 校验过，这里不再检查内容
+ */
+export function stageAppImage(file: string): string {
+  const target = appImage()
+  if (!target) throw new Error('只有 AppImage 版支持自动安装')
+  const next = join(dirname(target), `.${basename(target)}.new`)
+  copyFileSync(file, next)
+  chmodSync(next, 0o755)
+  return next
+}
+
+/** 准备好要换上的新版本：macOS 解压出 .app，Linux 把 AppImage 放到原来的旁边 */
+export const prepare = (pkg: string, stageDir: string, version: string): Promise<string> =>
+  process.platform === 'darwin' ? unpack(pkg, stageDir, version) : Promise.resolve().then(() => stageAppImage(pkg))
+
 /** 启动独立的替换脚本；调用方随后退出应用 */
 export function replaceAfterExit(next: string, workDir: string, log: string): void {
+  const mac = process.platform === 'darwin'
   const script = join(workDir, 'install.sh')
-  writeFileSync(script, SCRIPT, { mode: 0o755 })
+  writeFileSync(script, mac ? SCRIPT : APPIMAGE_SCRIPT, { mode: 0o755 })
   const out = openSync(log, 'a')
-  spawn('/bin/sh', [script, String(process.pid), next, appBundle()], { detached: true, stdio: ['ignore', out, out] }).unref()
+  const target = mac ? appBundle() : appImage()!
+  // 工作目录放在更新目录里：AppImage 退出后它挂载的目录就没了
+  spawn(mac ? '/bin/sh' : '/bin/bash', [script, String(process.pid), next, target], {
+    cwd: workDir,
+    detached: true,
+    stdio: ['ignore', out, out]
+  }).unref()
 }

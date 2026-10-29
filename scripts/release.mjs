@@ -1,12 +1,13 @@
 // 发布新版本到 GitHub Releases：取 CHANGELOG.md 里当前版本的说明，生成 dist/update.json（应用内更新读这个文件），
-// 再用 gh 创建 Release，上传两个架构的 zip（自动更新用）和 dmg（手动安装用）。
-// 平时由 GitHub Actions 在推送 v版本号 的 tag 后运行（.github/workflows/release.yml）；也可以在本机 npm run release（检查、打包、发布）
+// 再用 gh 创建 Release，上传 macOS 两个架构的 zip（自动更新用）和 dmg（手动安装用），以及 Linux 的 AppImage（自动更新用）和 deb。
+// 平时由 GitHub Actions 在推送 v版本号 的 tag 后运行（.github/workflows/release.yml），mac 包和 Linux 包分别在各自的系统上打好再汇总；
+// 也可以在本机 npm run release（检查、打 mac 包、发布），但 dist/ 里要先放好在 Linux 上打的包
 // 参数：--check 只检查版本号、tag 和更新日志，不用先打包；--dry-run 只生成 update.json 不上传
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ARCHS, MAX_NOTES, assetName, buildManifest, isPrerelease, manifestAsset, parseChangelog } from './lib/release.mjs'
+import { MAX_NOTES, PACKAGES, assetName, buildManifest, isPrerelease, manifestAsset, parseChangelog } from './lib/release.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -40,14 +41,12 @@ const repo = process.env.GITHUB_REPOSITORY || sh('gh', ['repo', 'view', '--json'
 
 const assets = []
 const files = {}
-for (const arch of ARCHS) {
-  for (const ext of ['zip', 'dmg']) {
-    const name = assetName(version, arch, ext)
-    const file = join(dist, name)
-    if (!existsSync(file)) fail(`找不到 dist/${name}，先运行 npm run build:mac`)
-    assets.push(file)
-    if (ext === 'zip') files[arch] = manifestAsset(repo, version, name, readFileSync(file))
-  }
+for (const { arch, ext, updateKey, build } of PACKAGES) {
+  const name = assetName(version, arch, ext)
+  const file = join(dist, name)
+  if (!existsSync(file)) fail(`找不到 dist/${name}，要先在 ${build.os} 上运行 npm run ${build.script}`)
+  assets.push(file)
+  if (updateKey) files[updateKey] = manifestAsset(repo, version, name, readFileSync(file))
 }
 
 const manifest = buildManifest({ repo, version, date: new Date().toISOString(), notes, files })

@@ -141,9 +141,9 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[216px] shrink-0 flex-col">
-      {/* 红绿灯所在的拖拽区 */}
-      <div className="drag h-[52px] shrink-0" />
-      <div className="drag flex items-center gap-2.5 px-5 pb-5">
+      {/* 红绿灯所在的拖拽区；其他系统用系统标题栏，不需要 */}
+      <div className="drag hidden h-[52px] shrink-0 mac:block" />
+      <div className="drag flex items-center gap-2.5 px-5 pt-6 pb-5 mac:pt-0">
         <Logo size={30} className="shrink-0 drop-shadow-sm" />
         <div className="text-[15px] font-semibold tracking-tight">B站下载器</div>
       </div>

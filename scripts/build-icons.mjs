@@ -1,5 +1,7 @@
-// 把 build/icon.svg 渲染成 macOS 应用图标：build/icon.icns（打包用）和 build/icon.png（开发时的程序坞图标）
+// 把 build/icon.svg 渲染成应用图标：build/icon.png（开发时的程序坞图标）、build/icons/<尺寸>.png（Linux 包和窗口、托盘用），
+// 以及 macOS 打包用的 build/icon.icns
 // 把 build/dmg-background.svg 渲染成 dmg 安装窗口背景：build/background.png 和 background@2x.png
+// icns 要用 iconutil、dmg 背景要用系统自带的冬青黑体，只在 macOS 上生成；其他系统上只生成 png
 // 生成物提交进仓库，只有改了这两个 svg 才需要重新运行
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -13,6 +15,20 @@ const svg = readFileSync(join(buildDir, 'icon.svg'))
 
 const render = (size) => new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng()
 
+writeFileSync(join(buildDir, 'icon.png'), render(1024))
+
+// 图标主题（hicolor）最大只有 512x512，electron-builder 按文件名的尺寸装进 /usr/share/icons/hicolor/<尺寸>/apps
+const linuxIcons = join(buildDir, 'icons')
+mkdirSync(linuxIcons, { recursive: true })
+for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) {
+  writeFileSync(join(linuxIcons, `${size}x${size}.png`), render(size))
+}
+
+if (process.platform !== 'darwin') {
+  console.log('已生成 build/icon.png 和 build/icons/；icns 和 dmg 背景只能在 macOS 上生成，已跳过')
+  process.exit(0)
+}
+
 // iconutil 要求的文件名：每个尺寸一张 1x、一张 2x
 const iconset = join(mkdtempSync(join(tmpdir(), 'bili-icon-')), 'icon.iconset')
 mkdirSync(iconset)
@@ -23,12 +39,10 @@ for (const size of [16, 32, 128, 256, 512]) {
 execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(buildDir, 'icon.icns')])
 rmSync(dirname(iconset), { recursive: true, force: true })
 
-writeFileSync(join(buildDir, 'icon.png'), render(1024))
-
 // electron-builder 发现 background@2x.png 会自动和 1x 合成 Retina 的 tiff；文字用系统自带的冬青黑体
 const dmgSvg = readFileSync(join(buildDir, 'dmg-background.svg'))
 const font = { loadSystemFonts: true, defaultFontFamily: 'Hiragino Sans GB' }
 const renderDmg = (width) => new Resvg(dmgSvg, { fitTo: { mode: 'width', value: width }, font }).render().asPng()
 writeFileSync(join(buildDir, 'background.png'), renderDmg(540))
 writeFileSync(join(buildDir, 'background@2x.png'), renderDmg(1080))
-console.log('已生成 build/icon.icns、build/icon.png 和 build/background{,@2x}.png')
+console.log('已生成 build/icon.icns、build/icon.png、build/icons/ 和 build/background{,@2x}.png')

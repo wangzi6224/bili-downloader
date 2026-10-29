@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-A macOS desktop app for downloading from bilibili: paste a link to get videos, multi-part videos, collections, anime and movies.
+A desktop app for macOS and Linux for downloading from bilibili: paste a link to get videos, multi-part videos, collections, anime and movies.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
 **English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
@@ -54,7 +55,7 @@ A macOS desktop app for downloading from bilibili: paste a link to get videos, m
 - Adjustable concurrency, multi-threaded segmented downloads, speed limit, automatic retry on network errors
 - Pause, resume, and resume after a restart; clear notes for tasks that cannot be downloaded
 - Proxy: direct, system, or manual; pick the fastest bilibili CDN node with a built-in latency test
-- Optionally keep the Mac (or the display) awake while downloading, and send a notification when the queue finishes
+- Optionally keep the computer (or the display) awake while downloading, and send a notification when the queue finishes
 
 ### Organizing and automation
 
@@ -70,6 +71,8 @@ A macOS desktop app for downloading from bilibili: paste a link to get videos, m
 
 ## Installation
 
+### macOS
+
 1. Download the latest `.dmg` from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest):
    - Apple Silicon (M1 and later): `bili-downloader-<version>-arm64.dmg`
    - Intel: `bili-downloader-<version>-x64.dmg`
@@ -80,14 +83,34 @@ A macOS desktop app for downloading from bilibili: paste a link to get videos, m
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
    ```
 
-Requires macOS 12 or later. The interface is currently available in Simplified Chinese only; the labels mentioned below are given in Chinese with an English translation.
+Requires macOS 12 or later.
 
-Once installed, the app checks for updates itself and can install them in place.
+### Linux
+
+Download one of these from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) (64-bit x86 only):
+
+- **AppImage** (any distribution, updates itself): `bili-downloader-<version>-x86_64.AppImage`. Make it executable and run it:
+
+  ```bash
+  chmod +x bili-downloader-*-x86_64.AppImage
+  ./bili-downloader-*-x86_64.AppImage
+  ```
+
+  AppImages need FUSE 2. If it does not start, install it (`sudo apt install libfuse2t64` on Ubuntu 24.04 and later, `libfuse2` on older releases), or run it with `--appimage-extract-and-run`.
+- **deb** (Debian, Ubuntu and derivatives): `bili-downloader-<version>-amd64.deb`. Install it with `sudo apt install ./bili-downloader-<version>-amd64.deb`; **B站下载器** then appears in your application menu.
+
+When the window is closed to the background, click the tray icon to bring it back. On GNOME this needs the AppIndicator extension (Ubuntu ships it by default). The menu bar is hidden; press <kbd>Alt</kbd> to show it.
+
+### Updates
+
+Once installed, the app checks for updates itself. The macOS app and the Linux AppImage install them in place; the deb version shows the release notes and points you to the download page.
+
+The interface is currently available in Simplified Chinese only; the labels mentioned below are given in Chinese with an English translation.
 
 ## Quick start
 
 1. Sign in to your bilibili account (see **Signing in** below). The app needs an account to parse links.
-2. Copy a bilibili link. The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> in the input box and click **解析** (Parse).
+2. Copy a bilibili link. The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> on Linux) in the input box and click **解析** (Parse).
 3. Choose the items to download. Select all, invert the selection, <kbd>Shift</kbd>-click to select a range, or filter by title or by index (e.g. `1-5,7`).
 4. Pick the quality, output type and extras, then click **下载** (Download).
 
@@ -97,7 +120,9 @@ You can also type these keywords instead of a link: `稍后再看` or `watchlate
 
 Logging in gives you the qualities and content your own account has access to (1080P and above, premium content). There are three ways to do it:
 
-- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc, Vivaldi, Chromium or Firefox. macOS protects the data of Chrome, Edge and Brave, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
+- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Chromium or Firefox.
+  - macOS protects the data of Chrome, Edge and Brave, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
+  - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
 - **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
 - **手动粘贴 Cookie** (Paste cookies): a semicolon-separated cookie string, or the JSON exported by a browser extension.
 
@@ -139,11 +164,11 @@ The server listens only on `127.0.0.1` (the port is configurable), requires the 
 ## Limitations
 
 - DRM-protected content, region-locked content, and content your account is not allowed to watch cannot be downloaded. Those tasks are marked as **无法下载** (cannot be downloaded) with the reason.
-- macOS only.
+- macOS and Linux (x64) only; there is no Windows build. On Linux only the AppImage updates itself.
 
 ## Building from source
 
-Requires macOS, Node.js 22.12 or later, and npm.
+Requires macOS or Linux, Node.js 22.12 or later, and npm.
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -152,7 +177,8 @@ npm install
 npm run dev          # development mode
 npm test             # unit tests
 npm run typecheck    # type check
-npm run build:mac    # build x64 and arm64 dmg / zip into dist/
+npm run build:mac    # on macOS: build x64 and arm64 dmg / zip into dist/
+npm run build:linux  # on Linux: build x64 AppImage / deb into dist/
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [docs/RELEASING.md](docs/RELEASING.md) (in Chinese) for packaging and releases.
@@ -164,7 +190,7 @@ src/main/auth               Sign-in: cookie storage, in-app login window, browse
 src/main/bili               bilibili APIs: WBI signing, video / anime / course / list parsing, streams, subtitles, danmaku
 src/main/download           Download queue, resumable downloads, ffmpeg muxing, extras (cover, subtitles, NFO…)
 src/main/net                Proxy and CDN selection
-src/main/update             In-app updates: check update.json, verify the download, replace the .app
+src/main/update             In-app updates: check update.json, verify the download, replace the .app or AppImage
 src/main/mcp.ts             Local MCP server
 src/main/subscriptions.ts   Subscriptions
 src/shared                  Types, link parsing and naming templates shared by all processes
@@ -187,4 +213,4 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 
 [MIT](LICENSE) © wangzi6224
 
-The app bundles static FFmpeg binaries from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg runs as a separate program under its own license and is not covered by the MIT license above. Its license text ships inside the app at `Contents/Resources/ffmpeg/LICENSE`; see also [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+The app bundles static FFmpeg binaries from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg runs as a separate program under its own license and is not covered by the MIT license above. Its license text ships inside the app at `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Linux); see also [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).

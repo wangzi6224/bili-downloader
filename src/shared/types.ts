@@ -16,7 +16,7 @@ export interface BrowserProfile {
   browser: string
   profile: string
   hasBiliLogin: boolean
-  /** macOS 隐私保护拦截了读取，需要给本应用“完全磁盘访问权限” */
+  /** 没有权限读取：macOS 上是隐私保护拦截了，需要给本应用“完全磁盘访问权限”；Linux 上是文件夹权限不允许 */
   blocked?: boolean
 }
 
@@ -353,6 +353,8 @@ export interface ParseRecord {
 
 /** preload 通过 contextBridge 暴露给渲染进程的接口 */
 export interface BiliApi {
+  /** 主进程的 process.platform，界面按它调整文案和布局 */
+  platform: string
   auth: {
     check(): Promise<AuthState>
     openLoginWindow(): Promise<AuthState>

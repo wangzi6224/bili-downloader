@@ -99,8 +99,8 @@ export function statusCounts(tasks: TaskInfo[]): { speed: number; running: numbe
   }
 }
 
-/** /Users/xxx 开头的路径缩写成 ~ */
-export const shortenHome = (path: string): string => path.replace(/^\/Users\/[^/]+/, '~')
+/** /Users/xxx（macOS）或 /home/xxx（Linux）开头的路径缩写成 ~ */
+export const shortenHome = (path: string): string => path.replace(/^\/(Users|home)\/[^/]+/, '~')
 
 /** 清除已完成：要移除的任务数，以及其中有文件可删的数量 */
 export function clearCounts(tasks: TaskInfo[]): { count: number; files: number } {

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, Menu, nativeTheme, Notification, screen, shell } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron'
 import type { TaskInfo } from '@shared/types'
 import { checkAuth, checkAuthThrottled, onAuthRequired, onLoggedIn, requireLogin } from './auth/authGuard'
 import { resolveInput } from './bili/resolve'
@@ -21,9 +21,17 @@ import { closeDecision, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
+const isMac = process.platform === 'darwin'
 /** ⌘Q、程序坞“退出”等真正退出（确认放行后）时，关窗口不再拦截 */
 let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
+
+/** Linux 上窗口、托盘和通知用的图标；macOS 用 .app 里的 icns */
+const appIcon = (): string =>
+  app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '../../build/icons/256x256.png')
+
+/** 只在 Linux 上有：窗口隐藏到后台后从这里找回来。存着引用，免得被回收后图标消失 */
+let tray: Tray | undefined
 
 /** 上次的窗口位置；所在的显示器已经不在了就不用 */
 const savedBounds = (): Partial<Bounds> =>
@@ -37,12 +45,7 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     title: 'B站下载器',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 18 },
-    // 侧边栏透出系统毛玻璃，内容区由页面自己铺底色
-    vibrancy: 'sidebar',
-    visualEffectState: 'followWindow',
-    backgroundColor: '#00000000',
+    ...platformWindowOptions(),
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -81,6 +84,21 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+function platformWindowOptions(): Electron.BrowserWindowConstructorOptions {
+  if (isMac) {
+    return {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 18, y: 18 },
+      // 侧边栏透出系统毛玻璃，内容区由页面自己铺底色
+      vibrancy: 'sidebar',
+      visualEffectState: 'followWindow',
+      backgroundColor: '#00000000'
+    }
+  }
+  // 用系统标题栏；没有毛玻璃，底色和页面里非 macOS 的底色（--surface）一致，免得打开时闪一下。菜单栏按 Alt 显示
+  return { backgroundColor: nativeTheme.shouldUseDarkColors ? '#252528' : '#f7f7f9', icon: appIcon(), autoHideMenuBar: true }
+}
+
 function showMainWindow(): void {
   const win = getMainWindow() ?? createWindow()
   if (win.isMinimized()) win.restore()
@@ -88,14 +106,44 @@ function showMainWindow(): void {
   win.focus()
 }
 
+/** Linux 上菜单标签不会按系统语言翻译，自己写中文；macOS 的应用菜单、窗口菜单在 Linux 上没有对应的东西 */
+const LINUX_MENU: Electron.MenuItemConstructorOptions[] = [
+  { label: '文件', submenu: [{ label: '退出', role: 'quit' }] },
+  {
+    label: '编辑',
+    submenu: [
+      { label: '撤销', role: 'undo' },
+      { label: '重做', role: 'redo' },
+      { type: 'separator' },
+      { label: '剪切', role: 'cut' },
+      { label: '复制', role: 'copy' },
+      { label: '粘贴', role: 'paste' },
+      { label: '全选', role: 'selectAll' }
+    ]
+  },
+  {
+    label: '视图',
+    submenu: [
+      { label: '重新加载', role: 'reload' },
+      { label: '强制重新加载', role: 'forceReload' },
+      { label: '开发者工具', role: 'toggleDevTools' },
+      { type: 'separator' },
+      { label: '实际大小', role: 'resetZoom' },
+      { label: '放大', role: 'zoomIn' },
+      { label: '缩小', role: 'zoomOut' },
+      { type: 'separator' },
+      { label: '全屏', role: 'togglefullscreen' }
+    ]
+  }
+]
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
-    { role: 'appMenu' },
-    { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' },
+    ...(isMac ? ([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }] as const) : LINUX_MENU),
     {
       role: 'help',
+      // macOS 按系统语言自动翻译
+      label: isMac ? undefined : '帮助',
       submenu: [
         { label: '打开日志文件夹', click: () => void shell.openPath(logDir()) },
         { label: '打开数据文件夹', click: () => void shell.openPath(app.getPath('userData')) }
@@ -114,6 +162,20 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+/** Linux 没有程序坞，窗口隐藏到后台后靠托盘图标找回。有的桌面环境单击托盘图标只弹菜单，所以菜单里也放“显示窗口” */
+function createTray(): void {
+  tray = new Tray(nativeImage.createFromPath(appIcon()).resize({ width: 32, height: 32 }))
+  tray.setToolTip('B站下载器')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '显示窗口', click: showMainWindow },
+      { type: 'separator' },
+      { label: '退出', click: () => app.quit() }
+    ])
+  )
+  tray.on('click', showMainWindow)
+}
+
 app.setName('B站下载器')
 
 // 只允许运行一个实例：再次打开时激活已有窗口
@@ -126,7 +188,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function notify(title: string, body: string): void {
   if (!getSettings().notify || !Notification.isSupported()) return
-  const n = new Notification({ title, body })
+  const n = new Notification({ title, body, icon: isMac ? undefined : appIcon() })
   n.on('click', showMainWindow)
   n.show()
 }
@@ -196,6 +258,7 @@ async function start(): Promise<void> {
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
+  if (!isMac) createTray()
   createWindow()
 
   // 启动时确认登录状态，未登录就弹出登录；稍后再检查更新，免得和登录弹窗挤在一起
@@ -212,5 +275,5 @@ async function start(): Promise<void> {
 }
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (!isMac) app.quit()
 })

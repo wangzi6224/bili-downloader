@@ -28,7 +28,7 @@ import {
 import { itemUrl } from '@shared/parseUrl'
 import type { PowerMode, TaskInfo, TaskStatus } from '@shared/types'
 import { fmtSpeed, thumb } from '../format'
-import { api, updateSettings, useStore } from '../store'
+import { api, sysText, updateSettings, useStore } from '../store'
 import { ACTIVE, buildEntries } from '../taskOrder'
 import {
   clearCounts,
@@ -130,7 +130,7 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
   } else if (t.status === 'error') {
     primary = <IconButton icon={RefreshCw} label={retrying ? '立即重试' : '重试'} onClick={() => api.download.retry(t.id)} />
   } else if (t.status === 'done' && t.outputPath) {
-    primary = <IconButton icon={FolderOpen} label="在访达中显示" onClick={() => api.showInFolder(t.outputPath!)} />
+    primary = <IconButton icon={FolderOpen} label={`在${sysText.fileManager}中显示`} onClick={() => api.showInFolder(t.outputPath!)} />
   }
 
   return (
@@ -237,7 +237,7 @@ function GroupRow({
   } else if (tasks.some(resumable)) {
     primary = <IconButton icon={Play} label="继续整组" onClick={() => api.download.resumeMany(ids)} />
   } else if (done[0]?.outputPath) {
-    primary = <IconButton icon={FolderOpen} label="在访达中显示" onClick={() => api.showInFolder(done[0].outputPath!)} />
+    primary = <IconButton icon={FolderOpen} label={`在${sysText.fileManager}中显示`} onClick={() => api.showInFolder(done[0].outputPath!)} />
   }
 
   return (
@@ -443,7 +443,7 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
       <button
         type="button"
         onClick={() => api.showInFolder(settings.downloadDir)}
-        title={`保存到 ${settings.downloadDir}，点击在访达中显示`}
+        title={`保存到 ${settings.downloadDir}，点击在${sysText.fileManager}中显示`}
         className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 hover:bg-hover hover:text-fg"
       >
         <FolderOpen size={13} strokeWidth={STROKE} className="shrink-0" />
@@ -483,7 +483,7 @@ export function TaskList() {
     return (
       <div className="min-h-0 flex-1">
         <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title="复制 B站链接，回到这里粘贴">
-          <div>打开应用或切回窗口时会自动检测剪贴板，也可以直接按 ⌘V 粘贴到上方输入框。</div>
+          <div>打开应用或切回窗口时会自动检测剪贴板，也可以直接按 {sysText.pasteKey} 粘贴到上方输入框。</div>
           <div className="mt-4 flex flex-wrap justify-center gap-1.5">
             {KINDS.map((k) => (
               <Badge key={k}>{k}</Badge>
