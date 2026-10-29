@@ -2,13 +2,18 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { app } from 'electron'
-import type { EnqueueRequest, NewSubscription, Subscription } from '@shared/types'
+import { downloadedMatcher } from '@shared/downloaded'
+import { parseInput, type Target } from '@shared/parseUrl'
+import type { EnqueueRequest, MediaItem, NewSubscription, Subscription } from '@shared/types'
 import { AuthExpiredError } from './bili/http'
+import { isAscending, loadTailPages } from './bili/lists'
 import { resolveInput } from './bili/resolve'
 import { downloadedKeys } from './history'
 import { readJsonArray, writeJson } from './store'
 
 const TICK_MS = 60_000
+
+const isAscendingTarget = (t: Target | null): boolean => t?.type === 'spaceSeason' || t?.type === 'spaceSeries'
 /** 记住的已见条目上限，防止大收藏夹让文件无限变大 */
 const MAX_SEEN = 5000
 
@@ -20,6 +25,7 @@ export class SubscriptionManager extends EventEmitter {
   private subs: Subscription[]
   private timer?: NodeJS.Timeout
   private busy = false
+  private checking = new Set<string>()
 
   constructor(private enqueue: (req: EnqueueRequest) => Promise<string | undefined>) {
     super()
@@ -61,11 +67,15 @@ export class SubscriptionManager extends EventEmitter {
       // 只下载以后新增的：把现在看到的都记为已见
       seen: req.includeExisting ? [] : req.currentKeys,
       createdAt: Date.now(),
-      lastCheck: req.includeExisting ? undefined : Date.now()
+      lastCheck: req.includeExisting ? undefined : Date.now(),
+      // 现有内容也下载时，第一次检查就从最后一页一直往前翻
+      tailBaseline: req.includeExisting || undefined
     }
     this.subs.push(sub)
     this.save()
     if (req.includeExisting) await this.check(sub.id)
+    // 正序的合集、系列马上补记最后一页，免得到第一次检查之间新增的内容被当成旧的；短链接等到第一次检查时再记
+    else if (isAscendingTarget(parseInput(sub.input))) await this.check(sub.id)
     return this.subs
   }
 
@@ -90,25 +100,38 @@ export class SubscriptionManager extends EventEmitter {
 
   async check(id: string): Promise<Subscription[]> {
     const sub = this.subs.find((x) => x.id === id)
-    if (!sub) return this.subs
+    // 同一个订阅正在检查（例如添加时的检查还没完，定时检查又到了）就不再查一遍
+    if (!sub || this.checking.has(id)) return this.subs
+    this.checking.add(id)
     try {
       const r = await resolveInput(sub.input)
-      const items = r.groups.flatMap((g) => g.items)
       const seen = new Set(sub.seen)
-      const done = new Set(downloadedKeys())
-      const doneBv = new Set([...done].map((k) => k.split(':')[1]))
-      const fresh = items.filter(
-        (i) => !i.unavailable && !seen.has(i.key) && !done.has(i.key) && !(i.lazy && i.bvid && doneBv.has(i.bvid))
-      )
+      const isDownloaded = downloadedMatcher(downloadedKeys())
+      const known = (i: MediaItem): boolean => seen.has(i.key) || isDownloaded(i)
+      // 正序的合集、系列只看第一页会漏掉排在最后的新内容
+      const ascending = Boolean(r.paging && isAscending(r.paging.source))
+      let tail: MediaItem[] = []
+      let baseline: MediaItem[] = []
+      if (r.paging && ascending) {
+        // 只记下了第一页的订阅：先把最后一页记为已见，下次检查起再往前找新内容
+        if (sub.tailBaseline) tail = await loadTailPages(r.paging, known)
+        else baseline = await loadTailPages(r.paging, () => true)
+      }
+      const items = [...r.groups.flatMap((g) => g.items), ...tail]
+      const fresh = items.filter((i) => !i.unavailable && !known(i))
       if (fresh.length) {
         const note = await this.enqueue({ title: r.title, cover: r.cover, kind: r.kind, meta: r.meta, items: fresh, options: sub.options })
         this.emit('found', { title: sub.title, count: fresh.length, note })
       }
-      sub.seen = [...new Set([...items.map((i) => i.key), ...sub.seen])].slice(0, MAX_SEEN)
+      sub.seen = [...new Set([...[...items, ...baseline].map((i) => i.key), ...sub.seen])].slice(0, MAX_SEEN)
+      // 和已见记录一起更新：中途出错时不能只记了标记、没记最后一页
+      if (ascending) sub.tailBaseline = true
       sub.lastNew = fresh.length
       sub.lastError = undefined
     } catch (e) {
       sub.lastError = e instanceof AuthExpiredError ? '登录已失效，重新登录后会继续检查' : e instanceof Error ? e.message : String(e)
+    } finally {
+      this.checking.delete(id)
     }
     sub.lastCheck = Date.now()
     this.save()

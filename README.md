@@ -128,11 +128,14 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | Tool | Description |
 | --- | --- |
-| `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…) and return its title and items |
-| `download` | Add items to the queue, by index or all of them, with an optional quality (`qn`) and output (`full` / `audio` / `video`) |
-| `list_tasks` | List the download queue, optionally filtered by status |
-| `pause_task` | Pause a task |
-| `resume_task` | Resume or retry a task |
+| `get_status` | Login and premium (大会员) status, queue summary, free space in the download folder, and anything that needs attention. Call it first |
+| `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…); lists are paged through automatically. Item ids are stable; results can be read in pages and multi-part videos expanded |
+| `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice |
+| `get_batch_status` | Batch progress: counts per status, speed, estimated time left, actual quality, failure reasons. `wait_seconds` waits for changes |
+| `list_batches` | Recently submitted batches |
+| `list_tasks` | List tasks page by page, filtered by batch, status or title |
+| `control_tasks` | Pause, resume, retry, redownload or remove tasks in bulk (downloaded files are never deleted) |
+| `get_settings` / `update_settings` | Read or change the download folder, concurrency, threads, speed limit, auto-retry, default quality and download options |
 
 The server listens only on `127.0.0.1` (the port is configurable), requires the Bearer token, and checks the `Host` / `Origin` headers to prevent DNS rebinding. You can regenerate the token at any time.
 
@@ -165,7 +168,7 @@ src/main/bili               bilibili APIs: WBI signing, video / anime / course /
 src/main/download           Download queue, resumable downloads, ffmpeg muxing, extras (cover, subtitles, NFO…)
 src/main/net                Proxy and CDN selection
 src/main/update             In-app updates: check update.json, verify the download, replace the .app
-src/main/mcp.ts             Local MCP server
+src/main/mcp                Local MCP server
 src/main/subscriptions.ts   Subscriptions
 src/shared                  Types, link parsing and naming templates shared by all processes
 src/renderer                User interface (React + Tailwind CSS + zustand)

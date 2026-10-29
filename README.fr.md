@@ -128,11 +128,14 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | Outil | Description |
 | --- | --- |
-| `parse_link` | Analyse un lien bilibili (vidéo, collection, animé, cours, favoris, créateur…) et renvoie son titre et ses éléments |
-| `download` | Ajoute des éléments à la file, par numéro ou tous, avec une qualité (`qn`) et un type de sortie (`full` / `audio` / `video`) facultatifs |
-| `list_tasks` | Liste la file de téléchargement, avec filtre facultatif par état |
-| `pause_task` | Met une tâche en pause |
-| `resume_task` | Reprend ou relance une tâche |
+| `get_status` | État de connexion et de l'abonnement premium (大会员), résumé de la file, espace libre du dossier de téléchargement et points à surveiller. À appeler en premier |
+| `parse_link` | Analyse un lien bilibili (vidéo, collection, animé, cours, favoris, créateur…) ; les listes sont parcourues page par page automatiquement. Les identifiants des éléments sont stables ; les résultats se lisent par tranches et les vidéos en plusieurs parties peuvent être dépliées |
+| `download_batch` | Ajoute tout un lien ou les éléments choisis en un seul lot et renvoie un `batch_id`. Les éléments déjà téléchargés sont ignorés par défaut, et renvoyer la même demande ne télécharge rien deux fois |
+| `get_batch_status` | Avancement d'un lot : nombre de tâches par état, vitesse, temps restant estimé, qualité obtenue, causes d'échec. `wait_seconds` attend les changements |
+| `list_batches` | Lots soumis récemment |
+| `list_tasks` | Liste les tâches par pages, filtrées par lot, état ou titre |
+| `control_tasks` | Met en pause, reprend, relance, retélécharge ou retire des tâches en masse (les fichiers téléchargés ne sont jamais supprimés) |
+| `get_settings` / `update_settings` | Lit ou modifie le dossier de téléchargement, le nombre de téléchargements simultanés, les threads, la limite de débit, les nouvelles tentatives automatiques, la qualité et les options par défaut |
 
 Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le jeton Bearer et vérifie les en-têtes `Host` / `Origin` pour empêcher le DNS rebinding. Vous pouvez régénérer le jeton à tout moment.
 
@@ -165,7 +168,7 @@ src/main/bili               API bilibili : signature WBI, analyse des vidéos / 
 src/main/download           File de téléchargement, reprise, multiplexage ffmpeg, extras (couverture, sous-titres, NFO…)
 src/main/net                Proxy et choix du CDN
 src/main/update             Mises à jour intégrées : vérification de update.json, contrôle du téléchargement, remplacement du .app
-src/main/mcp.ts             Serveur MCP local
+src/main/mcp                Serveur MCP local
 src/main/subscriptions.ts   Abonnements
 src/shared                  Types, analyse des liens et modèles de nommage partagés entre les processus
 src/renderer                Interface (React + Tailwind CSS + zustand)

@@ -46,6 +46,12 @@ function speedMeter(): (bytes: number) => number {
   }
 }
 
+export interface EnqueueResult {
+  created: TaskInfo[]
+  /** 已经在队列里的条目和对应的任务 */
+  skipped: { key: string; taskId: string }[]
+}
+
 const KIND_LABEL = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' } as const
 
 interface StreamPlan {
@@ -143,16 +149,21 @@ export class DownloadManager extends EventEmitter {
     return this.tasks.filter((t) => RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth').length
   }
 
-  enqueue(req: EnqueueRequest): void {
+  /** 加入队列；已经在队列里（未完成）的同一条目不重复添加，放进 skipped */
+  enqueue(req: EnqueueRequest): EnqueueResult {
     const settings = this.settings()
-    const multi = req.items.length > 1
+    const multi = req.multi ?? req.items.length > 1
     // 只下一个用 single 模板；一次下多个按番剧 / 普通合集区分
     const episodic = req.kind === 'pgc' || req.kind === 'cheese'
     const template = !multi ? settings.naming.single : episodic ? settings.naming.pgc : settings.naming.multi
     const now = Math.floor(Date.now() / 1000)
+    const result: EnqueueResult = { created: [], skipped: [] }
     for (const item of req.items) {
       const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
-      if (dup) continue
+      if (dup) {
+        result.skipped.push({ key: item.key, taskId: dup.id })
+        continue
+      }
       const nameValues: NamingValues = {
         title: item.title,
         // 单个视频的标题和总标题相同，series 留空，可选段会自动去掉
@@ -168,7 +179,7 @@ export class DownloadManager extends EventEmitter {
         ep_id: item.epId,
         type: KIND_LABEL[req.kind]
       }
-      this.tasks.push({
+      const task: TaskInfo = {
         id: randomUUID(),
         title: item.title,
         groupTitle: req.title,
@@ -180,16 +191,20 @@ export class DownloadManager extends EventEmitter {
         meta: req.meta,
         series: episodic && multi,
         seriesCover: req.cover,
-        dir: settings.downloadDir,
-        status: 'queued',
+        dir: req.dir ?? settings.downloadDir,
+        batchId: req.batchId,
+        status: req.paused ? 'paused' : 'queued',
         downloaded: 0,
         total: 0,
         speed: 0,
         createdAt: Date.now()
-      })
+      }
+      this.tasks.push(task)
+      result.created.push(task)
     }
     this.changed()
     this.schedule()
+    return result
   }
 
   pause(id: string): void {
@@ -415,7 +430,7 @@ export class DownloadManager extends EventEmitter {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0 })
       const plan = await planStreams(t, this.settings().cdn)
       check()
-      this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel })
+      this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel, videoQn: plan.video?.id })
       mkdirSync(tmp, { recursive: true })
 
       const parts = plan.parts

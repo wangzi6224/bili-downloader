@@ -128,11 +128,14 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | 工具 | 说明 |
 | --- | --- |
-| `parse_link` | 解析 B站链接（视频、合集、番剧、课程、收藏夹、UP 主等），返回标题和条目列表 |
-| `download` | 把条目加入下载队列，可按序号或全部下载，可指定清晰度（`qn`）和下载内容（`full` / `audio` / `video`） |
-| `list_tasks` | 查看下载队列，可按状态筛选 |
-| `pause_task` | 暂停任务 |
-| `resume_task` | 继续或重试任务 |
+| `get_status` | 登录和大会员状态、队列汇总、下载目录剩余空间和需要注意的提示，建议第一个调用 |
+| `parse_link` | 解析 B站链接（视频、合集、番剧、课程、收藏夹、UP 主等），列表会自动翻页；条目 id 稳定，可分段读取、展开分P |
+| `download_batch` | 把整个链接或选中的条目作为一个批次加入下载，返回 `batch_id`；默认跳过已下载的，重复提交不会重复下载 |
+| `get_batch_status` | 批次进度：各状态的数量、速度、预计剩余时间、实际清晰度、失败原因；可以用 `wait_seconds` 等待 |
+| `list_batches` | 最近提交的批次 |
+| `list_tasks` | 分页查看任务，可按批次、状态、标题筛选 |
+| `control_tasks` | 批量暂停、继续、重试、重新下载或移除任务（不会删除已下载的文件） |
+| `get_settings` / `update_settings` | 读取、修改下载目录、并发数、线程数、限速、自动重试、默认清晰度和下载选项 |
 
 服务只监听 `127.0.0.1`（端口可改），必须带 Bearer 令牌，并校验 `Host` / `Origin` 以防 DNS 重绑定。令牌可以随时重新生成。
 
@@ -165,7 +168,7 @@ src/main/bili               B站接口：WBI 签名、视频 / 番剧 / 课程 /
 src/main/download           下载队列、断点续传、ffmpeg 合并、附加内容（封面、字幕、NFO…）
 src/main/net                代理和 CDN 选择
 src/main/update             应用内更新：检查 update.json、下载校验、替换 .app
-src/main/mcp.ts             本地 MCP 服务
+src/main/mcp                本地 MCP 服务
 src/main/subscriptions.ts   订阅
 src/shared                  各进程共用的类型、链接识别和命名模板
 src/renderer                界面（React + Tailwind CSS + zustand）

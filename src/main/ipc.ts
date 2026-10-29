@@ -6,6 +6,7 @@ import type {
   MediaItem,
   NewSubscription,
   PagedSource,
+  ParseResult,
   Settings,
   Subscription
 } from '@shared/types'
@@ -20,7 +21,7 @@ import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
 import { resolveBatch, resolveInput } from './bili/resolve'
 import { exportConfig, importConfig } from './config'
 import type { DownloadManager } from './download/manager'
-import type { McpServer } from './mcp'
+import type { McpServer } from './mcp/server'
 import { CDN_HOSTS, pingHost } from './net/cdn'
 import { networkStatus } from './net/network'
 import type { SubscriptionManager } from './subscriptions'
@@ -72,6 +73,21 @@ export async function restoreSimulatedExpiry(): Promise<void> {
   await checkAuth()
 }
 
+/** 界面和 MCP 共用的解析入口：先确认已登录，解析后写入解析记录 */
+export async function parseAndRecord(input: string): Promise<ParseResult> {
+  await ensureLoggedIn()
+  const result = { ...(await resolveInput(input)), input: input.trim() }
+  recordParse({
+    input: input.trim(),
+    title: result.title,
+    kind: result.kind,
+    cover: result.cover,
+    count: result.groups.reduce((n, g) => n + g.items.length, 0),
+    at: Date.now()
+  })
+  return result
+}
+
 type Result = { ok: true; data: unknown } | { ok: false; error: string }
 
 /** 统一包装：错误以 { ok:false } 返回，preload 再还原成 Error，避免 Electron 给消息加前缀 */
@@ -106,19 +122,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   })
   handle('auth:simulateExpiry', simulateExpiry)
 
-  handle('parse', async (input: string) => {
-    await ensureLoggedIn()
-    const result = { ...(await resolveInput(input)), input: input.trim() }
-    recordParse({
-      input: input.trim(),
-      title: result.title,
-      kind: result.kind,
-      cover: result.cover,
-      count: result.groups.reduce((n, g) => n + g.items.length, 0),
-      at: Date.now()
-    })
-    return result
-  })
+  handle('parse', parseAndRecord)
   handle('parseMore', async (source: PagedSource, page: number) => {
     await ensureLoggedIn()
     return loadPage(source, page)

@@ -128,11 +128,14 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | 도구 | 설명 |
 | --- | --- |
-| `parse_link` | bilibili 링크(동영상, 컬렉션, 애니메이션, 강좌, 즐겨찾기, 업로더 등)를 분석해 제목과 항목 목록을 반환 |
-| `download` | 항목을 대기열에 추가. 번호 지정 또는 전체, 화질(`qn`)과 출력 형식(`full` / `audio` / `video`) 지정 가능 |
-| `list_tasks` | 다운로드 대기열 조회(상태별 필터 가능) |
-| `pause_task` | 작업 일시정지 |
-| `resume_task` | 작업 재개 또는 재시도 |
+| `get_status` | 로그인 및 대회원(프리미엄) 상태, 대기열 요약, 다운로드 폴더의 남은 공간, 주의할 점. 가장 먼저 호출 권장 |
+| `parse_link` | bilibili 링크(동영상, 컬렉션, 애니메이션, 강좌, 즐겨찾기, 업로더 등) 분석. 목록은 자동으로 페이지를 넘김. 항목 ID가 고정되며, 나눠서 읽거나 분P를 펼칠 수 있음 |
+| `download_batch` | 링크 전체 또는 선택한 항목을 하나의 배치로 대기열에 추가하고 `batch_id`를 반환. 이미 받은 항목은 기본적으로 건너뛰며, 같은 요청을 다시 보내도 중복 다운로드하지 않음 |
+| `get_batch_status` | 배치 진행 상황: 상태별 개수, 속도, 예상 남은 시간, 실제 화질, 실패 원인. `wait_seconds`로 변화를 기다릴 수 있음 |
+| `list_batches` | 최근 제출한 배치 |
+| `list_tasks` | 작업을 페이지 단위로 조회(배치, 상태, 제목으로 필터 가능) |
+| `control_tasks` | 작업 일괄 일시정지·재개·재시도·다시 받기·제거(다운로드한 파일은 삭제하지 않음) |
+| `get_settings` / `update_settings` | 다운로드 폴더, 동시 다운로드 수, 스레드 수, 속도 제한, 자동 재시도, 기본 화질과 다운로드 옵션 조회·변경 |
 
 서버는 `127.0.0.1`에서만 수신하며(포트 변경 가능), Bearer 토큰이 필수이고, DNS 리바인딩을 막기 위해 `Host` / `Origin` 헤더를 검사합니다. 토큰은 언제든 다시 생성할 수 있습니다.
 
@@ -165,7 +168,7 @@ src/main/bili               bilibili API: WBI 서명, 동영상 / 애니메이�
 src/main/download           다운로드 대기열, 이어받기, ffmpeg 병합, 추가 콘텐츠(커버, 자막, NFO…)
 src/main/net                프록시와 CDN 선택
 src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app 교체
-src/main/mcp.ts             로컬 MCP 서버
+src/main/mcp                로컬 MCP 서버
 src/main/subscriptions.ts   구독
 src/shared                  모든 프로세스가 공유하는 타입, 링크 분석, 이름 템플릿
 src/renderer                UI(React + Tailwind CSS + zustand)

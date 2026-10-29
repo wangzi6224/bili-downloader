@@ -174,6 +174,14 @@ export interface EnqueueRequest {
   meta?: MediaMeta
   items: MediaItem[]
   options: DownloadOptions
+  /** MCP 批量下载的批次 id */
+  batchId?: string
+  /** 保存到这个目录（绝对路径），默认是设置里的下载目录 */
+  dir?: string
+  /** 一次下载被拆成几次加入时，按整批是否多个条目选命名模板 */
+  multi?: boolean
+  /** 加入后先暂停，不开始下载 */
+  paused?: boolean
 }
 
 export type TaskStatus =
@@ -209,6 +217,8 @@ export interface TaskInfo {
   total: number
   speed: number
   qualityLabel?: string
+  /** 实际下载的清晰度代码（低于 options.qn 说明降了档） */
+  videoQn?: number
   error?: string
   /** 不影响主文件的提示，例如“没有 CC 字幕” */
   note?: string
@@ -221,6 +231,8 @@ export interface TaskInfo {
   retries?: number
   /** 下次自动重试的时间戳 */
   retryAt?: number
+  /** 通过 MCP 批量下载加入时的批次 id */
+  batchId?: string
   createdAt: number
 }
 
@@ -258,6 +270,11 @@ export interface Subscription {
   lastCheck?: number
   lastNew?: number
   lastError?: string
+  /**
+   * UP 主空间里正序的合集、系列已经把最后一页记为已见，之后每次从最后一页往前找新内容。
+   * 早先的订阅只记下了第一页，没有这个标记时先补记最后一页，免得把中间的旧视频当成新的
+   */
+  tailBaseline?: boolean
 }
 
 export interface NewSubscription {
@@ -405,6 +422,8 @@ export interface BiliApi {
     get(): Promise<Settings>
     set(patch: Partial<Settings>): Promise<Settings>
     chooseDir(): Promise<Settings>
+    /** 设置在别处（例如 MCP）被修改 */
+    onChanged(cb: (settings: Settings) => void): () => void
   }
   subs: {
     list(): Promise<Subscription[]>

@@ -12,15 +12,7 @@ export const FALLBACK: QualityOption[] = [
 
 export const CODEC_TEXT = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' } as const
 
-/**
- * 判断是否下载过：按条目 key 查下载历史。
- * 列表里还没展开分P的视频（key 里没有 cid），按 BV 号判断
- */
-export function downloadedMatcher(keys: Set<string>): (i: MediaItem) => boolean {
-  // 普通视频的 key 是 ugc:BV号:cid
-  const bvids = new Set([...keys].map((k) => k.split(':')[1]))
-  return (i) => keys.has(i.key) || Boolean(i.lazy && i.bvid && bvids.has(i.bvid))
-}
+export { downloadedMatcher } from '@shared/downloaded'
 
 /** 打开选择窗口时默认选中的清晰度：不超过设置里的默认清晰度、当前账号能下载的最高一档 */
 export function bestQuality(qualities: QualityOption[], isVip: boolean, defaultQn: number): QualityOption | undefined {

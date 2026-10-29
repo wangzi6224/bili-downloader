@@ -1,11 +1,11 @@
 import { createServer, request, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EnqueueRequest, MediaItem, ParseResult, Settings, TaskInfo, TaskStatus } from '@shared/types'
+import type { ToolResult, ToolSet } from './tools'
 
 const getVersion = vi.hoisted(() => vi.fn(() => '0.0.0-test'))
 vi.mock('electron', () => ({ app: { getVersion } }))
-const { McpServer } = await import('./mcp')
+const { McpServer } = await import('./server')
 
 async function freePort(): Promise<number> {
   const s = createServer()
@@ -18,25 +18,11 @@ async function freePort(): Promise<number> {
 const PORT = await freePort()
 const TOKEN = 'a'.repeat(48)
 
-const item = (i: number, over: Partial<MediaItem> = {}): MediaItem => ({ key: `ugc:BV:${i}`, kind: 'ugc', title: `第${i}集`, index: i, cid: i, ...over })
-
-const RESULT: ParseResult = {
-  kind: 'ugc',
-  title: '合集',
-  cover: '',
-  groups: [{ id: 'g', title: 'g', items: [1, 2, 3].map((i) => item(i)) }],
-  defaultSelected: ['ugc:BV:2']
-}
-
-const SETTINGS = { defaultQn: 80, defaults: { output: 'full', codec: ['avc'] } } as unknown as Settings
-
-const deps = {
-  parse: vi.fn(async (_url: string): Promise<ParseResult> => RESULT),
-  enqueue: vi.fn(async (_req: EnqueueRequest): Promise<string | undefined> => undefined),
-  tasks: vi.fn((): TaskInfo[] => []),
-  pause: vi.fn((_id: string) => {}),
-  resume: vi.fn((_id: string) => {}),
-  settings: vi.fn(() => SETTINGS)
+const deps: ToolSet = {
+  definitions: [{ name: 'echo', title: '回显', description: '', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }],
+  call: vi.fn(async (name: string, args: Record<string, unknown>): Promise<ToolResult> => ({
+    content: [{ type: 'text', text: JSON.stringify({ name, args }) }]
+  }))
 }
 
 const server = new McpServer(deps)
@@ -76,8 +62,6 @@ const callTool = async (name: string, args: Record<string, unknown> = {}) => {
   return r.body.result as { content: { type: string; text: string }[]; isError?: boolean }
 }
 
-const lastEnqueued = (): EnqueueRequest => deps.enqueue.mock.calls.at(-1)![0]
-
 beforeAll(async () => {
   vi.spyOn(console, 'info').mockImplementation(() => {})
   await server.apply({ enabled: true, port: PORT, token: TOKEN })
@@ -99,21 +83,20 @@ describe('McpServer', () => {
     const init = (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } })).body
     expect(init.result.protocolVersion).toBe('2025-03-26')
     expect(init.result.serverInfo).toEqual({ name: 'bili-downloader', version: '0.0.0-test' })
+    expect(init.result.instructions).toContain('download_batch')
     expect((await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' })).status).toBe(202)
     const list = (await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body
-    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(['parse_link', 'download', 'list_tasks', 'pause_task', 'resume_task'])
+    expect(list.result.tools).toEqual(deps.definitions)
   })
 
-  it('downloads the default item, chosen indexes, or everything', async () => {
-    expect((await callTool('download', { url: 'x' })).content[0].text).toContain('已加入 1 个')
-    expect(lastEnqueued().items.map((i) => i.index)).toEqual([2])
-    expect(lastEnqueued().options.qn).toBe(80)
-    await callTool('download', { url: 'x', indexes: [1, 3], qn: 120 })
-    expect(lastEnqueued().items.map((i) => i.index)).toEqual([1, 3])
-    expect(lastEnqueued().options.qn).toBe(120)
-    await callTool('download', { url: 'x', all: true, output: 'audio' })
-    expect(lastEnqueued().items).toHaveLength(3)
-    expect(lastEnqueued().options.output).toBe('audio')
+  it('tools/call 把工具名和参数转给工具，参数不是对象时当作空对象', async () => {
+    expect(JSON.parse((await callTool('echo', { a: 1 })).content[0].text)).toEqual({ name: 'echo', args: { a: 1 } })
+    for (const args of [null, [1], 'x']) {
+      await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: args } })
+      expect(deps.call).toHaveBeenLastCalledWith('echo', {})
+    }
+    await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call' })
+    expect(deps.call).toHaveBeenLastCalledWith('undefined', {})
   })
 
   it('returns method-not-found for unknown methods', async () => {
@@ -326,127 +309,66 @@ describe('JSON-RPC 方法', () => {
   })
 })
 
-describe('工具', () => {
-  it('parse_link 返回概要，条目最多 200 个', async () => {
-    deps.parse.mockResolvedValueOnce({
-      ...RESULT,
-      owner: 'UP',
-      paging: { total: 1000 } as ParseResult['paging'],
-      groups: [
-        { id: 'a', title: 'a', items: Array.from({ length: 150 }, (_, i) => item(i + 1, { duration: 60 })) },
-        { id: 'b', title: 'b', items: Array.from({ length: 100 }, (_, i) => item(i + 151, { unavailable: '已失效' })) }
-      ]
+describe('和真实的工具一起', () => {
+  it('通过 HTTP 走完解析、批量下载、查看进度、批量暂停', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { DEFAULT_OPTIONS } = await import('@shared/options')
+    const { FakeQueue, mediaItem } = await import('../../test/fakeQueue')
+    const { McpTools } = await import('./tools')
+    const dir = mkdtempSync(join(tmpdir(), 'mcp-e2e-'))
+    const queue = new FakeQueue()
+    // 188 个视频的合集
+    const items = Array.from({ length: 188 }, (_, i) => mediaItem(`ugc:BV${i + 1}:${i + 1}`, { index: i + 1, title: `第${i + 1}集` }))
+    const tools = new McpTools({
+      parseAll: async () => ({
+        result: { kind: 'ugc', title: '合集', cover: '', groups: [{ id: 'g', title: 'g', items }], defaultSelected: [], paging: { total: 188 } as never },
+        complete: true
+      }),
+      expandLazy: async (x) => x,
+      queue,
+      batchFile: join(dir, 'batches.json'),
+      downloadedKeys: () => ['ugc:BV1:1'],
+      settings: () => ({ downloadDir: join(dir, 'dl'), defaultQn: 80, defaults: DEFAULT_OPTIONS }) as never,
+      updateSettings: (p) => p as never,
+      authState: async () => ({ loggedIn: false })
     })
-    const r = await callTool('parse_link', { url: 'https://b23.tv/x' })
-    expect(deps.parse).toHaveBeenCalledWith('https://b23.tv/x')
-    const data = JSON.parse(r.content[0].text)
-    expect(data).toMatchObject({ title: '合集', kind: 'ugc', owner: 'UP', total: 1000, loaded: 250 })
-    expect(data.items).toHaveLength(200)
-    expect(data.items[0]).toEqual({ index: 1, title: '第1集', duration: 60 })
-    expect(data.items[199]).toEqual({ index: 200, title: '第200集', unavailable: '已失效' })
-  })
+    const port = await freePort()
+    const s = new McpServer(tools)
+    const callAt = async (name: string, args: Record<string, unknown>) => {
+      const r = await send({ port, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })
+      return r.body.result as { structuredContent: any; content: { text: string }[]; isError?: boolean }
+    }
+    try {
+      await s.apply({ enabled: true, port, token: TOKEN })
+      const list = await send({ port, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })
+      expect(list.body.result.tools.map((t: { name: string }) => t.name)).toContain('download_batch')
 
-  it('parse_link 没有分页信息时 total 取已加载的条目数', async () => {
-    const data = JSON.parse((await callTool('parse_link', {})).content[0].text)
-    expect(deps.parse).toHaveBeenCalledWith('')
-    expect(data).toMatchObject({ total: 3, loaded: 3 })
-  })
+      const parsed = (await callAt('parse_link', { url: 'https://space.bilibili.com/1/lists/2?type=season', limit: 200 })).structuredContent
+      expect(parsed).toMatchObject({ total: 188, fetched: 188, complete: true, next_offset: null, counts: { downloaded: 1 } })
+      expect(parsed.items).toHaveLength(188)
 
-  it('download 跳过失效的条目', async () => {
-    deps.parse.mockResolvedValueOnce({
-      ...RESULT,
-      groups: [{ id: 'g', title: 'g', items: [item(1), item(2, { unavailable: '已失效' }), item(3)] }]
-    })
-    await callTool('download', { url: 'x', all: true })
-    expect(lastEnqueued().items.map((i) => i.index)).toEqual([1, 3])
-  })
+      const sub = (await callAt('download_batch', { url: 'https://space.bilibili.com/1/lists/2?type=season', all: true })).structuredContent
+      expect(sub).toMatchObject({ selected: 187, skipped: { downloaded: 1 } })
+      const again = (await callAt('download_batch', { url: 'https://space.bilibili.com/1/lists/2?type=season', all: true })).structuredContent
+      expect(again).toMatchObject({ batch_id: sub.batch_id, deduplicated: true })
+      expect(queue.list()).toHaveLength(187)
 
-  it('download 没有默认选中项时下载全部', async () => {
-    deps.parse.mockResolvedValueOnce({ ...RESULT, defaultSelected: [] })
-    await callTool('download', { url: 'x' })
-    expect(lastEnqueued().items).toHaveLength(3)
-  })
+      const status = await callAt('get_batch_status', { batch_id: sub.batch_id })
+      expect(JSON.parse(status.content[0].text)).toEqual(status.structuredContent)
+      expect(status.structuredContent).toMatchObject({ state: 'queued', counts: { total: 187, queued: 187 } })
 
-  it('download 的 indexes 一个都没命中时返回错误，不入队', async () => {
-    const r = await callTool('download', { url: 'x', indexes: [7, 8] })
-    expect(r).toEqual({ content: [{ type: 'text', text: '没有选中任何条目，请检查 indexes' }], isError: true })
-    expect(deps.enqueue).not.toHaveBeenCalled()
-  })
-
-  it('download 的 output 不合法、qn 为 0 或不是数字时用默认设置', async () => {
-    await callTool('download', { url: 'x', output: 'xyz', qn: 0 })
-    expect(lastEnqueued().options).toEqual({ output: 'full', codec: ['avc'], qn: 80 })
-    await callTool('download', { url: 'x', output: 'video', qn: 'abc' })
-    expect(lastEnqueued().options).toMatchObject({ output: 'video', qn: 80 })
-    expect(lastEnqueued()).toMatchObject({ title: '合集', kind: 'ugc', cover: '' })
-  })
-
-  it('download 把入队时的提示附在后面', async () => {
-    deps.enqueue.mockResolvedValueOnce('跳过 2 个已下载的')
-    expect((await callTool('download', { url: 'x' })).content[0].text).toBe('已加入 1 个下载任务：合集（跳过 2 个已下载的）')
-  })
-
-  it('解析出错时以 isError 返回', async () => {
-    deps.parse.mockRejectedValueOnce(new Error('请先登录 B站账号'))
-    expect(await callTool('download', { url: 'x' })).toEqual({ content: [{ type: 'text', text: '请先登录 B站账号' }], isError: true })
-    deps.parse.mockRejectedValueOnce('boom')
-    expect((await callTool('parse_link', { url: 'x' })).content[0].text).toBe('boom')
-  })
-
-  describe('list_tasks', () => {
-    const task = (id: string, status: TaskStatus, downloaded = 0, total = 0) =>
-      ({ id, title: id, groupTitle: 'g', status, downloaded, total, qualityLabel: '1080P', outputPath: `/x/${id}` }) as unknown as TaskInfo
-    const ALL = [
-      task('q', 'queued'),
-      task('d', 'downloading', 1, 3),
-      task('p', 'paused'),
-      task('w', 'waitingAuth'),
-      task('ok', 'done', 10, 10),
-      task('e', 'error'),
-      task('u', 'unsupported')
-    ]
-    const ids = async (status?: string) =>
-      (JSON.parse((await callTool('list_tasks', status ? { status } : {})).content[0].text) as { id: string }[]).map((t) => t.id)
-
-    beforeEach(() => {
-      deps.tasks.mockReturnValue(ALL)
-    })
-
-    it('按状态过滤', async () => {
-      expect(await ids()).toEqual(['q', 'd', 'p', 'w', 'ok', 'e', 'u'])
-      expect(await ids('all')).toHaveLength(7)
-      expect(await ids('active')).toEqual(['q', 'd', 'p', 'w'])
-      expect(await ids('done')).toEqual(['ok'])
-      expect(await ids('failed')).toEqual(['e', 'u'])
-    })
-
-    it('摘要里的进度取整，总量未知时为 0', async () => {
-      const [d, ok, q] = ['d', 'ok', 'q'].map((id) => ALL.find((t) => t.id === id))
-      deps.tasks.mockReturnValue([d!, ok!, q!])
-      const list = JSON.parse((await callTool('list_tasks')).content[0].text)
-      expect(list[0]).toEqual({ id: 'd', title: 'd', group: 'g', status: 'downloading', progress: 33, quality: '1080P', path: '/x/d' })
-      expect(list.map((t: { progress: number }) => t.progress)).toEqual([33, 100, 0])
-    })
-
-    it('最多返回最近的 200 个', async () => {
-      deps.tasks.mockReturnValue(Array.from({ length: 250 }, (_, i) => task(`t${i}`, 'done')))
-      const list = await ids()
-      expect(list).toHaveLength(200)
-      expect(list[0]).toBe('t50')
-      expect(list.at(-1)).toBe('t249')
-    })
-  })
-
-  it('pause_task 和 resume_task 转发任务 id', async () => {
-    expect((await callTool('pause_task', { id: 'abc' })).content[0].text).toBe('已暂停')
-    expect(deps.pause).toHaveBeenCalledWith('abc')
-    expect((await callTool('resume_task', { id: 42 })).content[0].text).toBe('已继续')
-    expect(deps.resume).toHaveBeenCalledWith('42')
-  })
-
-  it('没有这个工具时返回错误', async () => {
-    expect(await callTool('rm_rf')).toEqual({ content: [{ type: 'text', text: '没有这个工具：rm_rf' }], isError: true })
-    const r = (await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call' })).body
-    expect(r.result).toEqual({ content: [{ type: 'text', text: '没有这个工具：undefined' }], isError: true })
+      const paused = (await callAt('control_tasks', { action: 'pause', batch_id: sub.batch_id })).structuredContent
+      expect(paused).toMatchObject({ matched: 187, affected: 187 })
+      const page = (await callAt('list_tasks', { batch_id: sub.batch_id, status: 'paused', offset: 150, limit: 100 })).structuredContent
+      expect(page).toMatchObject({ total: 187, next_offset: null })
+      expect(page.tasks).toHaveLength(37)
+      expect((await callAt('get_status', {})).structuredContent.hints.join()).toContain('没有登录')
+    } finally {
+      await s.stop()
+      tools.batches.flush()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

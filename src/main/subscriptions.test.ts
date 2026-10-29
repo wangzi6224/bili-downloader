@@ -5,9 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeOptions } from '@shared/options'
 import type { MediaItem, NewSubscription, ParseResult, Subscription } from '@shared/types'
 
-const h = vi.hoisted(() => ({ userData: '', resolveInput: vi.fn(), downloadedKeys: vi.fn((): string[] => []) }))
+const h = vi.hoisted(() => ({
+  userData: '',
+  resolveInput: vi.fn(),
+  downloadedKeys: vi.fn((): string[] => []),
+  loadTailPages: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => [])
+}))
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }))
 vi.mock('./bili/resolve', () => ({ resolveInput: h.resolveInput }))
+vi.mock('./bili/lists', async (orig) => ({ isAscending: (await orig<typeof import('./bili/lists')>()).isAscending, loadTailPages: h.loadTailPages }))
 vi.mock('./history', () => ({ downloadedKeys: h.downloadedKeys }))
 const { SubscriptionManager } = await import('./subscriptions')
 const { AuthExpiredError } = await import('./bili/http')
@@ -53,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.userData = mkdtempSync(join(tmpdir(), 'subs-'))
   h.downloadedKeys.mockReturnValue([])
+  h.loadTailPages.mockResolvedValue([])
   enqueue = vi.fn(async () => undefined)
   m = new SubscriptionManager(enqueue)
 })
@@ -80,11 +87,30 @@ describe('add', () => {
     await expect(m.add(newSub())).rejects.toThrow('已经订阅过这个来源')
   })
 
+  it('正序的合集、系列添加时马上检查一次，把最后一页记为已见', async () => {
+    const paging = { source: { type: 'spaceSeason', mid: 1, seasonId: 2 }, page: 1, total: 65, hasMore: true }
+    h.resolveInput.mockResolvedValue({ ...result([item('ugc:BV1')]), paging })
+    h.loadTailPages.mockResolvedValue([item('ugc:BV61'), item('ugc:BV65')])
+    const input = 'https://space.bilibili.com/1/lists/2?type=season'
+    const [s] = await m.add(newSub({ input, currentKeys: ['ugc:BV1'] }))
+    expect(h.resolveInput).toHaveBeenCalledWith(input)
+    const [arg, isKnown] = h.loadTailPages.mock.calls[0] as [unknown, () => boolean]
+    expect(arg).toBe(paging)
+    expect(isKnown()).toBe(true)
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(s).toMatchObject({ tailBaseline: true, lastNew: 0 })
+    expect(s.seen).toEqual(['ugc:BV1', 'ugc:BV61', 'ugc:BV65'])
+    expect(saved()[0].seen).toEqual(s.seen)
+  })
+
   it('选了“现有内容也下载”就马上检查一次', async () => {
     h.resolveInput.mockResolvedValue(result([item('ugc:BV0:1'), item('ugc:BV9:1')]))
     const [s] = await m.add(newSub({ includeExisting: true }))
     expect(enqueue.mock.calls[0][0]).toMatchObject({ items: [item('ugc:BV0:1'), item('ugc:BV9:1')] })
     expect(s.lastNew).toBe(2)
+    // 现有内容都要下载，之后是正序合集时也从最后一页一直往前翻；这里不是分页来源，不用翻页
+    expect(s.tailBaseline).toBe(true)
+    expect(h.loadTailPages).not.toHaveBeenCalled()
   })
 })
 
@@ -120,6 +146,75 @@ describe('check', () => {
     expect(s.seen).toEqual(['seen', 'done', 'ugc:BV1', 'gone', 'new', 'ugc:BV2'])
     expect(s).toMatchObject({ lastNew: 2, lastError: undefined })
     expect(saved()[0].seen).toEqual(s.seen)
+  })
+
+  it('正序的合集、系列从最后一页往前找新内容，见过或下载过的不算', async () => {
+    m.replaceAll([sub({ id: 's', seen: ['ugc:BV1', 'ugc:BV60'], tailBaseline: true })])
+    h.downloadedKeys.mockReturnValue(['ugc:BV61:9'])
+    const paging = { source: { type: 'spaceSeason', mid: 1, seasonId: 2 }, page: 1, total: 63, hasMore: true }
+    h.resolveInput.mockResolvedValue({ ...result([item('ugc:BV1')]), paging })
+    const tail = ['ugc:BV60', 'ugc:BV61', 'ugc:BV62'].map((k, i) => item(k, { lazy: true, bvid: `BV${60 + i}` }))
+    h.loadTailPages.mockResolvedValue(tail)
+    const [s] = await m.check('s')
+    const isKnown = h.loadTailPages.mock.calls[0][1] as (i: MediaItem) => boolean
+    expect(tail.map(isKnown)).toEqual([true, true, false])
+    expect(enqueue.mock.calls[0][0]).toMatchObject({ items: [tail[2]] })
+    expect(s.seen.slice(0, 4)).toEqual(['ugc:BV1', 'ugc:BV60', 'ugc:BV61', 'ugc:BV62'])
+  })
+
+  it('早先只记了第一页的订阅（包括短链接）：第一次检查只补记最后一页，不把中间的旧视频当成新的', async () => {
+    m.replaceAll([sub({ id: 's', input: 'https://b23.tv/abc', seen: ['ugc:BV1'] })])
+    const paging = { source: { type: 'spaceSeries', mid: 1, seriesId: 3 }, page: 1, total: 200, hasMore: true }
+    h.resolveInput.mockResolvedValue({ ...result([item('ugc:BV1'), item('ugc:BV2')]), paging })
+    h.loadTailPages.mockResolvedValue([item('ugc:BV181'), item('ugc:BV200')])
+    let [s] = await m.check('s')
+    expect((h.loadTailPages.mock.calls[0][1] as () => boolean)()).toBe(true)
+    // 第一页上没见过的照常下载
+    expect(enqueue.mock.calls[0][0]).toMatchObject({ items: [item('ugc:BV2')] })
+    expect(s).toMatchObject({ tailBaseline: true, lastNew: 1 })
+    expect(s.seen).toEqual(expect.arrayContaining(['ugc:BV181', 'ugc:BV200']))
+
+    // 之后照常从最后一页往前找
+    h.loadTailPages.mockResolvedValue([item('ugc:BV200'), item('ugc:BV201')])
+    ;[s] = await m.check('s')
+    expect((h.loadTailPages.mock.calls[1][1] as (i: MediaItem) => boolean)(item('ugc:BV200'))).toBe(true)
+    expect(enqueue.mock.calls[1][0]).toMatchObject({ items: [item('ugc:BV201')] })
+  })
+
+  it('补记最后一页或加入下载失败时不留标记，下次再补记', async () => {
+    m.replaceAll([sub({ id: 's', seen: ['ugc:BV1'] })])
+    const paging = { source: { type: 'spaceSeason', mid: 1, seasonId: 2 }, page: 1, total: 99, hasMore: true }
+    h.resolveInput.mockResolvedValue({ ...result([item('ugc:BV1'), item('ugc:BV2')]), paging })
+    h.loadTailPages.mockRejectedValueOnce(new Error('请求过于频繁'))
+    let [s] = await m.check('s')
+    expect(s).toMatchObject({ lastError: '请求过于频繁', seen: ['ugc:BV1'] })
+    expect(s.tailBaseline).toBeUndefined()
+    h.loadTailPages.mockResolvedValueOnce([item('ugc:BV99')])
+    enqueue.mockRejectedValueOnce(new Error('磁盘满了'))
+    ;[s] = await m.check('s')
+    expect(s.tailBaseline).toBeUndefined()
+    expect(s.seen).toEqual(['ugc:BV1'])
+  })
+
+  it('不是正序的分页来源（收藏夹等）只看第一页', async () => {
+    m.replaceAll([sub({ id: 's' })])
+    h.resolveInput.mockResolvedValue({ ...result([item('a')]), paging: { source: { type: 'fav', mediaId: 1 }, page: 1, total: 99, hasMore: true } })
+    const [s] = await m.check('s')
+    expect(h.loadTailPages).not.toHaveBeenCalled()
+    expect(s.tailBaseline).toBeUndefined()
+  })
+
+  it('同一个订阅正在检查时，再检查直接返回', async () => {
+    m.replaceAll([sub({ id: 's' })])
+    let release!: (v: ParseResult) => void
+    h.resolveInput.mockReturnValueOnce(new Promise((r) => (release = r)))
+    const first = m.check('s')
+    await m.check('s')
+    expect(h.resolveInput).toHaveBeenCalledTimes(1)
+    release(result([]))
+    await first
+    await m.check('s')
+    expect(h.resolveInput).toHaveBeenCalledTimes(2)
   })
 
   it('没有新内容时不加入下载、不通知', async () => {

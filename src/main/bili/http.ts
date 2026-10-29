@@ -16,6 +16,9 @@ export class AuthExpiredError extends BiliError {
   }
 }
 
+/** 需要登录才能继续：还没登录，或者登录已过期 */
+export class LoginRequiredError extends Error {}
+
 /** 该内容本身无法下载（DRM、地区限制、需要大会员等），重试没有意义 */
 export class UnsupportedError extends BiliError {}
 

@@ -308,6 +308,111 @@ describe('UP 主的合集和系列', () => {
   })
 })
 
+describe('loadAllPages', () => {
+  /** 合集第 page 页：每页 30 个，共 total 个 */
+  const seasonPage = (total: number) => (p: Params) => {
+    const page = Number(p.page_num)
+    const n = Math.max(0, Math.min(30, total - (page - 1) * 30))
+    return { archives: Array.from({ length: n }, (_, i) => archive((page - 1) * 30 + i + 1)), meta: { title: '合集名', cover: '', total } }
+  }
+
+  it('没有下一页时原样返回', async () => {
+    route({ season: seasonPage(3) })
+    const first = await lists.parseSpaceSeason(9, 5)
+    api.mockClear()
+    const r = await lists.loadAllPages(first)
+    expect(r).toEqual({ result: first, complete: true })
+    expect(api).not.toHaveBeenCalled()
+    const plain = { kind: 'ugc' as const, title: 't', cover: '', groups: [], defaultSelected: [] }
+    expect(await lists.loadAllPages(plain)).toEqual({ result: plain, complete: true })
+  })
+
+  it('每页间隔 1 秒翻到最后一页，接在第一组后面并去重', async () => {
+    vi.useFakeTimers()
+    route({ season: seasonPage(65) })
+    const first = await lists.parseSpaceSeason(9, 5)
+    // 第一页里混进一个第二页的条目，翻页后不能重复
+    first.groups[0].items.push({ ...first.groups[0].items[0], key: 'ugc:BV31' })
+    const p = lists.loadAllPages(first)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(api).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(api).toHaveBeenLastCalledWith(EP.season, expect.objectContaining({ page_num: 2 }))
+    await vi.advanceTimersByTimeAsync(1000)
+    const { result, complete } = await p
+    expect(complete).toBe(true)
+    expect(result.paging).toMatchObject({ page: 3, total: 65, hasMore: false })
+    const keys = result.groups[0].items.map((i) => i.key)
+    expect(keys).toHaveLength(65)
+    expect(new Set(keys).size).toBe(65)
+    expect(result.groups[0].items.at(-1)).toMatchObject({ key: 'ugc:BV65', index: 65 })
+  })
+
+  it('攒够 maxItems 就停，标记为不完整；空页也停', async () => {
+    route({ season: seasonPage(100) })
+    const first = await lists.parseSpaceSeason(9, 5)
+    const r = await lists.loadAllPages(first, { maxItems: 40, interval: 0 })
+    expect(r.complete).toBe(false)
+    expect(r.result.groups[0].items).toHaveLength(60)
+    expect(r.result.paging).toMatchObject({ page: 2, hasMore: true })
+
+    route({ season: (p) => (p.page_num === 1 ? seasonPage(100)(p) : { archives: [], meta: { title: '', cover: '', total: 100 } }) })
+    const again = await lists.loadAllPages(await lists.parseSpaceSeason(9, 5), { interval: 0 })
+    expect(again.complete).toBe(false)
+    expect(again.result.groups[0].items).toHaveLength(30)
+  })
+
+  it('翻到一半出错时保留已经拿到的，并带上原因', async () => {
+    route({
+      season: (p) => {
+        if (p.page_num === 3) throw new BiliError('请求过于频繁', -799)
+        if (p.page_num === 4) throw '奇怪'
+        return seasonPage(100)(p)
+      }
+    })
+    const r = await lists.loadAllPages(await lists.parseSpaceSeason(9, 5), { interval: 0 })
+    expect(r).toMatchObject({ complete: false, error: '请求过于频繁' })
+    expect(r.result.groups[0].items).toHaveLength(60)
+    expect(r.result.paging).toMatchObject({ page: 2, hasMore: true })
+    const first = await lists.parseSpaceSeason(9, 5)
+    first.paging!.page = 3
+    expect((await lists.loadAllPages(first, { interval: 0 })).error).toBe('奇怪')
+  })
+})
+
+describe('loadTailPages', () => {
+  const seasonPage = (total: number) => (p: Params) => {
+    const page = Number(p.page_num)
+    const n = Math.max(0, Math.min(30, total - (page - 1) * 30))
+    return { archives: Array.from({ length: n }, (_, i) => archive((page - 1) * 30 + i + 1)), meta: { title: '', cover: '', total } }
+  }
+  const source = { type: 'spaceSeason' as const, mid: 9, seasonId: 5 }
+
+  it('从最后一页往前翻，遇到认识的条目就停，按正序返回', async () => {
+    vi.useFakeTimers()
+    route({ season: seasonPage(95) })
+    const p = lists.loadTailPages({ source, page: 1, total: 95, hasMore: true }, (i) => i.key === 'ugc:BV70')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(api).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(2000)
+    const items = await p
+    expect(api.mock.calls.map((c) => c[1]?.page_num)).toEqual([4, 3])
+    expect(items.map((i) => i.index)).toEqual([...Array.from({ length: 35 }, (_, i) => i + 61)])
+  })
+
+  it('一直没遇到就翻到第 2 页为止', async () => {
+    route({ series: (p) => ({ archives: [archive(Number(p.pn))], page: { total: 61 } }) })
+    const items = await lists.loadTailPages({ source: { type: 'spaceSeries', mid: 9, seriesId: 7 }, page: 1, total: 61, hasMore: true }, () => false, 0)
+    expect(items.map((i) => i.key)).toEqual(['ugc:BV2', 'ugc:BV3'])
+  })
+
+  it('没有下一页或不是正序的来源时不请求', async () => {
+    expect(await lists.loadTailPages({ source, page: 1, total: 20, hasMore: false }, () => false)).toEqual([])
+    expect(await lists.loadTailPages({ source: { type: 'fav', mediaId: 1 }, page: 1, total: 99, hasMore: true }, () => false)).toEqual([])
+    expect(api).not.toHaveBeenCalled()
+  })
+})
+
 describe('稍后再看和我的收藏夹', () => {
   it('稍后再看：单 P 已知 cid，多 P 懒加载', async () => {
     route({
@@ -430,6 +535,21 @@ describe('expandLazy', () => {
       [3, 4],
       [4, 4]
     ])
+  })
+
+  it('stop 认定的错误直接抛出，不再展开后面的', async () => {
+    route({
+      view: (p) => {
+        if (p.bvid === 'BVb') throw new BiliError('请求过于频繁', -799)
+        return { bvid: p.bvid, aid: 1, title: 't', pages: [{ cid: 1, page: 1, part: 'p', duration: 1 }] }
+      }
+    })
+    const stop = vi.fn((e: unknown) => e instanceof BiliError && e.code === -799)
+    await expect(lists.expandLazy([lazyItem('BVa'), lazyItem('BVb'), lazyItem('BVc')], () => {}, stop)).rejects.toThrow('请求过于频繁')
+    expect(api).toHaveBeenCalledTimes(2)
+    // 其他错误照旧记在条目上
+    route({ view: () => Promise.reject(new BiliError('啥都木有', -404)) })
+    expect((await lists.expandLazy([lazyItem('BVd')], () => {}, stop))[0].unavailable).toBe('啥都木有')
   })
 
   it('两次请求之间间隔 0.3 秒', async () => {
