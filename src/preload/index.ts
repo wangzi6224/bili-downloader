@@ -61,7 +61,8 @@ const api: BiliApi = {
   settings: {
     get: () => invoke('settings:get'),
     set: (patch) => invoke('settings:set', patch),
-    chooseDir: () => invoke('settings:chooseDir')
+    chooseDir: () => invoke('settings:chooseDir'),
+    onChanged: on('settings:changed')
   },
   subs: {
     list: () => invoke('subs:list'),

@@ -255,6 +255,36 @@ describe('enqueue', () => {
     expect(a.outputPath).toBe(join(dl, '视频1.mp4'))
     expect(existsSync(join(root, 'other'))).toBe(false)
   })
+
+  it('返回新建的任务和已在队列里被跳过的条目', () => {
+    const m = make()
+    m.blockForAuth()
+    const first = m.enqueue(req([item(1)]))
+    expect(first.created.map((t) => t.item.key)).toEqual(['ugc:BV1:1'])
+    expect(first.skipped).toEqual([])
+    const second = m.enqueue(req([item(1), item(2)]))
+    expect(second.created.map((t) => t.item.key)).toEqual(['ugc:BV2:1'])
+    expect(second.skipped).toEqual([{ key: 'ugc:BV1:1', taskId: first.created[0].id }])
+    expect(second.created[0]).toBe(m.list()[1])
+  })
+
+  it('批次 id、指定目录，以及分几次加入时按整批选模板', async () => {
+    settings.naming = { single: 'S {title}', multi: 'M {title}', pgc: 'P {title}' }
+    const m = make()
+    m.blockForAuth()
+    m.enqueue(req([item(1)], { batchId: 'b1', dir: join(dl, '合集A'), multi: true }))
+    m.enqueue(req([item(2)]))
+    m.enqueue(req([item(3)], { paused: true }))
+    const [a, b, c] = m.list()
+    expect(c.status).toBe('paused')
+    expect(a).toMatchObject({ batchId: 'b1', dir: join(dl, '合集A'), template: 'M {title}' })
+    expect(b.batchId).toBeUndefined()
+    expect(b).toMatchObject({ dir: dl, template: 'S {title}' })
+    m.unblockAuth()
+    await settle()
+    expect(a.outputPath).toBe(join(dl, '合集A', 'M 视频1.mp4'))
+    expect(a.videoQn).toBe(80)
+  })
 })
 
 describe('调度', () => {

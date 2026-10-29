@@ -1,5 +1,5 @@
 import type { AuthState } from '@shared/types'
-import { getRaw, NAV_URL, setAuthExpiredHook, updateWbiKeys } from '../bili/http'
+import { getRaw, LoginRequiredError, NAV_URL, setAuthExpiredHook, updateWbiKeys } from '../bili/http'
 import { send } from '../windows'
 import { getCookie } from './session'
 
@@ -85,6 +85,6 @@ export async function ensureLoggedIn(): Promise<void> {
   const s = await checkAuthThrottled(60_000)
   if (!s.loggedIn) {
     requireLogin()
-    throw new Error(s.expired ? '登录已过期，请重新登录' : '请先登录 B站账号')
+    throw new LoginRequiredError(s.expired ? '登录已过期，请重新登录' : '请先登录 B站账号')
   }
 }

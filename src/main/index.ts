@@ -2,18 +2,20 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron'
 import type { TaskInfo } from '@shared/types'
 import { checkAuth, checkAuthThrottled, onAuthRequired, onLoggedIn, requireLogin } from './auth/authGuard'
-import { resolveInput } from './bili/resolve'
+import { expandLazy, loadAllPages } from './bili/lists'
 import { DownloadManager } from './download/manager'
 import { makeEnqueue } from './enqueue'
-import { recordDownload, removeDownloads } from './history'
+import { downloadedKeys, recordDownload, removeDownloads } from './history'
 import { limiter } from './download/rateLimiter'
-import { registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
+import { parseAndRecord, registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
-import { McpServer } from './mcp'
+import { stopsBatch } from './mcp/format'
+import { McpServer } from './mcp/server'
+import { McpTools } from './mcp/tools'
 import { applyNetwork } from './net/network'
 import { applyPower } from './power'
 import { allowQuit } from './quitGuard'
-import { getSettings, onSettingsChange } from './settings'
+import { getSettings, onSettingsChange, updateSettings } from './settings'
 import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
 import { Updater } from './update/updater'
@@ -221,17 +223,21 @@ async function start(): Promise<void> {
   subs.on('found', ({ title, count }: { title: string; count: number }) => notify('订阅有更新', `“${title}”有 ${count} 个新内容，已加入下载`))
   subs.start()
 
-  const mcp = new McpServer({
-    parse: resolveInput,
-    enqueue,
-    tasks: () => manager.list(),
-    pause: (id) => manager.pause(id),
-    resume: (id) => manager.resume(id),
-    settings: getSettings
+  const mcpTools = new McpTools({
+    parseAll: async (input, maxItems) => loadAllPages(await parseAndRecord(input), { maxItems }),
+    expandLazy: (items) => expandLazy(items, undefined, stopsBatch),
+    queue: manager,
+    batchFile: join(app.getPath('userData'), 'mcp-batches.json'),
+    downloadedKeys,
+    settings: getSettings,
+    updateSettings,
+    authState: () => checkAuthThrottled(60_000)
   })
+  const mcp = new McpServer(mcpTools)
   void mcp.apply(settings.mcp)
 
   onSettingsChange((s) => {
+    send('settings:changed', s)
     nativeTheme.themeSource = s.theme
     limiter.setLimit(s.speedLimit)
     void applyNetwork(s)
@@ -249,6 +255,7 @@ async function start(): Promise<void> {
     if (!allowQuit(e, manager.pendingCount())) return
     quitting = true
     manager.flush()
+    mcpTools.batches.flush()
     subs.stop()
     void mcp.stop()
     updater.stop()

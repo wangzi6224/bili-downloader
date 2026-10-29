@@ -154,6 +154,7 @@ describe('preload', () => {
       'auth:required',
       'dl:update',
       'parse:progress',
+      'settings:changed',
       'subs:update',
       'update:prompt',
       'update:state'

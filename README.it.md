@@ -153,11 +153,14 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | Strumento | Descrizione |
 | --- | --- |
-| `parse_link` | Analizza un link bilibili (video, raccolta, anime, corso, preferiti, autore…) e restituisce titolo ed elementi |
-| `download` | Aggiunge elementi alla coda, per numero o tutti, con qualità (`qn`) e tipo di output (`full` / `audio` / `video`) facoltativi |
-| `list_tasks` | Elenca la coda dei download, con filtro facoltativo per stato |
-| `pause_task` | Mette in pausa un'attività |
-| `resume_task` | Riprende o ritenta un'attività |
+| `get_status` | Stato di accesso e dell'abbonamento premium (大会员), riepilogo della coda, spazio libero nella cartella di download e cose a cui fare attenzione. Da chiamare per primo |
+| `parse_link` | Analizza un link bilibili (video, raccolta, anime, corso, preferiti, autore…); gli elenchi vengono sfogliati automaticamente. Gli id degli elementi sono stabili; i risultati si leggono a blocchi e i video in più parti si possono espandere |
+| `download_batch` | Aggiunge un intero link o gli elementi scelti come un unico lotto e restituisce un `batch_id`. Per impostazione predefinita salta gli elementi già scaricati, e reinviare la stessa richiesta non scarica nulla due volte |
+| `get_batch_status` | Avanzamento del lotto: attività per stato, velocità, tempo rimanente stimato, qualità effettiva, motivi degli errori. `wait_seconds` attende i cambiamenti |
+| `list_batches` | Lotti inviati di recente |
+| `list_tasks` | Elenca le attività a pagine, filtrate per lotto, stato o titolo |
+| `control_tasks` | Mette in pausa, riprende, ritenta, riscarica o rimuove attività in blocco (i file scaricati non vengono mai eliminati) |
+| `get_settings` / `update_settings` | Legge o modifica cartella di download, download simultanei, thread, limite di velocità, tentativi automatici, qualità e opzioni predefinite |
 
 Il server ascolta solo su `127.0.0.1` (la porta è configurabile), richiede il token Bearer e controlla le intestazioni `Host` / `Origin` per prevenire il DNS rebinding. Puoi rigenerare il token in qualsiasi momento.
 
@@ -191,7 +194,7 @@ src/main/bili               API bilibili: firma WBI, analisi di video / anime / 
 src/main/download           Coda dei download, ripresa, multiplexing con ffmpeg, contenuti extra (copertina, sottotitoli, NFO…)
 src/main/net                Proxy e scelta del CDN
 src/main/update             Aggiornamenti integrati: controllo di update.json, verifica del download, sostituzione del .app o dell'AppImage
-src/main/mcp.ts             Server MCP locale
+src/main/mcp                Server MCP locale
 src/main/subscriptions.ts   Abbonamenti
 src/shared                  Tipi, analisi dei link e modelli di denominazione condivisi tra i processi
 src/renderer                Interfaccia (React + Tailwind CSS + zustand)

@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
 }))
 
 vi.mock('../bili/http', () => ({
+  LoginRequiredError: class LoginRequiredError extends Error {},
   NAV_URL: 'https://nav.test',
   getRaw: m.getRaw,
   setAuthExpiredHook: m.setAuthExpiredHook,
@@ -183,6 +184,8 @@ describe('ensureLoggedIn', () => {
   it('从未登录时弹登录框并提示先登录', async () => {
     m.getRaw.mockResolvedValue(loggedOut())
     await expect(guard.ensureLoggedIn()).rejects.toThrow('请先登录 B站账号')
+    const { LoginRequiredError } = await import('../bili/http')
+    await expect(guard.ensureLoggedIn()).rejects.toBeInstanceOf(LoginRequiredError)
     expect(m.send).toHaveBeenCalledWith('auth:required')
   })
 

@@ -153,11 +153,14 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | ツール | 説明 |
 | --- | --- |
-| `parse_link` | bilibili のリンク（動画、コレクション、アニメ、講座、お気に入り、投稿者など）を解析し、タイトルと項目一覧を返す |
-| `download` | 項目をキューに追加。番号指定または全件、画質（`qn`）と出力形式（`full` / `audio` / `video`）を指定可能 |
-| `list_tasks` | ダウンロードキューを表示（状態で絞り込み可能） |
-| `pause_task` | タスクを一時停止 |
-| `resume_task` | タスクを再開または再試行 |
+| `get_status` | ログインと大会員の状態、キューの概要、保存先の空き容量、注意が必要な点。最初に呼ぶのがおすすめ |
+| `parse_link` | bilibili のリンク（動画、コレクション、アニメ、講座、お気に入り、投稿者など）を解析。一覧は自動でページをめくる。項目 ID は固定で、分けて読み込んだり分P を展開したりできる |
+| `download_batch` | リンク全体または選んだ項目を 1 つのバッチとしてキューに追加し、`batch_id` を返す。ダウンロード済みの項目は既定でスキップし、同じ依頼を再送しても二重にダウンロードしない |
+| `get_batch_status` | バッチの進捗：状態ごとの件数、速度、残り時間の目安、実際の画質、失敗の理由。`wait_seconds` で変化を待てる |
+| `list_batches` | 最近送信したバッチ |
+| `list_tasks` | タスクをページ単位で表示（バッチ、状態、タイトルで絞り込み可能） |
+| `control_tasks` | タスクをまとめて一時停止・再開・再試行・再ダウンロード・削除（ダウンロード済みのファイルは削除しない） |
+| `get_settings` / `update_settings` | 保存先、同時ダウンロード数、スレッド数、速度制限、自動再試行、既定の画質とダウンロードオプションの取得・変更 |
 
 サーバーは `127.0.0.1` のみで待ち受け（ポートは変更可能）、Bearer トークンが必須で、DNS リバインディング対策として `Host` / `Origin` ヘッダーを検証します。トークンはいつでも再生成できます。
 
@@ -191,7 +194,7 @@ src/main/bili               bilibili API：WBI 署名、動画 / アニメ / 講
 src/main/download           ダウンロードキュー、レジューム、ffmpeg による結合、追加コンテンツ（カバー、字幕、NFO…）
 src/main/net                プロキシと CDN の選択
 src/main/update             アプリ内アップデート：update.json の確認、ダウンロードの検証、.app または AppImage の置き換え
-src/main/mcp.ts             ローカル MCP サーバー
+src/main/mcp                ローカル MCP サーバー
 src/main/subscriptions.ts   購読
 src/shared                  全プロセス共通の型、リンク解析、命名テンプレート
 src/renderer                UI（React + Tailwind CSS + zustand）

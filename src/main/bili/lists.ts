@@ -1,4 +1,4 @@
-import type { MediaItem, PagedSource, PageResult, ParseResult } from '@shared/types'
+import type { MediaItem, PagedSource, PageResult, Paging, ParseResult } from '@shared/types'
 import { api, BiliError } from './http'
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -257,6 +257,60 @@ export async function loadPage(source: PagedSource, page: number): Promise<PageR
   }
 }
 
+/**
+ * 分页来源一直往后翻，直到没有下一页或攒够 maxItems 条（可能多出最后一页的零头）。
+ * 每页间隔 interval 毫秒，避免触发风控；新条目接到第一组后面，已有的 key 不重复加。
+ * 翻到一半出错（例如风控）时保留已经拿到的部分，错误放在 error 里
+ */
+export async function loadAllPages(
+  result: ParseResult,
+  { maxItems = Infinity, interval = 1000 }: { maxItems?: number; interval?: number } = {}
+): Promise<{ result: ParseResult; complete: boolean; error?: string }> {
+  let paging = result.paging
+  if (!paging?.hasMore) return { result, complete: true }
+  const [first, ...rest] = result.groups
+  const items = [...first.items]
+  const seen = new Set(items.map((i) => i.key))
+  let error: string | undefined
+  while (paging.hasMore && items.length < maxItems) {
+    await sleep(interval)
+    let p: PageResult
+    try {
+      p = await loadPage(paging.source, paging.page + 1)
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+      break
+    }
+    // 接口说还有下一页却返回空列表，再翻也没用
+    if (!p.items.length) break
+    for (const it of p.items) {
+      if (seen.has(it.key)) continue
+      seen.add(it.key)
+      items.push(it)
+    }
+    paging = { ...paging, page: p.page, total: p.total, hasMore: p.hasMore }
+  }
+  return { result: { ...result, groups: [{ ...first, items }, ...rest], paging }, complete: !paging.hasMore, error }
+}
+
+/** UP 主空间里的合集、系列按时间正序排，超过一页后新内容在最后几页 */
+export const isAscending = (source: PagedSource): boolean => source.type === 'spaceSeason' || source.type === 'spaceSeries'
+
+/**
+ * 正序的来源从最后一页往前翻（不含第一页），直到某一页里出现 isKnown 的条目；返回按正序排好的条目
+ */
+export async function loadTailPages(paging: Paging, isKnown: (i: MediaItem) => boolean, interval = 1000): Promise<MediaItem[]> {
+  if (!paging.hasMore || !isAscending(paging.source)) return []
+  const out: MediaItem[] = []
+  for (let page = Math.ceil(paging.total / SPACE_PS); page > 1; page--) {
+    await sleep(interval)
+    const { items } = await loadPage(paging.source, page)
+    out.unshift(...items)
+    if (items.some(isKnown)) break
+  }
+  return out
+}
+
 // ---------------- 稍后再看、我的收藏夹 ----------------
 
 interface ToView {
@@ -310,9 +364,13 @@ interface ViewPages {
 
 /**
  * 把 lazy 条目查成真正可下载的分P。逐个请求、间隔 0.3 秒，避免触发风控；
- * 单个失败不影响其他条目，失败的以 unavailable 返回。
+ * 单个失败不影响其他条目，失败的以 unavailable 返回。stop 判定为 true 的错误（例如风控）直接抛出
  */
-export async function expandLazy(items: MediaItem[], onProgress?: (done: number, total: number) => void): Promise<MediaItem[]> {
+export async function expandLazy(
+  items: MediaItem[],
+  onProgress?: (done: number, total: number) => void,
+  stop?: (e: unknown) => boolean
+): Promise<MediaItem[]> {
   const lazy = items.filter((i) => i.lazy)
   if (!lazy.length) return items
   const out: MediaItem[] = []
@@ -343,6 +401,7 @@ export async function expandLazy(items: MediaItem[], onProgress?: (done: number,
         })
       }
     } catch (e) {
+      if (stop?.(e)) throw e
       out.push({ ...item, unavailable: e instanceof Error ? e.message : String(e) })
     }
     onProgress?.(++done, lazy.length)
