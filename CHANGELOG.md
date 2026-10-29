@@ -4,10 +4,13 @@
 推送版本 tag 后，GitHub Actions 会把当前版本这一段作为 GitHub Release 的说明，并把最近的各段写进 `update.json`，
 应用内的更新弹窗会显示用户当前版本之后的所有段落。还没发布的改动先记在“未发布”下面。
 
-## 未发布
+## 0.6.0 - 2026-10-29
 
-- 新增 Linux 版（x64）：提供 AppImage 和 deb 两种安装包，随包带 ffmpeg；AppImage 版支持应用内自动更新，deb 版有新版本时提示去下载页面
-- Linux 上可以从 Chrome、Edge、Brave、Vivaldi、Chromium、Firefox 导入登录；关闭窗口转到后台后，点托盘图标重新打开
+- 新增 Linux 版（x64），随包带 ffmpeg，在下载页面选一个安装包：
+  - `bili-downloader-0.6.0-x86_64.AppImage`：各发行版通用，加上可执行权限（`chmod +x`）就能运行，支持应用内自动更新；需要 FUSE 2，Ubuntu 24.04 上用 `sudo apt install libfuse2t64` 安装
+  - `bili-downloader-0.6.0-amd64.deb`：Debian、Ubuntu 用 `sudo apt install ./bili-downloader-0.6.0-amd64.deb` 安装；有新版本时会提示去下载页面
+- Linux 上可以从 Chrome、Edge、Brave、Vivaldi、Chromium、Firefox 导入登录（Chrome 系浏览器需要先安装 `libsecret-tools`）；关闭窗口转到后台后，点托盘图标重新打开
+- macOS 版没有变化
 
 ## 0.5.0 - 2026-10-29
 
