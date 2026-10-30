@@ -1,24 +1,34 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { compressDmg, dmgFormat } from './dmg.mjs'
 
 // 真的用 hdiutil 建一个小 dmg 来转，只能在 macOS 上跑
 describe.runIf(process.platform === 'darwin')('compressDmg', () => {
+  let base
+  let source
   let dir
   let dmg
 
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'bili-dmg-'))
-    const src = join(dir, 'src')
+  // CI 的 macOS 上建一次镜像要好几秒，只建一次，每个用例复制一份
+  beforeAll(() => {
+    base = mkdtempSync(join(tmpdir(), 'bili-dmg-'))
+    const src = join(base, 'src')
     mkdirSync(join(src, 'B站下载器.app/Contents'), { recursive: true })
     // 放点内容，转换后核对是否一样
     writeFileSync(join(src, 'B站下载器.app/Contents/payload'), Buffer.alloc(512 * 1024, 'bili downloader '))
     writeFileSync(join(src, '.background'), 'layout')
+    source = join(base, 'source.dmg')
+    execFileSync('hdiutil', ['create', '-quiet', '-srcfolder', src, '-volname', 'B站下载器 1.0.0', '-format', 'UDZO', source])
+  }, 60_000)
+  afterAll(() => rmSync(base, { recursive: true, force: true }))
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(base, 'case-'))
     dmg = join(dir, 'bili-downloader-1.0.0-arm64.dmg')
-    execFileSync('hdiutil', ['create', '-quiet', '-srcfolder', src, '-volname', 'B站下载器 1.0.0', '-format', 'UDZO', dmg])
+    copyFileSync(source, dmg)
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
