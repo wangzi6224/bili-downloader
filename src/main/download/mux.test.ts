@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   app: { isPackaged: false, getAppPath: () => '/app' },
@@ -11,6 +11,7 @@ vi.mock('electron', () => ({ app: h.app }))
 vi.mock('node:child_process', () => ({ spawn: h.spawn }))
 vi.mock('node:fs', async (o) => ({ ...(await o<typeof import('node:fs')>()), existsSync: h.existsSync }))
 const { buildMuxArgs, explainFfmpegError } = await import('./mux')
+const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
 
 /** 假的 ffmpeg 进程：测试里手动 emit stderr / close / error */
 class FakeProc extends EventEmitter {
@@ -30,6 +31,7 @@ const flush = async (): Promise<void> => {
 }
 
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM)
   procs = []
   h.spawn.mockReset().mockImplementation(() => {
     const p = new FakeProc()
@@ -39,6 +41,8 @@ beforeEach(() => {
   h.existsSync.mockReset().mockReturnValue(false)
   h.app.isPackaged = false
 })
+
+afterEach(() => Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM))
 
 describe('buildMuxArgs', () => {
   it('muxes hevc into mp4 with cover, subtitles and chapters', () => {
@@ -188,6 +192,18 @@ describe('ffmpegPath', () => {
       h.existsSync.mockReturnValue(true)
       expect((await load()).ffmpegPath()).toBe('/Res/ffmpeg/ffmpeg')
       expect(h.existsSync).toHaveBeenCalledTimes(1)
+    } finally {
+      delete (process as { resourcesPath?: string }).resourcesPath
+    }
+  })
+
+  it('Windows 打包资源使用 ffmpeg.exe', async () => {
+    Object.defineProperty(process, 'platform', { ...ORIGINAL_PLATFORM, value: 'win32' })
+    h.app.isPackaged = true
+    Object.assign(process, { resourcesPath: '/Res' })
+    try {
+      h.existsSync.mockReturnValue(true)
+      expect((await load()).ffmpegPath()).toBe(join('/Res', 'ffmpeg', 'ffmpeg.exe'))
     } finally {
       delete (process as { resourcesPath?: string }).resourcesPath
     }

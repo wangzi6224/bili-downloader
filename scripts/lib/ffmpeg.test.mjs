@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isUpToDate, licenseText, verifySha256 } from './ffmpeg.mjs'
+import { binaryName, isUpToDate, licenseText, verifySha256 } from './ffmpeg.mjs'
 
 const SHA = 'a'.repeat(64)
 let dir = ''
@@ -29,6 +29,20 @@ describe('isUpToDate', () => {
   it('只有校验值记录、没有 ffmpeg 时要重新下载', () => {
     writeFileSync(join(dir, '.sha256'), SHA)
     expect(isUpToDate(dir, SHA)).toBe(false)
+  })
+
+  it('Windows 使用 ffmpeg.exe，并按 Windows 二进制判断缓存', () => {
+    writeFileSync(join(dir, 'ffmpeg.exe'), '')
+    writeFileSync(join(dir, '.sha256'), SHA)
+    expect(isUpToDate(dir, SHA, 'ffmpeg.exe')).toBe(true)
+  })
+})
+
+describe('binaryName', () => {
+  it('Windows 使用 .exe，其他系统保留 ffmpeg 文件名', () => {
+    expect(binaryName('win32')).toBe('ffmpeg.exe')
+    expect(binaryName('darwin')).toBe('ffmpeg')
+    expect(binaryName('linux')).toBe('ffmpeg')
   })
 })
 

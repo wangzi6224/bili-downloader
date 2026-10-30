@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 
 const MAC = { os: 'macOS', script: 'build:mac' }
 const LINUX = { os: 'Linux', script: 'build:linux' }
+const WINDOWS = { os: 'Windows', script: 'build:win' }
 
 /**
  * 每个 Release 上传的安装包。updateKey 是它在 update.json 里的键（应用按 src/main/update/manifest.ts 的 assetKey 取），
@@ -15,7 +16,8 @@ export const PACKAGES = [
   { arch: 'x64', ext: 'zip', updateKey: 'x64', build: MAC },
   { arch: 'x64', ext: 'dmg', build: MAC },
   { arch: 'x86_64', ext: 'AppImage', updateKey: 'linux-x64', build: LINUX },
-  { arch: 'amd64', ext: 'deb', build: LINUX }
+  { arch: 'amd64', ext: 'deb', build: LINUX },
+  { arch: 'x64', ext: 'exe', updateKey: 'win32-x64', build: WINDOWS }
 ]
 /** update.json 里最多带几个版本的说明，跳过了多个版本的用户能看到中间的变化 */
 export const MAX_NOTES = 30

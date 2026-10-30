@@ -6,15 +6,17 @@ import { AbortError, FfmpegError } from './errors'
 
 let cached: string | undefined
 
+const ffmpegName = (): string => (process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+
 /** 打包后用随包的 ffmpeg；开发时优先用系统安装的 ffmpeg，再退回 resources/ffmpeg/<系统>-<架构> */
 export function ffmpegPath(): string {
   if (cached) return cached
   const candidates = app.isPackaged
-    ? [join(process.resourcesPath, 'ffmpeg', 'ffmpeg')]
+    ? [join(process.resourcesPath, 'ffmpeg', ffmpegName())]
     : [
         '/opt/homebrew/bin/ffmpeg',
         '/usr/local/bin/ffmpeg',
-        join(app.getAppPath(), 'resources', 'ffmpeg', `${process.platform}-${process.arch}`, 'ffmpeg')
+        join(app.getAppPath(), 'resources', 'ffmpeg', `${process.platform}-${process.arch}`, ffmpegName())
       ]
   cached = candidates.find((p) => existsSync(p)) ?? 'ffmpeg'
   return cached

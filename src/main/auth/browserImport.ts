@@ -6,9 +6,11 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { AuthState, BrowserProfile } from '@shared/types'
 import { replaceLogin } from './cookieImport'
+import { unprotect } from './dpapi'
 import { isBiliHost, type PlainCookie, type SameSite } from './session'
 
 const IS_MAC = process.platform === 'darwin'
+const IS_WINDOWS = process.platform === 'win32'
 
 interface ChromiumBrowser {
   key: string
@@ -22,6 +24,8 @@ interface ChromiumBrowser {
 // 数据文件夹在模块加载时按 HOME 算好（测试里换了 HOME 要重新加载模块）
 const SUPPORT = join(homedir(), 'Library/Application Support')
 const CONFIG = join(homedir(), '.config')
+const LOCAL = process.env.LOCALAPPDATA || join(homedir(), 'AppData/Local')
+const ROAMING = process.env.APPDATA || join(homedir(), 'AppData/Roaming')
 
 const CHROMIUM: ChromiumBrowser[] = IS_MAC
   ? [
@@ -32,7 +36,15 @@ const CHROMIUM: ChromiumBrowser[] = IS_MAC
       { key: 'vivaldi', name: 'Vivaldi', root: join(SUPPORT, 'Vivaldi'), secret: 'Vivaldi Safe Storage' },
       { key: 'chromium', name: 'Chromium', root: join(SUPPORT, 'Chromium'), secret: 'Chromium Safe Storage' }
     ]
-  : // Edge 和 Vivaldi 在 Linux 上沿用 Chromium、Chrome 的密钥环条目
+  : IS_WINDOWS
+    ? [
+        { key: 'chrome', name: 'Chrome', root: join(LOCAL, 'Google/Chrome/User Data'), secret: '' },
+        { key: 'edge', name: 'Edge', root: join(LOCAL, 'Microsoft/Edge/User Data'), secret: '' },
+        { key: 'brave', name: 'Brave', root: join(LOCAL, 'BraveSoftware/Brave-Browser/User Data'), secret: '' },
+        { key: 'vivaldi', name: 'Vivaldi', root: join(LOCAL, 'Vivaldi/User Data'), secret: '' },
+        { key: 'chromium', name: 'Chromium', root: join(LOCAL, 'Chromium/User Data'), secret: '' }
+      ]
+    : // Edge 和 Vivaldi 在 Linux 上沿用 Chromium、Chrome 的密钥环条目
     [
       { key: 'chrome', name: 'Chrome', root: join(CONFIG, 'google-chrome'), secret: 'chrome' },
       { key: 'edge', name: 'Edge', root: join(CONFIG, 'microsoft-edge'), secret: 'chromium' },
@@ -46,7 +58,9 @@ const CHROMIUM: ChromiumBrowser[] = IS_MAC
 /** 放 Firefox 配置档的文件夹 */
 const FIREFOX_ROOTS: string[] = IS_MAC
   ? [join(SUPPORT, 'Firefox/Profiles')]
-  : [
+  : IS_WINDOWS
+    ? [join(ROAMING, 'Mozilla/Firefox/Profiles'), join(LOCAL, 'Mozilla/Firefox/Profiles')]
+    : [
       join(homedir(), '.mozilla/firefox'),
       // 新版 Firefox 新建的配置档放在 XDG 目录里
       join(CONFIG, 'mozilla/firefox'),
@@ -64,10 +78,11 @@ export function chromiumKey(password: string, iterations = IS_MAC ? 1003 : 1): B
 
 /** v10、v11 两种前缀各自用的密钥。macOS 上两种都用钥匙串里的密码；Linux 上 v10 用固定密码 peanuts，v11 用密钥环里的密码 */
 export type ChromiumKeys = Partial<Record<'v10' | 'v11', Buffer>>
+const APP_BOUND_COOKIE_ERROR = '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
 
-const encryptedPrefix = (enc: Uint8Array): 'v10' | 'v11' | undefined => {
+const encryptedPrefix = (enc: Uint8Array): 'v10' | 'v11' | 'v20' | undefined => {
   const prefix = Buffer.from(enc.subarray(0, 3)).toString('latin1')
-  return prefix === 'v10' || prefix === 'v11' ? prefix : undefined
+  return prefix === 'v10' || prefix === 'v11' || prefix === 'v20' ? prefix : undefined
 }
 
 /** 前缀 + AES-128-CBC（IV 为 16 个空格）；meta version ≥ 24 时明文前 32 字节是域名哈希 */
@@ -76,12 +91,28 @@ export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVe
   if (buf.length === 0) return ''
   const prefix = encryptedPrefix(buf)
   if (!prefix) return buf.toString('utf8')
+  if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
   const key = keys[prefix]
   if (!key) throw new Error(`缺少解密 ${prefix} 的密钥`)
   const decipher = createDecipheriv('aes-128-cbc', key, Buffer.alloc(16, ' '))
   let out = Buffer.concat([decipher.update(buf.subarray(3)), decipher.final()])
   if (metaVersion >= 24) out = out.subarray(32)
   return out.toString('utf8')
+}
+
+/** Windows Chromium Cookie 使用 Local State 中的 DPAPI 主密钥和 AES-256-GCM。 */
+export function decryptWindowsChromiumValue(enc: Uint8Array, key: Buffer, metaVersion: number): string {
+  const buf = Buffer.from(enc)
+  if (!buf.length) return ''
+  const prefix = encryptedPrefix(buf)
+  if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
+  if (!prefix) return buf.toString('utf8')
+  if (buf.length < 3 + 12 + 16) throw new Error('Chromium Cookie 加密数据不完整')
+  const decipher = createDecipheriv('aes-256-gcm', key, buf.subarray(3, 15))
+  decipher.setAuthTag(buf.subarray(-16))
+  let plain = Buffer.concat([decipher.update(buf.subarray(15, -16)), decipher.final()])
+  if (metaVersion >= 24) plain = plain.subarray(32)
+  return plain.toString('utf8')
 }
 
 /** Chrome 时间：1601-01-01 起的微秒数 */
@@ -257,10 +288,26 @@ function keyringPassword(application: string): Promise<string> {
   })
 }
 
-/** 只取实际用到的密钥：Linux 上没有 v11 的 Cookie 就不去碰密钥环 */
-async function chromiumKeys(b: ChromiumBrowser, needsV11: boolean): Promise<ChromiumKeys> {
+/** 只读取当前配置档实际需要的密钥 */
+async function chromiumKeys(b: ChromiumBrowser, needsV11: boolean, needsV10: boolean): Promise<ChromiumKeys> {
   if (IS_MAC) {
     const key = chromiumKey(await keychainPassword(b.secret))
+    return { v10: key, v11: key }
+  }
+  if (IS_WINDOWS) {
+    if (!needsV10 && !needsV11) return {}
+    let encryptedKey: string | undefined
+    try {
+      encryptedKey = JSON.parse(readFileSync(join(b.root, 'Local State'), 'utf8')).os_crypt?.encrypted_key
+    } catch {
+      throw new Error('无法读取 Windows 浏览器的加密密钥，请改用应用内登录或手动粘贴 Cookie')
+    }
+    if (!encryptedKey) throw new Error('Windows 浏览器没有可读取的 DPAPI 密钥，请改用应用内登录或手动粘贴 Cookie')
+    const wrapped = Buffer.from(encryptedKey, 'base64')
+    if (wrapped.subarray(0, 5).toString('ascii') !== 'DPAPI') {
+      throw new Error('Windows 浏览器密钥格式不受支持，请改用应用内登录或手动粘贴 Cookie')
+    }
+    const key = await unprotect(wrapped.subarray(5))
     return { v10: key, v11: key }
   }
   return {
@@ -279,17 +326,29 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
     return { version: Number(meta?.value ?? 0), rows: stmt.all().filter((r) => isBiliHost(String(r.host_key))) }
   })
   const needsV11 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v11')
-  const keys = await chromiumKeys(f.browser, needsV11)
-  return rows.map((r) => ({
-    domain: String(r.host_key),
-    name: String(r.name),
-    value: r.value ? String(r.value) : decryptChromiumValue(r.encrypted_value as Uint8Array, keys, version),
-    path: String(r.path),
-    secure: Number(r.is_secure) === 1,
-    httpOnly: Number(r.is_httponly) === 1,
-    expires: chromeTimeToUnix(r.expires_utc as bigint),
-    sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
-  }))
+  const needsV10 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v10')
+  const keys = await chromiumKeys(f.browser, needsV11, needsV10)
+  return rows.map((r) => {
+    let value: string
+    if (r.value) value = String(r.value)
+    else if (IS_WINDOWS) {
+      const prefix = encryptedPrefix(r.encrypted_value as Uint8Array)
+      if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
+      const key = keys.v10 ?? keys.v11
+      if (!key) throw new Error('Windows 浏览器 Cookie 缺少 DPAPI 主密钥，请改用应用内登录或手动粘贴 Cookie')
+      value = decryptWindowsChromiumValue(r.encrypted_value as Uint8Array, key, version)
+    } else value = decryptChromiumValue(r.encrypted_value as Uint8Array, keys, version)
+    return {
+      domain: String(r.host_key),
+      name: String(r.name),
+      value,
+      path: String(r.path),
+      secure: Number(r.is_secure) === 1,
+      httpOnly: Number(r.is_httponly) === 1,
+      expires: chromeTimeToUnix(r.expires_utc as bigint),
+      sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
+    }
+  })
 }
 
 /** 新版 Firefox 的 expiry 是毫秒 */

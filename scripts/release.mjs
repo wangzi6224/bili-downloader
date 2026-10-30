@@ -1,6 +1,6 @@
 // 发布新版本到 GitHub Releases：取 CHANGELOG.md 里当前版本的说明，生成 dist/update.json（应用内更新读这个文件），
-// 再用 gh 创建 Release，上传 macOS 两个架构的 zip（自动更新用）和 dmg（手动安装用），以及 Linux 的 AppImage（自动更新用）和 deb。
-// 平时由 GitHub Actions 在推送 v版本号 的 tag 后运行（.github/workflows/release.yml），mac 包和 Linux 包分别在各自的系统上打好再汇总；
+// 再用 gh 创建 Release，上传 macOS、Linux 和 Windows 安装包，以及应用内更新清单。
+// 平时由 GitHub Actions 在推送 v版本号 的 tag 后运行（.github/workflows/release.yml），各系统包分别在对应 runner 上打好再汇总；
 // 也可以在本机 npm run release（检查、打 mac 包、发布），但 dist/ 里要先放好在 Linux 上打的包
 // 参数：--check 只检查版本号、tag 和更新日志，不用先打包；--dry-run 只生成 update.json 不上传
 import { execFileSync, spawnSync } from 'node:child_process'

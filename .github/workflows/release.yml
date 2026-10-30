@@ -1,4 +1,4 @@
-# 推送 v版本号 的 tag 后自动测试，分别在 macOS 和 Linux 上打包，再汇总发布到 GitHub Releases，发布步骤见 docs/RELEASING.md
+# 推送 v版本号 的 tag 后自动测试，分别在 macOS、Linux 和 Windows 上打包，再汇总发布到 GitHub Releases，发布步骤见 docs/RELEASING.md
 # 也可以在 Actions 页面手动运行：只打包不发布，全部安装包作为这次运行的产物上传，用来验证打包流程
 name: 发布
 
@@ -41,8 +41,9 @@ jobs:
       matrix:
         include:
           # dmg 只能在 macOS 上打；Apple 芯片的 runner 也能打 x64 的包
-          - { name: mac, os: macos-latest, script: build:mac }
-          - { name: linux, os: ubuntu-latest, script: build:linux }
+          - { name: mac, os: macos-latest, script: 'build:mac' }
+          - { name: linux, os: ubuntu-latest, script: 'build:linux' }
+          - { name: windows, os: windows-latest, script: 'build:win' }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -75,6 +76,7 @@ jobs:
             dist/*.zip
             dist/*.AppImage
             dist/*.deb
+            dist/*.exe
           if-no-files-found: error
           # 安装包本身已经压缩过
           compression-level: 0
@@ -93,7 +95,7 @@ jobs:
         with:
           node-version: 24
 
-      # 两个系统的安装包放到同一个 dist/ 里
+      # 各系统的安装包放到同一个 dist/ 里
       - uses: actions/download-artifact@v8
         with:
           pattern: packages-*
@@ -119,6 +121,7 @@ jobs:
             dist/*.zip
             dist/*.AppImage
             dist/*.deb
+            dist/*.exe
             dist/update.json
           compression-level: 0
           retention-days: 7

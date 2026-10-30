@@ -3,10 +3,13 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+/** 各系统随包二进制的文件名 */
+export const binaryName = (platform) => (platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+
 /** 目录里已经是这个校验值的 ffmpeg（下载完会写 .sha256 记录），不用再下载 */
-export function isUpToDate(dir, sha256) {
+export function isUpToDate(dir, sha256, binary = 'ffmpeg') {
   const stamp = join(dir, '.sha256')
-  return existsSync(join(dir, 'ffmpeg')) && existsSync(stamp) && readFileSync(stamp, 'utf8') === sha256
+  return existsSync(join(dir, binary)) && existsSync(stamp) && readFileSync(stamp, 'utf8') === sha256
 }
 
 /** 下载内容和固定的 sha256 不一致就抛错 */

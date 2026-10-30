@@ -28,7 +28,7 @@ const isMac = process.platform === 'darwin'
 let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
 
-/** Linux 上窗口、托盘和通知用的图标；macOS 用 .app 里的 icns */
+/** Windows 和 Linux 窗口、托盘和通知用的图标；macOS 用 .app 里的 icns */
 const appIcon = (): string =>
   app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '../../build/icons/256x256.png')
 
@@ -108,8 +108,8 @@ function showMainWindow(): void {
   win.focus()
 }
 
-/** Linux 上菜单标签不会按系统语言翻译，自己写中文；macOS 的应用菜单、窗口菜单在 Linux 上没有对应的东西 */
-const LINUX_MENU: Electron.MenuItemConstructorOptions[] = [
+/** Windows 和 Linux 菜单标签不会按系统语言翻译，自己写中文；macOS 用系统原生菜单 */
+const DESKTOP_MENU: Electron.MenuItemConstructorOptions[] = [
   { label: '文件', submenu: [{ label: '退出', role: 'quit' }] },
   {
     label: '编辑',
@@ -141,7 +141,7 @@ const LINUX_MENU: Electron.MenuItemConstructorOptions[] = [
 
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
-    ...(isMac ? ([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }] as const) : LINUX_MENU),
+    ...(isMac ? ([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }] as const) : DESKTOP_MENU),
     {
       role: 'help',
       // macOS 按系统语言自动翻译
@@ -164,7 +164,7 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-/** Linux 没有程序坞，窗口隐藏到后台后靠托盘图标找回。有的桌面环境单击托盘图标只弹菜单，所以菜单里也放“显示窗口” */
+/** Windows 和 Linux 窗口隐藏到后台后靠托盘图标找回。菜单里也放“显示窗口” */
 function createTray(): void {
   tray = new Tray(nativeImage.createFromPath(appIcon()).resize({ width: 32, height: 32 }))
   tray.setToolTip('B站下载器')

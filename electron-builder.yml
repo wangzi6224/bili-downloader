@@ -7,7 +7,7 @@ directories:
 files:
   - out/**
   - package.json
-# 每个系统和架构只带自己的 ffmpeg（${platform} 是打包机的系统，mac 包在 mac 上打、Linux 包在 Linux 上打）
+# 每个系统和架构只带自己的 ffmpeg（${platform} 是打包机的系统）
 extraResources:
   - from: resources/ffmpeg/${platform}-${arch}
     to: ffmpeg
@@ -52,3 +52,15 @@ linux:
   extraResources:
     - from: build/icons/256x256.png
       to: icon.png
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+  extraResources:
+    - from: build/icon.png
+      to: icon.png
+nsis:
+  # per-user 安装，更新时不需要管理员权限
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true

@@ -161,6 +161,7 @@ describe('assetKey', () => {
     expect(assetKey('darwin', 'arm64')).toBe('arm64')
     expect(assetKey('darwin', 'x64')).toBe('x64')
     expect(assetKey('linux', 'x64')).toBe('linux-x64')
+    expect(assetKey('win32', 'x64')).toBe('win32-x64')
   })
 
   it('带 Linux 安装包的清单，macOS 旧版本照样能解析、取到自己的 zip', () => {

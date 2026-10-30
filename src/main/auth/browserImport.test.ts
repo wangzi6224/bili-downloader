@@ -11,6 +11,7 @@ type ExecCb = (err: (Error & { code?: number }) | null, stdout: string, stderr: 
 
 const m = vi.hoisted(() => ({
   execFile: vi.fn(),
+  unprotect: vi.fn(),
   checkAuth: vi.fn(),
   clearBiliCookies: vi.fn(async () => {}),
   setBiliCookies: vi.fn(async (_list: unknown[]) => {}),
@@ -18,6 +19,7 @@ const m = vi.hoisted(() => ({
 }))
 
 vi.mock('node:child_process', () => ({ execFile: m.execFile }))
+vi.mock('./dpapi', () => ({ unprotect: m.unprotect }))
 vi.mock('./authGuard', () => ({ checkAuth: m.checkAuth }))
 // isBiliHost 用真实实现
 vi.mock('./session', async (importOriginal) => ({
@@ -27,12 +29,18 @@ vi.mock('./session', async (importOriginal) => ({
   snapshotCookies: m.snapshotCookies
 }))
 
-const { chromeTimeToUnix, chromiumKey, decryptChromiumValue } = await import('./browserImport')
+const { chromeTimeToUnix, chromiumKey, decryptChromiumValue, decryptWindowsChromiumValue } = await import('./browserImport')
 
 /** 默认按 macOS 的方式加密（迭代 1003 次、v10 前缀）；Linux 迭代 1 次 */
 function encrypt(plain: Buffer, password: string, iterations = 1003, prefix = 'v10'): Buffer {
   const cipher = createCipheriv('aes-128-cbc', chromiumKey(password, iterations), Buffer.alloc(16, ' '))
   return Buffer.concat([Buffer.from(prefix), cipher.update(plain), cipher.final()])
+}
+
+function encryptWindows(plain: Buffer, key: Buffer, prefix = 'v10'): Buffer {
+  const nonce = Buffer.alloc(12, 3)
+  const cipher = createCipheriv('aes-256-gcm', key, nonce)
+  return Buffer.concat([Buffer.from(prefix), nonce, cipher.update(plain), cipher.final(), cipher.getAuthTag()])
 }
 
 describe('chromium cookie decryption', () => {
@@ -73,6 +81,19 @@ describe('chromium cookie decryption', () => {
 
   it('空值解出空串', () => {
     expect(decryptChromiumValue(new Uint8Array(), keys, 24)).toBe('')
+  })
+
+  it('Windows v10 使用 AES-GCM 并按 meta version 去掉域名哈希', () => {
+    const key = Buffer.alloc(32, 7)
+    const hash = createHash('sha256').update('.bilibili.com').digest()
+    const enc = encryptWindows(Buffer.concat([hash, Buffer.from('win-sess')]), key)
+    expect(decryptWindowsChromiumValue(enc, key, 24)).toBe('win-sess')
+  })
+
+  it('新版应用绑定加密 Cookie 给出可用的替代登录说明', () => {
+    expect(() => decryptWindowsChromiumValue(Buffer.from('v20encrypted'), Buffer.alloc(32), 24)).toThrow(
+      '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
+    )
   })
 })
 
@@ -119,15 +140,22 @@ let base: string
 let home: string
 let tmp: string
 const locked: string[] = []
-const env = { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }
+const env = {
+  HOME: process.env.HOME,
+  TMPDIR: process.env.TMPDIR,
+  LOCALAPPDATA: process.env.LOCALAPPDATA,
+  APPDATA: process.env.APPDATA
+}
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 let bi: typeof import('./browserImport')
 
 const support = (...p: string[]): string => join(home, 'Library/Application Support', ...p)
 const config = (...p: string[]): string => join(home, '.config', ...p)
+const localAppData = (...p: string[]): string => join(process.env.LOCALAPPDATA!, ...p)
+const roamingAppData = (...p: string[]): string => join(process.env.APPDATA!, ...p)
 
 /** 模块加载时按系统和 HOME 决定去哪找浏览器，所以换了以后要重新加载 */
-async function load(os: 'darwin' | 'linux'): Promise<void> {
+async function load(os: 'darwin' | 'linux' | 'win32'): Promise<void> {
   Object.defineProperty(process, 'platform', { ...platform, value: os })
   vi.resetModules()
   bi = await import('./browserImport')
@@ -185,8 +213,13 @@ beforeEach(async () => {
   mkdirSync(tmp)
   process.env.HOME = home
   process.env.TMPDIR = tmp
+  process.env.LOCALAPPDATA = join(base, 'local')
+  process.env.APPDATA = join(base, 'roaming')
+  mkdirSync(process.env.LOCALAPPDATA, { recursive: true })
+  mkdirSync(process.env.APPDATA, { recursive: true })
   m.checkAuth.mockResolvedValue(IN)
   m.execFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: ExecCb) => cb(null, `${PASSWORD}\n`, ''))
+  m.unprotect.mockReset().mockResolvedValue(Buffer.alloc(32, 7))
 })
 
 afterEach(() => {
@@ -535,5 +568,63 @@ describe('importFromBrowser（Linux）', () => {
     // 找到了但是空的，同样处理
     m.execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: ExecCb) => cb(null, '\n', ''))
     await expect(bi.importFromBrowser('brave::Default')).rejects.toThrow('application=brave')
+  })
+})
+
+describe('Windows browser import', () => {
+  beforeEach(() => load('win32'))
+
+  it('从 Windows 用户配置目录发现 Chromium 和 Firefox 配置档', () => {
+    const chrome = localAppData('Google/Chrome/User Data')
+    const edge = localAppData('Microsoft/Edge/User Data')
+    const brave = localAppData('BraveSoftware/Brave-Browser/User Data')
+    const vivaldi = localAppData('Vivaldi/User Data')
+    const chromium = localAppData('Chromium/User Data')
+    chromeDb(join(chrome, 'Default/Cookies'), [sess()])
+    chromeDb(join(edge, 'Default/Cookies'), [])
+    chromeDb(join(brave, 'Profile 1/Network/Cookies'), [])
+    chromeDb(join(vivaldi, 'Default/Cookies'), [])
+    chromeDb(join(chromium, 'Default/Cookies'), [])
+    firefoxDb(roamingAppData('Mozilla/Firefox/Profiles/a1.default-release/cookies.sqlite'), [
+      { host: '.bilibili.com', name: 'SESSDATA', value: 'firefox-sess', expiry: FUTURE }
+    ])
+
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.browser, p.hasBiliLogin])).toEqual([
+      ['brave::Profile 1', 'Brave', false],
+      ['chrome::Default', 'Chrome', true],
+      ['chromium::Default', 'Chromium', false],
+      ['edge::Default', 'Edge', false],
+      ['firefox::a1.default-release', 'Firefox', true],
+      ['vivaldi::Default', 'Vivaldi', false]
+    ])
+  })
+
+  it('用 DPAPI 解开 Local State 主密钥并导入 AES-GCM Cookie', async () => {
+    const key = Buffer.alloc(32, 9)
+    const root = localAppData('Google/Chrome/User Data')
+    mkdirSync(root, { recursive: true })
+    writeFileSync(
+      join(root, 'Local State'),
+      JSON.stringify({ os_crypt: { encrypted_key: Buffer.concat([Buffer.from('DPAPI'), Buffer.from('wrapped-key')]).toString('base64') } })
+    )
+    const hash = createHash('sha256').update('.bilibili.com').digest()
+    chromeDb(join(root, 'Default/Network/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: encryptWindows(Buffer.concat([hash, Buffer.from('win-sess')]), key) }
+    ])
+    m.unprotect.mockResolvedValue(key)
+
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+    expect(m.unprotect).toHaveBeenCalledWith(Buffer.from('wrapped-key'))
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([['SESSDATA', 'win-sess']])
+  })
+
+  it('应用绑定加密的 Cookie 不尝试 DPAPI，提示应用内登录或手动 Cookie', async () => {
+    const root = localAppData('Google/Chrome/User Data')
+    chromeDb(join(root, 'Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }])
+
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toThrow(
+      '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
+    )
+    expect(m.unprotect).not.toHaveBeenCalled()
   })
 })

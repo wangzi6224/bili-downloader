@@ -36,9 +36,21 @@ const LINUX: PlatformText = {
   chromiumAuthHint: 'Chrome 系浏览器的登录信息存在系统密钥环里，导入时如果弹出解锁密钥环，请输入登录密码。'
 }
 
-export const platformText = (platform: string): PlatformText => (platform === 'darwin' ? MAC : LINUX)
+const WINDOWS: PlatformText = {
+  isMac: false,
+  fileManager: '文件资源管理器',
+  reopenFrom: '托盘图标',
+  quitKey: 'Ctrl+Q',
+  pasteKey: 'Ctrl+V',
+  av1Hint: '最省空间，较旧的电脑播放可能卡顿',
+  browsers: 'Chrome、Edge、Brave、Vivaldi、Chromium、Firefox',
+  chromiumAuthHint: 'Windows 使用当前用户的 DPAPI 保护浏览器密钥；新版 Chrome 或 Edge 的应用绑定加密无法导入，请改用应用内登录或手动粘贴 Cookie。'
+}
 
-/** ⌘,（macOS）/ Ctrl+,（Linux）打开设置，和各自系统上的其他应用一致 */
+export const platformText = (platform: string): PlatformText =>
+  platform === 'darwin' ? MAC : platform === 'win32' ? WINDOWS : LINUX
+
+/** ⌘,（macOS）/ Ctrl+,（Windows、Linux）打开设置 */
 export function isSettingsShortcut(e: { metaKey: boolean; ctrlKey: boolean; key: string }, platform: string): boolean {
   return e.key === ',' && (platform === 'darwin' ? e.metaKey : e.ctrlKey)
 }

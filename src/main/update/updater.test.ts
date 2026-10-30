@@ -31,6 +31,7 @@ const ARCH = process.arch
 /** 当前系统在 update.json 里的键和安装包后缀：macOS 是 x64 / zip，Linux 是 linux-x64 / AppImage */
 const KEY = process.platform === 'darwin' ? ARCH : `${process.platform}-${ARCH}`
 const EXT = process.platform === 'darwin' ? 'zip' : 'AppImage'
+const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
 const ORIGINAL_FEED = process.env.BILI_UPDATE_FEED
 // 假时钟会替换全局的 setTimeout，先留一份真的用来等本地 http 服务
 const realTimeout = globalThis.setTimeout.bind(globalThis)
@@ -137,6 +138,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM)
   vi.useRealTimers()
   rmSync(root, { recursive: true, force: true })
 })
@@ -237,7 +239,7 @@ describe('check', () => {
     writeFileSync(zipPath(), PAYLOAD)
     chmodSync(zipPath(), 0o000)
     u = await load()
-    expect((await u.check(true)).status).toBe(process.getuid?.() === 0 ? 'ready' : 'available')
+    expect((await u.check(true)).status).toBe(process.platform === 'win32' || process.getuid?.() === 0 ? 'ready' : 'available')
   })
 
   it('macOS 和 Linux 的安装包在同一份清单里，各取各的', async () => {
@@ -253,6 +255,25 @@ describe('check', () => {
     const u = await load()
     await u.check(true)
     expect(errorOf(u)).toBe(`检查更新失败：新版本 0.5.0 没有 ${KEY} 的安装包`)
+  })
+
+  it('Windows 取 win32-x64 清单项并下载、校验和交接 NSIS 安装器', async () => {
+    Object.defineProperty(process, 'platform', { ...ORIGINAL_PLATFORM, value: 'win32' })
+    const installer = join(dir, 'bili-downloader-0.5.0-x64.exe')
+    feed.body = manifest('0.5.0', { 'win32-x64': FILE() })
+    m.prepare.mockResolvedValue(installer)
+    try {
+      const u = await load()
+      expect((await u.check(true)).status).toBe('available')
+      u.download()
+      await until(() => statusOf(u) === 'ready')
+      expect(readFileSync(installer)).toEqual(PAYLOAD)
+      await u.install()
+      expect(m.prepare).toHaveBeenCalledWith(installer, join(dir, 'stage'), '0.5.0')
+      expect(m.replaceAfterExit).toHaveBeenCalledWith(installer, dir, join('/logs', 'update.log'))
+    } finally {
+      Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM)
+    }
   })
 
   it('还没有发布过版本（404）', async () => {
@@ -540,7 +561,9 @@ describe('start / stop', () => {
       `bili-downloader-0.5.0-${ARCH}.zip`,
       'bili-downloader-0.6.0-beta.1-x64.zip.part',
       'bili-downloader-0.5.1-x64.AppImage',
-      'bili-downloader-0.6.0-x64.AppImage.part'
+      'bili-downloader-0.6.0-x64.AppImage.part',
+      'bili-downloader-0.6.0-x64.exe',
+      'bili-downloader-0.6.0-x64.exe.part'
     ]
     const drop = [
       `bili-downloader-0.4.0-${ARCH}.zip`,

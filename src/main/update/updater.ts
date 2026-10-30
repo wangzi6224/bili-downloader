@@ -23,8 +23,8 @@ const RECHECK_MS = 24 * 3600_000
 /** 这么久没收到数据就断开重连 */
 const STALL_MS = 60_000
 const RETRIES = 4
-/** 自动更新下载的安装包：macOS 是 zip，Linux 是 AppImage */
-const PACKAGE_EXT = process.platform === 'darwin' ? 'zip' : 'AppImage'
+/** 自动更新下载的安装包：macOS 是 zip，Linux 是 AppImage，Windows 是 NSIS exe */
+const PACKAGE_EXT = process.platform === 'darwin' ? 'zip' : process.platform === 'win32' ? 'exe' : 'AppImage'
 
 /** 去掉 current / checkedAt 之后的各个状态 */
 type Body = UpdateState extends infer S ? (S extends unknown ? Omit<S, 'current' | 'checkedAt'> : never) : never
@@ -68,7 +68,7 @@ export class Updater {
   start(enabled: () => boolean): void {
     // 比当前版本新的安装包（包括下载到一半的）留着，下次可以直接用
     this.cleanup((name) => {
-      const v = /^bili-downloader-(.+)-\w+\.(?:zip|AppImage)(\.part)?$/.exec(name)?.[1]
+      const v = /^bili-downloader-(.+)-\w+\.(?:zip|AppImage|exe)(\.part)?$/.exec(name)?.[1]
       try {
         return !!v && compareVersions(v, this.current) > 0
       } catch {

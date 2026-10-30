@@ -1,0 +1,60 @@
+name: Windows 构建
+
+on:
+  push:
+    branches: [codex/windows-package]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build:win
+
+      - name: 检查 FFmpeg 并安装应用
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $installer = Join-Path $pwd "dist/bili-downloader-$version-x64.exe"
+          $ffmpeg = Join-Path $pwd 'resources/ffmpeg/win32-x64/ffmpeg.exe'
+          if (!(Test-Path $installer)) { throw "找不到安装器：$installer" }
+          if (!(Test-Path $ffmpeg)) { throw "找不到随包 FFmpeg：$ffmpeg" }
+          & $ffmpeg -version
+          if ($LASTEXITCODE -ne 0) { throw 'Windows FFmpeg 启动失败' }
+          $install = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "NSIS 安装失败：$($install.ExitCode)" }
+
+      - name: 启动已安装应用
+        shell: pwsh
+        run: |
+          $appExe = Join-Path $env:LOCALAPPDATA 'Programs/B站下载器/B站下载器.exe'
+          if (!(Test-Path $appExe)) { throw "找不到已安装应用：$appExe" }
+          $app = Start-Process -FilePath $appExe -PassThru
+          Start-Sleep -Seconds 6
+          $app.Refresh()
+          if ($app.HasExited) { throw "应用启动后退出，退出码：$($app.ExitCode)" }
+          Stop-Process -Id $app.Id -Force
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bili-downloader-windows
+          path: dist/*.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

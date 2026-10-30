@@ -1,11 +1,11 @@
 ---
 name: release
-description: 发布 B站下载器（bili-downloader）的新版本：定版本号、整理 CHANGELOG.md、提交并推送 v版本号 的 tag，由 GitHub Actions 自动测试、打 macOS 和 Linux 的安装包并发布到 GitHub Releases，再跟踪运行、核对 Release。用户要发布、发版、出新版本、打 tag、release、bump version，或问发布流程、发布失败怎么处理、想先验证能不能打出包时使用。
+description: 发布 B站下载器（bili-downloader）的新版本：定版本号、整理 CHANGELOG.md、提交并推送 v版本号 的 tag，由 GitHub Actions 自动测试、打 Windows、macOS 和 Linux 的安装包并发布到 GitHub Releases，再跟踪运行、核对 Release。用户要发布、发版、出新版本、打 tag、release、bump version，或问发布流程、发布失败怎么处理、想先验证能不能打出包时使用。
 ---
 
 # 发布新版本
 
-推送 `v版本号` 的 tag 会触发 `.github/workflows/release.yml`：检查版本 → macOS 和 Linux 两个 runner 并行 `npm ci`、类型检查、单元测试和覆盖率门槛（`npm run build:mac` / `build:linux` 里先跑 `npm run verify`）并打包（mac 打 x64 和 arm64，Linux 打 x64）→ 汇总后由 `scripts/release.mjs` 创建 Release，上传两个 zip、两个 dmg、一个 AppImage、一个 deb 和 `update.json`。已安装的应用从 `releases/latest/download/update.json` 检查更新，所以**推送 tag 就等于把新版本发给所有用户**，推送前必须得到用户明确同意。
+推送 `v版本号` 的 tag 会触发 `.github/workflows/release.yml`：检查版本 → Windows、macOS 和 Linux 三个 runner 并行 `npm ci`、类型检查、单元测试和覆盖率门槛（`npm run build:win` / `build:mac` / `build:linux` 里先跑 `npm run verify`）并打包（Windows x64 NSIS、macOS x64 和 arm64、Linux x64）→ 汇总后由 `scripts/release.mjs` 创建 Release，上传两个 zip、两个 dmg、一个 AppImage、一个 deb、一个 Windows `.exe` 和 `update.json`。已安装的应用从 `releases/latest/download/update.json` 检查更新，所以**推送 tag 就等于把新版本发给所有用户**，推送前必须得到用户明确同意。
 
 更多背景见 `docs/RELEASING.md`。版本号和更新日志的解析规则以 `scripts/release.mjs` 和 `scripts/lib/release.mjs` 为准。
 
@@ -82,8 +82,8 @@ gh release view v<版本> --json isPrerelease,url,assets -q '.url, .isPrerelease
 node -e "fetch('https://github.com/wangzi6224/bili-downloader/releases/latest/download/update.json').then(r => r.json()).then(m => console.log(m.version))"
 ```
 
-- 资源里应有 `bili-downloader-<版本>-arm64.zip`、`-arm64.dmg`、`-x64.zip`、`-x64.dmg`、`-x86_64.AppImage`、`-amd64.deb` 和 `update.json`
-- `update.json` 的 `files` 里应有 `arm64`、`x64`、`linux-x64` 三项
+- 资源里应有 `bili-downloader-<版本>-arm64.zip`、`-arm64.dmg`、`-x64.zip`、`-x64.dmg`、`-x86_64.AppImage`、`-amd64.deb`、`-x64.exe` 和 `update.json`
+- `update.json` 的 `files` 里应有 `arm64`、`x64`、`linux-x64`、`win32-x64` 四项
 - 正式版：`latest` 清单的版本应等于新版本；预发布版本不会改变 `latest`
 
 最后把 Release 链接和核对结果告诉用户。
@@ -105,14 +105,14 @@ node -e "fetch('https://github.com/wangzi6224/bili-downloader/releases/latest/do
 gh workflow run release.yml --ref main
 ```
 
-手动运行只打包不发布，两个系统的安装包和 `update.json` 作为这次运行的产物保留 7 天。
+手动运行只打包不发布，三个系统的安装包和 `update.json` 作为这次运行的产物保留 7 天。
 
 ## Actions 不可用时
 
-在本机（macOS）运行 `npm run release`：同样先检查，再打 mac 包，用 `gh` 创建 Release（tag 不存在会自动创建）。Linux 包不能在 mac 上打，要先在 Linux 上运行 `npm run build:linux`，把 AppImage 和 deb 拷到 mac 的 `dist/` 里，缺了脚本会停下。推送前同样要用户确认。只在 Actions 确实不可用时这样做，不要和工作流同时发同一个版本。
+在本机（macOS）运行 `npm run release`：同样先检查，再打 mac 包，用 `gh` 创建 Release（tag 不存在会自动创建）。Linux 包和 Windows 包不能在 mac 上打，要先分别在 Linux 上运行 `npm run build:linux`、Windows 上运行 `npm run build:win`，把 AppImage、deb 和 exe 拷到 mac 的 `dist/` 里，缺任何一个包脚本都会停下。推送前同样要用户确认。只在 Actions 确实不可用时这样做，不要和工作流同时发同一个版本。
 
 ## 不要做
 
 - 不要在用户确认前推送 tag，不要强推或移动已经有 Release 的 tag
-- 不要手动替换已发布 Release 里的文件：`update.json` 里记录了 zip 和 AppImage 的 sha512，对不上应用会拒绝更新
+- 不要手动替换已发布 Release 里的文件：`update.json` 里记录了所有自动更新包的 sha512，对不上应用会拒绝更新
 - 不要跳过 `CHANGELOG.md`：没有这个版本的说明，工作流第一步就会失败

@@ -4,12 +4,13 @@
 //        固定的 sha256 与该构建旁边发布的 ffmpeg.zip.sha256 一致
 // linux-x64：同样来自 ffmpeg-static（johnvansickle.com 构建，GPLv3，完全静态链接）；固定首次下载的 sha256。
 //        martin-riedl 的 Linux 构建带 --enable-nonfree，不用它
+// win32-x64：ffmpeg-static 的 Gyan essentials 构建（GPLv3），固定首次下载的 sha256。
 import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
-import { isUpToDate, licenseText, verifySha256 } from './lib/ffmpeg.mjs'
+import { binaryName, isUpToDate, licenseText, verifySha256 } from './lib/ffmpeg.mjs'
 
 const STATIC_BASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1'
 const FFMPEG_SRC = 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.2'
@@ -47,6 +48,17 @@ const SOURCES = {
       ''
     ].join('\n'),
     license: [`${STATIC_BASE}/linux-x64.LICENSE`]
+  },
+  'win32-x64': {
+    version: '6.1.1',
+    url: `${STATIC_BASE}/ffmpeg-win32-x64.gz`,
+    sha256: '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
+    notice: [
+      'FFmpeg 6.1.1 static Windows x64 essentials build by Gyan (https://www.gyan.dev/ffmpeg/builds/),',
+      'configured with GPL v3; source: https://github.com/FFmpeg/FFmpeg/commit/e38092ef93',
+      ''
+    ].join('\n'),
+    license: [`${STATIC_BASE}/win32-x64.LICENSE`]
   }
 }
 
@@ -63,8 +75,8 @@ if (!targets.length) throw new Error(`没有 ${process.platform} 用的 ffmpeg`)
 
 for (const [target, src] of targets) {
   const dir = join(root, target)
-  const bin = join(dir, 'ffmpeg')
-  if (isUpToDate(dir, src.sha256)) {
+  const bin = join(dir, binaryName(process.platform))
+  if (isUpToDate(dir, src.sha256, binaryName(process.platform))) {
     console.log(`ffmpeg ${target}: 已是 ${src.version}，跳过`)
     continue
   }
@@ -80,7 +92,7 @@ for (const [target, src] of targets) {
   } else {
     writeFileSync(bin, gunzipSync(archive))
   }
-  chmodSync(bin, 0o755)
+  if (process.platform !== 'win32') chmodSync(bin, 0o755)
   const licenses = await Promise.all(src.license.map(download))
   writeFileSync(join(dir, 'LICENSE'), licenseText(src.notice, licenses))
   writeFileSync(join(dir, '.sha256'), src.sha256)

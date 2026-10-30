@@ -70,6 +70,20 @@ fi
 ) >/dev/null 2>&1 &
 `
 
+/** Windows 先等旧进程退出，再运行静默 NSIS 安装器并重新打开应用。 */
+export const WINDOWS_UPDATE_SCRIPT = [
+  'param([int]$OldPid, [string]$Installer, [string]$AppExe, [string]$Log)',
+  'try {',
+  '  if (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) { Wait-Process -Id $OldPid -Timeout 120 -ErrorAction Stop }',
+  "  $updated = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru -Wait -WindowStyle Hidden",
+  "  if ($updated.ExitCode -ne 0) { throw \"NSIS 退出码 $($updated.ExitCode)\" }",
+  '} catch {',
+  '  Add-Content -LiteralPath $Log -Value "$(Get-Date -Format o) 更新失败：$($_.Exception.Message)"',
+  '} finally {',
+  '  try { Start-Process -FilePath $AppExe -WindowStyle Hidden } catch { Add-Content -LiteralPath $Log -Value "$(Get-Date -Format o) 重新打开失败：$($_.Exception.Message)" }',
+  '}'
+].join('\n')
+
 /** 正在运行的 .app，例如 /Applications/B站下载器.app */
 export const appBundle = (): string => resolve(app.getPath('exe'), '../../..')
 
@@ -80,7 +94,16 @@ const appImage = (): string | undefined => process.env.APPIMAGE
 export function installBlocker(): string | undefined {
   if (!app.isPackaged) return '开发模式下不能自动安装，请用打包后的应用测试'
   if (process.platform === 'linux') return appImageBlocker()
-  if (process.platform !== 'darwin') return '自动安装只支持 macOS 和 Linux'
+  if (process.platform === 'win32') {
+    const exe = app.getPath('exe')
+    try {
+      accessSync(dirname(exe), constants.W_OK)
+    } catch {
+      return `没有权限修改 ${dirname(exe)}`
+    }
+    return undefined
+  }
+  if (process.platform !== 'darwin') return '自动安装只支持 macOS、Linux 和 Windows'
   const bundle = appBundle()
   if (!bundle.endsWith('.app')) return `找不到应用所在的位置（${bundle}）`
   // 没拖进“应用程序”就直接打开时，macOS 会把应用放到一个只读的随机路径里运行
@@ -144,12 +167,28 @@ export function stageAppImage(file: string): string {
   return next
 }
 
-/** 准备好要换上的新版本：macOS 解压出 .app，Linux 把 AppImage 放到原来的旁边 */
-export const prepare = (pkg: string, stageDir: string, version: string): Promise<string> =>
-  process.platform === 'darwin' ? unpack(pkg, stageDir, version) : Promise.resolve().then(() => stageAppImage(pkg))
+/** 准备好要换上的新版本：macOS 解压 .app，Linux 暂存 AppImage，Windows 保留 NSIS 安装器 */
+export const prepare = (pkg: string, stageDir: string, version: string): Promise<string> => {
+  if (process.platform === 'darwin') return unpack(pkg, stageDir, version)
+  if (process.platform === 'linux') return Promise.resolve().then(() => stageAppImage(pkg))
+  if (process.platform === 'win32') return Promise.resolve(pkg)
+  return Promise.reject(new Error(`自动安装不支持 ${process.platform}`))
+}
 
 /** 启动独立的替换脚本；调用方随后退出应用 */
 export function replaceAfterExit(next: string, workDir: string, log: string): void {
+  if (process.platform === 'win32') {
+    const script = join(workDir, 'install.ps1')
+    writeFileSync(script, WINDOWS_UPDATE_SCRIPT)
+    const out = openSync(log, 'a')
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, String(process.pid), next, app.getPath('exe'), log],
+      { cwd: workDir, detached: true, windowsHide: true, stdio: ['ignore', out, out] }
+    )
+    child.unref()
+    return
+  }
   const mac = process.platform === 'darwin'
   const script = join(workDir, 'install.sh')
   writeFileSync(script, mac ? SCRIPT : APPIMAGE_SCRIPT, { mode: 0o755 })

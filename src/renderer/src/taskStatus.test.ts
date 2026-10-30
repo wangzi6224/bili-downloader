@@ -255,6 +255,11 @@ describe('shortenHome', () => {
   it('其它路径不变', () => {
     expect(shortenHome('/Volumes/Disk/Users/alice')).toBe('/Volumes/Disk/Users/alice')
   })
+
+  it('Windows 用户目录缩写成 ~，保留反斜杠路径', () => {
+    expect(shortenHome('C:\\Users\\alice\\Downloads\\B站')).toBe('~\\Downloads\\B站')
+    expect(shortenHome('C:\\Users\\alice')).toBe('~')
+  })
 })
 
 describe('clearCounts', () => {

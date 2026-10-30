@@ -68,7 +68,8 @@ describe('assetName / isPrerelease', () => {
       'bili-downloader-1.2.0-x64.zip',
       'bili-downloader-1.2.0-x64.dmg',
       'bili-downloader-1.2.0-x86_64.AppImage',
-      'bili-downloader-1.2.0-amd64.deb'
+      'bili-downloader-1.2.0-amd64.deb',
+      'bili-downloader-1.2.0-x64.exe'
     ])
   })
 
@@ -76,7 +77,8 @@ describe('assetName / isPrerelease', () => {
     expect(PACKAGES.filter((p) => p.updateKey).map((p) => [p.ext, p.updateKey])).toEqual([
       ['zip', assetKey('darwin', 'arm64')],
       ['zip', assetKey('darwin', 'x64')],
-      ['AppImage', assetKey('linux', 'x64')]
+      ['AppImage', assetKey('linux', 'x64')],
+      ['exe', assetKey('win32', 'x64')]
     ])
   })
 
@@ -108,6 +110,7 @@ describe('manifestAsset / buildManifest', () => {
     expect(parsed.version).toBe('1.2.0')
     expect(parsed.files.arm64).toEqual(files.arm64)
     expect(parsed.files['linux-x64']).toEqual(files['linux-x64'])
+    expect(parsed.files['win32-x64']).toEqual(files['win32-x64'])
     expect(parsed.notes.map((n) => n.version)).toEqual(['1.2.0', '1.1.0-beta.2', '1.0.0'])
   })
 })

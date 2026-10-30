@@ -34,7 +34,8 @@ vi.mock('node:child_process', async (importOriginal) => ({
 const { APPIMAGE_SCRIPT, SCRIPT, appBundle, installBlocker, prepare, replaceAfterExit, stageAppImage, unpack } = await import('./install')
 
 const isDarwin = process.platform === 'darwin'
-const isRoot = process.getuid?.() === 0
+const isWindows = process.platform === 'win32'
+const isRoot = process.getuid?.() === 0 || isWindows
 const run = promisify(execFile)
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
@@ -57,7 +58,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('appBundle', () => {
+describe.skipIf(isWindows)('appBundle', () => {
   it('从可执行文件往上三级就是 .app', () => {
     m.app.exe = '/Applications/B站下载器.app/Contents/MacOS/B站下载器'
     expect(appBundle()).toBe('/Applications/B站下载器.app')
@@ -65,7 +66,7 @@ describe('appBundle', () => {
   })
 })
 
-describe('installBlocker', () => {
+describe.skipIf(isWindows)('installBlocker', () => {
   const bundleAt = (path: string): string => {
     m.app.exe = join(path, 'Contents/MacOS/B站下载器')
     return path
@@ -87,7 +88,7 @@ describe('installBlocker', () => {
     expect(installBlocker()).toContain('开发模式')
 
     m.app.isPackaged = true
-    expect(installBlocker()).toBe('自动安装只支持 macOS 和 Linux')
+    expect(installBlocker()).toBe('没有权限修改 /opt/bili/bin')
 
     setPlatform('darwin')
     m.app.exe = '/private/var/AppTranslocation/X/d/bin/bili'
@@ -124,7 +125,7 @@ describe('installBlocker', () => {
   })
 })
 
-describe('installBlocker（Linux）', () => {
+describe.skipIf(isWindows)('installBlocker（Linux）', () => {
   beforeEach(() => setPlatform('linux'))
   afterEach(() => {
     if (existsSync(join(dir, 'Apps'))) chmodSync(join(dir, 'Apps'), 0o755)
@@ -164,7 +165,52 @@ describe('installBlocker（Linux）', () => {
   })
 })
 
-describe('stageAppImage / prepare', () => {
+describe('Windows NSIS updates', () => {
+  beforeEach(() => setPlatform('win32'))
+
+  it('允许从可写的用户级安装目录自动更新', () => {
+    const exe = join(dir, 'Apps/B站下载器.exe')
+    mkdirSync(join(dir, 'Apps'), { recursive: true })
+    writeFileSync(exe, 'app')
+    m.app.exe = exe
+    expect(installBlocker()).toBeUndefined()
+  })
+
+  it('准备阶段保留 NSIS 安装器并创建等待进程退出的静默安装交接', async () => {
+    const exe = join(dir, 'updates/bili-downloader-0.5.0-x64.exe')
+    const appExe = join(dir, 'Apps/B站下载器.exe')
+    const work = join(dir, 'updates')
+    const log = join(dir, 'logs/update.log')
+    mkdirSync(work, { recursive: true })
+    mkdirSync(join(dir, 'Apps'), { recursive: true })
+    mkdirSync(join(dir, 'logs'), { recursive: true })
+    writeFileSync(exe, 'installer')
+    writeFileSync(appExe, 'app')
+    m.app.exe = appExe
+    m.spawn.mockReturnValue({ unref: vi.fn() })
+
+    await expect(prepare(exe, join(dir, 'stage'), '0.5.0')).resolves.toBe(exe)
+    replaceAfterExit(exe, work, log)
+
+    const [command, args, options] = m.spawn.mock.calls[0]
+    expect(command).toBe('powershell.exe')
+    expect(args).toContain('-File')
+    expect(args).toContain(exe)
+    expect(args).toContain(appExe)
+    expect(args).toContain(log)
+    const script = args[args.indexOf('-File') + 1] as string
+    expect(readFileSync(script, 'utf8')).toContain("'/S'")
+    expect(readFileSync(script, 'utf8')).toContain('Wait-Process')
+    if (isWindows) {
+      const quoted = script.replace(/'/g, "''")
+      const parse = `$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile('${quoted}', [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | ForEach-Object { [Console]::Error.WriteLine($_) }; exit 1 }`
+      execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', parse])
+    }
+    expect(options).toMatchObject({ detached: true, windowsHide: true, cwd: work })
+  })
+})
+
+describe.skipIf(isWindows)('stageAppImage / prepare', () => {
   const download = (): string => {
     const file = join(dir, 'update/bili-downloader-0.5.0-x64.AppImage')
     mkdirSync(join(dir, 'update'))
@@ -273,7 +319,7 @@ describe.runIf(isDarwin)('unpack', () => {
 })
 
 describe('replaceAfterExit', () => {
-  it('写好替换脚本，带上进程号和路径在后台启动', () => {
+  it.skipIf(isWindows)('写好替换脚本，带上进程号和路径在后台启动', () => {
     setPlatform('darwin')
     const unref = vi.fn()
     m.spawn.mockReturnValue({ unref })
@@ -295,7 +341,7 @@ describe('replaceAfterExit', () => {
     closeSync((m.spawn.mock.calls[0][2] as { stdio: number[] }).stdio[1])
   })
 
-  it('Linux 上用 AppImage 的替换脚本，目标是正在运行的 AppImage', () => {
+  it.skipIf(isWindows)('Linux 上用 AppImage 的替换脚本，目标是正在运行的 AppImage', () => {
     setPlatform('linux')
     m.spawn.mockReturnValue({ unref: vi.fn() })
     process.env.APPIMAGE = '/home/u/Apps/bili.AppImage'
@@ -314,7 +360,7 @@ describe('replaceAfterExit', () => {
 })
 
 // 只用到 bash 和常见命令，macOS 和 Linux 上都真的跑一遍
-describe('install.sh（AppImage）', () => {
+describe.skipIf(isWindows)('install.sh（AppImage）', () => {
   let target: string
   let next: string
   const exitedPid = (): string => String(spawnSync('true').pid)

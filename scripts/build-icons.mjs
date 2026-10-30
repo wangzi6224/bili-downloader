@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Resvg } from '@resvg/resvg-js'
+import { encodeIco } from './lib/ico.mjs'
 
 const buildDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'build')
 const svg = readFileSync(join(buildDir, 'icon.svg'))
@@ -23,9 +24,13 @@ mkdirSync(linuxIcons, { recursive: true })
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) {
   writeFileSync(join(linuxIcons, `${size}x${size}.png`), render(size))
 }
+writeFileSync(
+  join(buildDir, 'icon.ico'),
+  encodeIco([16, 32, 48, 64, 128, 256].map((size) => ({ size, data: render(size) })))
+)
 
 if (process.platform !== 'darwin') {
-  console.log('已生成 build/icon.png 和 build/icons/；icns 和 dmg 背景只能在 macOS 上生成，已跳过')
+  console.log('已生成 build/icon.png、build/icon.ico 和 build/icons/；icns 和 dmg 背景只能在 macOS 上生成，已跳过')
   process.exit(0)
 }
 
@@ -45,4 +50,4 @@ const font = { loadSystemFonts: true, defaultFontFamily: 'Hiragino Sans GB' }
 const renderDmg = (width) => new Resvg(dmgSvg, { fitTo: { mode: 'width', value: width }, font }).render().asPng()
 writeFileSync(join(buildDir, 'background.png'), renderDmg(540))
 writeFileSync(join(buildDir, 'background@2x.png'), renderDmg(1080))
-console.log('已生成 build/icon.icns、build/icon.png、build/icons/ 和 build/background{,@2x}.png')
+console.log('已生成 build/icon.icns、build/icon.ico、build/icon.png、build/icons/ 和 build/background{,@2x}.png')

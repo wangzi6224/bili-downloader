@@ -18,7 +18,7 @@ export interface ManifestFile {
 
 /**
  * update.json 里各系统安装包的键：macOS 只写架构（已发布的旧版本按 process.arch 取，不能改），
- * 其他系统带上系统名，例如 linux-x64
+ * 其他系统带上系统名，例如 linux-x64、win32-x64
  */
 export const assetKey = (platform: string, arch: string): string => (platform === 'darwin' ? arch : `${platform}-${arch}`)
 

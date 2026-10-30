@@ -11,6 +11,18 @@ describe('platformText', () => {
     expect(t.browsers).toContain('Arc')
   })
 
+  it('Windows 显示文件资源管理器、托盘和 DPAPI 登录说明', () => {
+    const t = platformText('win32')
+    expect(t.isMac).toBe(false)
+    expect(t.fileManager).toBe('文件资源管理器')
+    expect(t.reopenFrom).toBe('托盘图标')
+    expect(t.quitKey).toBe('Ctrl+Q')
+    expect(t.pasteKey).toBe('Ctrl+V')
+    expect(t.chromiumAuthHint).toContain('DPAPI')
+    expect(t.chromiumAuthHint).toContain('应用内登录')
+    expect(t.chromiumAuthHint).not.toContain('密钥环')
+  })
+
   it('其他系统用文件管理器、托盘和 Ctrl 快捷键，不提 Mac 专属的东西', () => {
     for (const t of [platformText('linux'), platformText('')]) {
       expect(t.isMac).toBe(false)
@@ -34,6 +46,11 @@ describe('isSettingsShortcut', () => {
   it('Linux 上是 Ctrl+,', () => {
     expect(isSettingsShortcut(key(',', { ctrlKey: true }), 'linux')).toBe(true)
     expect(isSettingsShortcut(key(',', { metaKey: true }), 'linux')).toBe(false)
+  })
+
+  it('Windows 上是 Ctrl+,', () => {
+    expect(isSettingsShortcut(key(',', { ctrlKey: true }), 'win32')).toBe(true)
+    expect(isSettingsShortcut(key(',', { metaKey: true }), 'win32')).toBe(false)
   })
 
   it('别的键不算', () => {

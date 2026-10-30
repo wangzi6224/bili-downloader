@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-A desktop app for macOS and Linux for downloading from bilibili: paste a link to get videos, multi-part videos, collections, anime and movies.
+A desktop app for Windows, macOS and Linux for downloading from bilibili: paste a link to get videos, multi-part videos, collections, anime and movies.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Windows x64](https://img.shields.io/badge/Windows-x64-black?logo=windows)
 ![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
@@ -85,6 +86,10 @@ A desktop app for macOS and Linux for downloading from bilibili: paste a link to
 
 Requires macOS 12 or later.
 
+### Windows
+
+Download `bili-downloader-<version>-x64.exe` from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) and run the installer. It installs for the current user and does not require administrator access. The installer is unsigned, so Windows may show an unknown-publisher warning.
+
 ### Linux
 
 Download one of these from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) (64-bit x86 only):
@@ -103,14 +108,14 @@ When the window is closed to the background, click the tray icon to bring it bac
 
 ### Updates
 
-Once installed, the app checks for updates itself. The macOS app and the Linux AppImage install them in place; the deb version shows the release notes and points you to the download page.
+Once installed, the app checks for updates itself. The macOS app, Windows installer and Linux AppImage install updates in place; the deb version shows the release notes and points you to the download page.
 
 The interface is currently available in Simplified Chinese only; the labels mentioned below are given in Chinese with an English translation.
 
 ## Quick start
 
 1. Sign in to your bilibili account (see **Signing in** below). The app needs an account to parse links.
-2. Copy a bilibili link. The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> on Linux) in the input box and click **解析** (Parse).
+2. Copy a bilibili link. The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> on Windows and Linux) in the input box and click **解析** (Parse).
 3. Choose the items to download. Select all, invert the selection, <kbd>Shift</kbd>-click to select a range, or filter by title or by index (e.g. `1-5,7`).
 4. Pick the quality, output type and extras, then click **下载** (Download).
 
@@ -123,6 +128,7 @@ Logging in gives you the qualities and content your own account has access to (1
 - **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Chromium or Firefox.
   - macOS protects the data of Chrome, Edge and Brave, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
   - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
+  - On Windows, Chromium-based cookies encrypted with the current user's DPAPI can be imported. Recent Chrome and Edge profiles may use app-bound encryption that prevents import; use in-app sign-in or paste a cookie string for those profiles.
 - **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
 - **手动粘贴 Cookie** (Paste cookies): a semicolon-separated cookie string, or the JSON exported by a browser extension.
 
@@ -167,11 +173,11 @@ The server listens only on `127.0.0.1` (the port is configurable), requires the 
 ## Limitations
 
 - DRM-protected content, region-locked content, and content your account is not allowed to watch cannot be downloaded. Those tasks are marked as **无法下载** (cannot be downloaded) with the reason.
-- macOS and Linux (x64) only; there is no Windows build. On Linux only the AppImage updates itself.
+- Windows x64, macOS x64 / arm64 and Linux x64 are supported. Windows and Linux ARM builds are not provided.
 
 ## Building from source
 
-Requires macOS or Linux, Node.js 22.12 or later, and npm.
+Requires Windows, macOS or Linux, Node.js 22.12 or later, and npm.
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -182,6 +188,7 @@ npm test             # unit tests
 npm run typecheck    # type check
 npm run build:mac    # on macOS: build x64 and arm64 dmg / zip into dist/
 npm run build:linux  # on Linux: build x64 AppImage / deb into dist/
+npm run build:win    # on Windows: build x64 NSIS installer into dist/
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [docs/RELEASING.md](docs/RELEASING.md) (in Chinese) for packaging and releases.
@@ -193,7 +200,7 @@ src/main/auth               Sign-in: cookie storage, in-app login window, browse
 src/main/bili               bilibili APIs: WBI signing, video / anime / course / list parsing, streams, subtitles, danmaku
 src/main/download           Download queue, resumable downloads, ffmpeg muxing, extras (cover, subtitles, NFO…)
 src/main/net                Proxy and CDN selection
-src/main/update             In-app updates: check update.json, verify the download, replace the .app or AppImage
+src/main/update             In-app updates: check update.json, verify downloads, install .app / AppImage / NSIS updates
 src/main/mcp                Local MCP server
 src/main/subscriptions.ts   Subscriptions
 src/shared                  Types, link parsing and naming templates shared by all processes
@@ -216,4 +223,4 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 
 [MIT](LICENSE) © wangzi6224
 
-The app bundles static FFmpeg binaries from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg runs as a separate program under its own license and is not covered by the MIT license above. Its license text ships inside the app at `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Linux); see also [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+The app bundles static FFmpeg binaries from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg runs as a separate program under its own license and is not covered by the MIT license above. Its license text ships inside the app at `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Windows and Linux); see also [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
