@@ -142,9 +142,9 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[216px] shrink-0 flex-col">
-      {/* 红绿灯所在的拖拽区；其他系统用系统标题栏，不需要 */}
+      {/* 红绿灯所在的拖拽区；其他系统用系统标题栏，不需要。系统把拖拽区当标题栏，双击会缩放窗口，所以侧边栏只留这一条 */}
       <div className="drag hidden h-[52px] shrink-0 mac:block" />
-      <div className="drag flex items-center gap-2.5 px-5 pt-6 pb-5 mac:pt-0">
+      <div className="flex items-center gap-2.5 px-5 pt-6 pb-5 mac:pt-0">
         <Logo size={30} className="shrink-0 drop-shadow-sm" />
         <div>
           <div className="text-[15px] font-semibold tracking-tight">B站下载器</div>
@@ -157,7 +157,7 @@ export function Sidebar() {
           <NavItem key={n.view} {...n} count={n.view === 'downloads' ? running : undefined} />
         ))}
       </nav>
-      <div className="drag flex-1" />
+      <div className="flex-1" />
       <div className="flex flex-col gap-2 px-3 pb-3">
         <UpdateEntry />
         <NavItem view="settings" label="设置" icon={Settings} />
