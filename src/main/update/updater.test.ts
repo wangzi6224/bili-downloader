@@ -30,7 +30,7 @@ const SHA = createHash('sha512').update(PAYLOAD).digest('base64')
 const ARCH = process.arch
 /** 当前系统在 update.json 里的键和安装包后缀：macOS 是 x64 / zip，Linux 是 linux-x64 / AppImage */
 const KEY = process.platform === 'darwin' ? ARCH : `${process.platform}-${ARCH}`
-const EXT = process.platform === 'darwin' ? 'zip' : 'AppImage'
+const EXT = process.platform === 'darwin' ? 'zip' : process.platform === 'win32' ? 'exe' : 'AppImage'
 const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
 const ORIGINAL_FEED = process.env.BILI_UPDATE_FEED
 // 假时钟会替换全局的 setTimeout，先留一份真的用来等本地 http 服务

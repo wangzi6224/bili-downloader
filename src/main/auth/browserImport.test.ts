@@ -104,7 +104,7 @@ const NOW = Math.floor(Date.now() / 1000)
 const FUTURE = NOW + 30 * 86400
 const PAST = NOW - 86400
 const IN: AuthState = { loggedIn: true, user: { mid: 1, uname: 'u', face: '', vipActive: false, vipLabel: '' } }
-const isRoot = process.getuid?.() === 0
+const isRoot = process.getuid?.() === 0 || process.platform === 'win32'
 
 interface ChromeRow {
   host: string
@@ -616,6 +616,18 @@ describe('Windows browser import', () => {
     await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
     expect(m.unprotect).toHaveBeenCalledWith(Buffer.from('wrapped-key'))
     expect(lastImported().map((c) => [c.name, c.value])).toEqual([['SESSDATA', 'win-sess']])
+  })
+
+  it('旧版 Windows Chromium Cookie 逐条用 DPAPI 解密', async () => {
+    const root = localAppData('Google/Chrome/User Data')
+    chromeDb(join(root, 'Default/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('legacy-dpapi-ciphertext') }
+    ])
+    m.unprotect.mockResolvedValue(Buffer.from('legacy-sess'))
+
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+    expect(m.unprotect).toHaveBeenCalledWith(Buffer.from('legacy-dpapi-ciphertext'))
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([['SESSDATA', 'legacy-sess']])
   })
 
   it('应用绑定加密的 Cookie 不尝试 DPAPI，提示应用内登录或手动 Cookie', async () => {

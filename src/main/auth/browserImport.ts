@@ -328,15 +328,21 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
   const needsV11 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v11')
   const needsV10 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v10')
   const keys = await chromiumKeys(f.browser, needsV11, needsV10)
-  return rows.map((r) => {
+  return Promise.all(rows.map(async (r) => {
     let value: string
     if (r.value) value = String(r.value)
     else if (IS_WINDOWS) {
-      const prefix = encryptedPrefix(r.encrypted_value as Uint8Array)
+      const encrypted = Buffer.from(r.encrypted_value as Uint8Array)
+      const prefix = encryptedPrefix(encrypted)
       if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
-      const key = keys.v10 ?? keys.v11
-      if (!key) throw new Error('Windows 浏览器 Cookie 缺少 DPAPI 主密钥，请改用应用内登录或手动粘贴 Cookie')
-      value = decryptWindowsChromiumValue(r.encrypted_value as Uint8Array, key, version)
+      if (prefix === 'v10' || prefix === 'v11') {
+        const key = keys.v10 ?? keys.v11
+        if (!key) throw new Error('Windows 浏览器 Cookie 缺少 DPAPI 主密钥，请改用应用内登录或手动粘贴 Cookie')
+        value = decryptWindowsChromiumValue(encrypted, key, version)
+      } else if (encrypted.length) {
+        // 旧版 Chromium 直接对每条 Cookie 使用 DPAPI，没有 v10 前缀。
+        value = (await unprotect(encrypted)).toString('utf8')
+      } else value = ''
     } else value = decryptChromiumValue(r.encrypted_value as Uint8Array, keys, version)
     return {
       domain: String(r.host_key),
@@ -348,7 +354,7 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
       expires: chromeTimeToUnix(r.expires_utc as bigint),
       sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
     }
-  })
+  }))
 }
 
 /** 新版 Firefox 的 expiry 是毫秒 */
