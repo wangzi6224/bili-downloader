@@ -179,7 +179,7 @@ export const prepare = (pkg: string, stageDir: string, version: string): Promise
 export function replaceAfterExit(next: string, workDir: string, log: string): void {
   if (process.platform === 'win32') {
     const script = join(workDir, 'install.ps1')
-    writeFileSync(script, WINDOWS_UPDATE_SCRIPT)
+    writeFileSync(script, `\uFEFF${WINDOWS_UPDATE_SCRIPT}`, 'utf8')
     const out = openSync(log, 'a')
     const child = spawn(
       'powershell.exe',

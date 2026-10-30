@@ -199,8 +199,10 @@ describe('Windows NSIS updates', () => {
     expect(args).toContain(appExe)
     expect(args).toContain(log)
     const script = args[args.indexOf('-File') + 1] as string
-    expect(readFileSync(script, 'utf8')).toContain("'/S'")
-    expect(readFileSync(script, 'utf8')).toContain('Wait-Process')
+    const scriptText = readFileSync(script, 'utf8')
+    expect(scriptText.startsWith('\uFEFF')).toBe(true)
+    expect(scriptText).toContain("'/S'")
+    expect(scriptText).toContain('Wait-Process')
     if (isWindows) {
       const quoted = script.replace(/'/g, "''")
       const parse = `$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile('${quoted}', [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | ForEach-Object { [Console]::Error.WriteLine($_) }; exit 1 }`
