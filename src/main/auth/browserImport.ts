@@ -17,7 +17,7 @@ interface ChromiumBrowser {
   name: string
   /** 数据文件夹 */
   root: string
-  /** 加密 Cookie 的密码存在哪：macOS 是钥匙串里的条目名，Linux 是密钥环里 application 属性的值 */
+  /** 加密 Cookie 的密码存在哪：macOS 是钥匙串里的条目名，Linux 是密钥环里 application 属性的值；Windows 不用（主密钥在 Local State 里） */
   secret: string
 }
 
@@ -80,10 +80,13 @@ export function chromiumKey(password: string, iterations = IS_MAC ? 1003 : 1): B
 export type ChromiumKeys = Partial<Record<'v10' | 'v11', Buffer>>
 const APP_BOUND_COOKIE_ERROR = '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
 
-const encryptedPrefix = (enc: Uint8Array): 'v10' | 'v11' | 'v20' | undefined => {
+const encryptedPrefix = (enc: Uint8Array): 'v10' | 'v11' | undefined => {
   const prefix = Buffer.from(enc.subarray(0, 3)).toString('latin1')
-  return prefix === 'v10' || prefix === 'v11' || prefix === 'v20' ? prefix : undefined
+  return prefix === 'v10' || prefix === 'v11' ? prefix : undefined
 }
+
+/** Chrome 127 起 Windows 上新写入的 Cookie 是 v20 应用绑定加密，只有浏览器自己解得开 */
+const isAppBound = (enc: Uint8Array): boolean => Buffer.from(enc.subarray(0, 3)).toString('latin1') === 'v20'
 
 /** 前缀 + AES-128-CBC（IV 为 16 个空格）；meta version ≥ 24 时明文前 32 字节是域名哈希 */
 export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVersion: number): string {
@@ -91,7 +94,6 @@ export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVe
   if (buf.length === 0) return ''
   const prefix = encryptedPrefix(buf)
   if (!prefix) return buf.toString('utf8')
-  if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
   const key = keys[prefix]
   if (!key) throw new Error(`缺少解密 ${prefix} 的密钥`)
   const decipher = createDecipheriv('aes-128-cbc', key, Buffer.alloc(16, ' '))
@@ -100,13 +102,9 @@ export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVe
   return out.toString('utf8')
 }
 
-/** Windows Chromium Cookie 使用 Local State 中的 DPAPI 主密钥和 AES-256-GCM。 */
+/** Windows 的 v10：前缀 + 12 字节 nonce + AES-256-GCM 密文 + 16 字节认证标签，密钥是 Local State 里的主密钥；同样按 meta version 去掉域名哈希 */
 export function decryptWindowsChromiumValue(enc: Uint8Array, key: Buffer, metaVersion: number): string {
   const buf = Buffer.from(enc)
-  if (!buf.length) return ''
-  const prefix = encryptedPrefix(buf)
-  if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
-  if (!prefix) return buf.toString('utf8')
   if (buf.length < 3 + 12 + 16) throw new Error('Chromium Cookie 加密数据不完整')
   const decipher = createDecipheriv('aes-256-gcm', key, buf.subarray(3, 15))
   decipher.setAuthTag(buf.subarray(-16))
@@ -155,6 +153,8 @@ interface Found {
 }
 
 const isPermissionError = (e: unknown): boolean => ['EPERM', 'EACCES'].includes((e as { code?: string }).code ?? '')
+/** Windows 上 Chrome 系浏览器开着时独占 Cookie 数据库，连复制都会报 EBUSY */
+const isLockedError = (e: unknown): boolean => (e as { code?: string }).code === 'EBUSY'
 
 /** 浏览器目录存在但没有权限读取（macOS 的隐私保护拦截，或文件夹权限不允许）时，返回一条占位记录 */
 function blockedEntry(key: string, browser: string): Found {
@@ -246,7 +246,8 @@ export function listBrowserProfiles(): BrowserProfile[] {
       return { ...f.profile, hasBiliLogin: hasSessData(f) }
     } catch (e) {
       // 目录能列出但 Cookies 文件被拦截，同样需要授权
-      return isPermissionError(e) ? { ...f.profile, blocked: true } : f.profile
+      if (isPermissionError(e)) return { ...f.profile, blocked: true }
+      return isLockedError(e) ? { ...f.profile, locked: true } : f.profile
     }
   })
 }
@@ -288,26 +289,10 @@ function keyringPassword(application: string): Promise<string> {
   })
 }
 
-/** 只读取当前配置档实际需要的密钥 */
-async function chromiumKeys(b: ChromiumBrowser, needsV11: boolean, needsV10: boolean): Promise<ChromiumKeys> {
+/** 只取实际用到的密钥：Linux 上没有 v11 的 Cookie 就不去碰密钥环 */
+async function chromiumKeys(b: ChromiumBrowser, needsV11: boolean): Promise<ChromiumKeys> {
   if (IS_MAC) {
     const key = chromiumKey(await keychainPassword(b.secret))
-    return { v10: key, v11: key }
-  }
-  if (IS_WINDOWS) {
-    if (!needsV10 && !needsV11) return {}
-    let encryptedKey: string | undefined
-    try {
-      encryptedKey = JSON.parse(readFileSync(join(b.root, 'Local State'), 'utf8')).os_crypt?.encrypted_key
-    } catch {
-      throw new Error('无法读取 Windows 浏览器的加密密钥，请改用应用内登录或手动粘贴 Cookie')
-    }
-    if (!encryptedKey) throw new Error('Windows 浏览器没有可读取的 DPAPI 密钥，请改用应用内登录或手动粘贴 Cookie')
-    const wrapped = Buffer.from(encryptedKey, 'base64')
-    if (wrapped.subarray(0, 5).toString('ascii') !== 'DPAPI') {
-      throw new Error('Windows 浏览器密钥格式不受支持，请改用应用内登录或手动粘贴 Cookie')
-    }
-    const key = await unprotect(wrapped.subarray(5))
     return { v10: key, v11: key }
   }
   return {
@@ -315,6 +300,36 @@ async function chromiumKeys(b: ChromiumBrowser, needsV11: boolean, needsV10: boo
     v11: needsV11 ? chromiumKey(await keyringPassword(b.secret)) : undefined
   }
 }
+
+/** Windows：Local State 里存着 DPAPI 保护的主密钥（前面带 DPAPI 五个字符） */
+async function windowsMasterKey(b: ChromiumBrowser): Promise<Buffer> {
+  let encryptedKey: string | undefined
+  try {
+    encryptedKey = JSON.parse(readFileSync(join(b.root, 'Local State'), 'utf8')).os_crypt?.encrypted_key
+  } catch {
+    throw new Error('无法读取 Windows 浏览器的加密密钥，请改用应用内登录或手动粘贴 Cookie')
+  }
+  if (!encryptedKey) throw new Error('Windows 浏览器没有可读取的 DPAPI 密钥，请改用应用内登录或手动粘贴 Cookie')
+  const wrapped = Buffer.from(encryptedKey, 'base64')
+  if (wrapped.subarray(0, 5).toString('ascii') !== 'DPAPI') {
+    throw new Error('Windows 浏览器密钥格式不受支持，请改用应用内登录或手动粘贴 Cookie')
+  }
+  const [key] = await unprotect([wrapped.subarray(5)])
+  return key
+}
+
+type CookieRow = Record<string, unknown>
+
+const chromiumCookie = (r: CookieRow, value: string): PlainCookie => ({
+  domain: String(r.host_key),
+  name: String(r.name),
+  value,
+  path: String(r.path),
+  secure: Number(r.is_secure) === 1,
+  httpOnly: Number(r.is_httponly) === 1,
+  expires: chromeTimeToUnix(r.expires_utc as bigint),
+  sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
+})
 
 async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<PlainCookie[]> {
   const { version, rows } = withDbCopy(f.cookieFile, (db) => {
@@ -325,36 +340,31 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
     stmt.setReadBigInts(true)
     return { version: Number(meta?.value ?? 0), rows: stmt.all().filter((r) => isBiliHost(String(r.host_key))) }
   })
+  if (IS_WINDOWS) return windowsCookies(f.browser, rows, version)
   const needsV11 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v11')
-  const needsV10 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v10')
-  const keys = await chromiumKeys(f.browser, needsV11, needsV10)
-  return Promise.all(rows.map(async (r) => {
-    let value: string
-    if (r.value) value = String(r.value)
-    else if (IS_WINDOWS) {
-      const encrypted = Buffer.from(r.encrypted_value as Uint8Array)
-      const prefix = encryptedPrefix(encrypted)
-      if (prefix === 'v20') throw new Error(APP_BOUND_COOKIE_ERROR)
-      if (prefix === 'v10' || prefix === 'v11') {
-        const key = keys.v10 ?? keys.v11
-        if (!key) throw new Error('Windows 浏览器 Cookie 缺少 DPAPI 主密钥，请改用应用内登录或手动粘贴 Cookie')
-        value = decryptWindowsChromiumValue(encrypted, key, version)
-      } else if (encrypted.length) {
-        // 旧版 Chromium 直接对每条 Cookie 使用 DPAPI，没有 v10 前缀。
-        value = (await unprotect(encrypted)).toString('utf8')
-      } else value = ''
-    } else value = decryptChromiumValue(r.encrypted_value as Uint8Array, keys, version)
-    return {
-      domain: String(r.host_key),
-      name: String(r.name),
-      value,
-      path: String(r.path),
-      secure: Number(r.is_secure) === 1,
-      httpOnly: Number(r.is_httponly) === 1,
-      expires: chromeTimeToUnix(r.expires_utc as bigint),
-      sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
-    }
-  }))
+  const keys = await chromiumKeys(f.browser, needsV11)
+  return rows.map((r) =>
+    chromiumCookie(r, r.value ? String(r.value) : decryptChromiumValue(r.encrypted_value as Uint8Array, keys, version))
+  )
+}
+
+/**
+ * Windows 上 Cookie 有三种加密：v10 用主密钥做 AES-256-GCM；更早的 Chromium 没有前缀，每条直接用 DPAPI；v20 是应用绑定加密。
+ * v20 的跳过（缺了 buvid3 之类的会自动补上），只有 SESSDATA 也是 v20 时才报错
+ */
+async function windowsCookies(b: ChromiumBrowser, rows: CookieRow[], version: number): Promise<PlainCookie[]> {
+  const sealed = rows.filter((r) => !r.value && (r.encrypted_value as Uint8Array).length)
+  const bound = sealed.filter((r) => isAppBound(r.encrypted_value as Uint8Array))
+  if (bound.some((r) => r.name === 'SESSDATA')) throw new Error(APP_BOUND_COOKIE_ERROR)
+  const aes = sealed.filter((r) => encryptedPrefix(r.encrypted_value as Uint8Array))
+  const legacy = sealed.filter((r) => !bound.includes(r) && !aes.includes(r))
+  const key = aes.length ? await windowsMasterKey(b) : undefined
+  const legacyPlain = legacy.length ? await unprotect(legacy.map((r) => Buffer.from(r.encrypted_value as Uint8Array))) : []
+  const values = new Map<CookieRow, string>([
+    ...aes.map((r) => [r, decryptWindowsChromiumValue(r.encrypted_value as Uint8Array, key!, version)] as const),
+    ...legacy.map((r, i) => [r, legacyPlain[i].toString('utf8')] as const)
+  ])
+  return rows.filter((r) => !bound.includes(r)).map((r) => chromiumCookie(r, values.get(r) ?? String(r.value ?? '')))
 }
 
 /** 新版 Firefox 的 expiry 是毫秒 */
@@ -382,11 +392,19 @@ function readFirefox(f: Found): PlainCookie[] {
   )
 }
 
+const lockedMessage = (browser: string): string =>
+  `${browser} 正在运行，读不到它的登录信息。请完全退出 ${browser}（包括后台运行的）后再导入，或改用应用内登录`
+
 export async function importFromBrowser(id: string): Promise<AuthState> {
   const f = findAll().find((x) => x.profile.id === id)
   if (!f || f.profile.blocked) throw new Error('找不到这个浏览器配置档，或没有读取权限')
-  const cookies =
-    f.browser === 'firefox' ? readFirefox(f) : await readChromium(f as Found & { browser: ChromiumBrowser })
+  let cookies: PlainCookie[]
+  try {
+    cookies = f.browser === 'firefox' ? readFirefox(f) : await readChromium(f as Found & { browser: ChromiumBrowser })
+  } catch (e) {
+    if (isLockedError(e)) throw new Error(lockedMessage(f.profile.browser))
+    throw e
+  }
   if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) {
     throw new Error(`${f.profile.browser}（${f.profile.profile}）里没有 B站登录信息`)
   }

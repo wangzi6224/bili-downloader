@@ -110,7 +110,8 @@ function showMainWindow(): void {
 
 /** Windows 和 Linux 菜单标签不会按系统语言翻译，自己写中文；macOS 用系统原生菜单 */
 const DESKTOP_MENU: Electron.MenuItemConstructorOptions[] = [
-  { label: '文件', submenu: [{ label: '退出', role: 'quit' }] },
+  // Electron 在 Windows 上不给 quit 绑快捷键，设置页里写着 Ctrl+Q
+  { label: '文件', submenu: [{ label: '退出', role: 'quit', accelerator: 'CmdOrCtrl+Q' }] },
   {
     label: '编辑',
     submenu: [
@@ -179,6 +180,8 @@ function createTray(): void {
 }
 
 app.setName('B站下载器')
+// 和安装器建的快捷方式一致（electron-builder.yml 的 appId），通知才显示应用名，任务栏才不会分成两个图标
+if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.wangzi6224.bili-downloader' : process.execPath)
 
 // 只允许运行一个实例：再次打开时激活已有窗口
 if (!app.requestSingleInstanceLock()) {

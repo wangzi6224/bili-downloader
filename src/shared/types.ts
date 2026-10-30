@@ -18,6 +18,8 @@ export interface BrowserProfile {
   hasBiliLogin: boolean
   /** 没有权限读取：macOS 上是隐私保护拦截了，需要给本应用“完全磁盘访问权限”；Linux 上是文件夹权限不允许 */
   blocked?: boolean
+  /** 浏览器正在运行，Cookie 数据库被它锁着（Windows 上的 Chrome 系浏览器），要先退出浏览器 */
+  locked?: boolean
 }
 
 /** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区 */

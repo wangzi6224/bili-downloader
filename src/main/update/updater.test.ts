@@ -32,6 +32,7 @@ const ARCH = process.arch
 const KEY = process.platform === 'darwin' ? ARCH : `${process.platform}-${ARCH}`
 const EXT = process.platform === 'darwin' ? 'zip' : process.platform === 'win32' ? 'exe' : 'AppImage'
 const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
+const ORIGINAL_ARCH = Object.getOwnPropertyDescriptor(process, 'arch')!
 const ORIGINAL_FEED = process.env.BILI_UPDATE_FEED
 // 假时钟会替换全局的 setTimeout，先留一份真的用来等本地 http 服务
 const realTimeout = globalThis.setTimeout.bind(globalThis)
@@ -259,6 +260,8 @@ describe('check', () => {
 
   it('Windows 取 win32-x64 清单项并下载、校验和交接 NSIS 安装器', async () => {
     Object.defineProperty(process, 'platform', { ...ORIGINAL_PLATFORM, value: 'win32' })
+    // 清单的键和安装包的文件名都按本机架构取，Apple 芯片的 Mac 上跑测试时也要当成 x64
+    Object.defineProperty(process, 'arch', { ...ORIGINAL_ARCH, value: 'x64' })
     const installer = join(dir, 'bili-downloader-0.5.0-x64.exe')
     feed.body = manifest('0.5.0', { 'win32-x64': FILE() })
     m.prepare.mockResolvedValue(installer)
@@ -273,6 +276,7 @@ describe('check', () => {
       expect(m.replaceAfterExit).toHaveBeenCalledWith(installer, dir, join('/logs', 'update.log'))
     } finally {
       Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM)
+      Object.defineProperty(process, 'arch', ORIGINAL_ARCH)
     }
   })
 

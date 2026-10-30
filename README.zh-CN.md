@@ -128,7 +128,7 @@
 - **从浏览器导入**：复用 Chrome、Edge、Brave、Arc（仅 macOS）、Vivaldi、Chromium 或 Firefox 里的登录 cookie。
   - Chrome、Edge、Brave 的数据受 macOS 隐私保护，需要先在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里打开本应用并重启应用；导入 Chromium 系浏览器时还会弹出钥匙串授权。
   - 在 Linux 上，Chromium 系浏览器把 cookie 加密密钥存放在系统密钥环（GNOME Keyring / libsecret）里。应用通过 `secret-tool` 读取密钥（用 `sudo apt install libsecret-tools` 安装），密钥环可能会弹窗要求解锁。也支持 Snap 和 Flatpak 安装的 Firefox，以及 Snap 版 Chromium。
-  - 在 Windows 上，可以导入使用当前用户 DPAPI 加密的 Chromium Cookie。新版 Chrome 和 Edge 的部分配置档使用应用绑定加密，无法导入时请改用应用内登录或手动粘贴 Cookie。
+  - 在 Windows 上，Chrome 系浏览器运行时会锁住 Cookie 数据库，导入前请完全退出浏览器（包括后台运行的）。Chrome 127 起新写入的 Cookie 使用应用绑定加密，无法导入；登录 Cookie 也是这种时，请改用应用内登录或手动粘贴 Cookie。
 - **在应用内登录**：打开 B站官方登录页，支持扫码、密码和短信登录。
 - **手动粘贴 Cookie**：分号分隔的 cookie 字符串，或浏览器插件导出的 JSON。
 

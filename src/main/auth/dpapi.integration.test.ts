@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { unprotect } from './dpapi'
 
 describe.runIf(process.platform === 'win32')('Windows DPAPI integration', () => {
-  it('decrypts a synthetic value protected for the current Windows user', async () => {
+  it('decrypts synthetic values protected for the current Windows user in one call', async () => {
     const plain = Buffer.from('synthetic Chromium master key')
     const script = [
       'Add-Type -AssemblyName System.Security',
@@ -19,6 +19,6 @@ describe.runIf(process.platform === 'win32')('Windows DPAPI integration', () => 
       { input: plain.toString('base64'), encoding: 'utf8' }
     ).trim()
 
-    await expect(unprotect(Buffer.from(encrypted, 'base64'))).resolves.toEqual(plain)
+    await expect(unprotect([Buffer.from(encrypted, 'base64'), Buffer.from(encrypted, 'base64')])).resolves.toEqual([plain, plain])
   })
 })

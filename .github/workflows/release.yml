@@ -68,6 +68,27 @@ jobs:
       - name: 打包
         run: npm run ${{ matrix.script }}
 
+      # 真的装一遍：安装器能静默安装，装进去的 ffmpeg 和应用都能启动，旁边有自动更新要认的卸载程序
+      - name: 安装并启动（Windows）
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $installer = Join-Path $pwd "dist/bili-downloader-$version-x64.exe"
+          $install = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "NSIS 安装失败：$($install.ExitCode)" }
+          $appExe = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'B站下载器.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if (!$appExe) { throw '找不到已安装的应用' }
+          $appDir = Split-Path -Parent $appExe
+          if (!(Get-ChildItem -Path $appDir -Filter 'Uninstall *.exe')) { throw "安装目录里没有卸载程序：$appDir" }
+          & (Join-Path $appDir 'resources\ffmpeg\ffmpeg.exe') -version
+          if ($LASTEXITCODE -ne 0) { throw '安装进去的 ffmpeg 启动失败' }
+          $app = Start-Process -FilePath $appExe -PassThru
+          Start-Sleep -Seconds 6
+          $app.Refresh()
+          if ($app.HasExited) { throw "应用启动后退出，退出码：$($app.ExitCode)" }
+          Stop-Process -Id $app.Id -Force
+
       - uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.name }}

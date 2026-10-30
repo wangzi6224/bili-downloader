@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-Un'app desktop per macOS e Linux che scarica da bilibili: incolla un link per ottenere video, video in più parti, raccolte, anime e film.
+Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un link per ottenere video, video in più parti, raccolte, anime e film.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Windows x64](https://img.shields.io/badge/Windows-x64-black?logo=windows)
 ![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
@@ -85,6 +86,10 @@ Un'app desktop per macOS e Linux che scarica da bilibili: incolla un link per ot
 
 Richiede macOS 12 o successivo.
 
+### Windows
+
+Scarica `bili-downloader-<version>-x64.exe` dalle [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) ed esegui il programma di installazione. Si installa per l'utente corrente e non richiede privilegi di amministratore. Il programma di installazione non è firmato, quindi Windows potrebbe mostrare un avviso di editore sconosciuto.
+
 ### Linux
 
 Scarica uno di questi file dalle [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) (solo x86 a 64 bit):
@@ -103,14 +108,14 @@ Quando chiudi la finestra e l'app resta in background, fai clic sulla sua icona 
 
 ### Aggiornamenti
 
-Una volta installata, l'app controlla da sola gli aggiornamenti. L'app per macOS e l'AppImage per Linux li installano direttamente; la versione deb mostra le note di rilascio e ti rimanda alla pagina di download.
+Una volta installata, l'app controlla da sola gli aggiornamenti. L'app per macOS, il programma di installazione per Windows e l'AppImage per Linux li installano direttamente; la versione deb mostra le note di rilascio e ti rimanda alla pagina di download.
 
 Al momento l'interfaccia è disponibile solo in cinese semplificato; le voci citate qui sotto sono riportate in cinese con la traduzione.
 
 ## Guida rapida
 
 1. Accedi al tuo account bilibili (vedi **Accesso** più avanti). L'app ha bisogno di un account per analizzare i link.
-2. Copia un link di bilibili. L'app lo rileva dagli appunti quando torni alla sua finestra; in alternativa premi <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> su Linux) nel campo di inserimento e fai clic su **解析** (Analizza).
+2. Copia un link di bilibili. L'app lo rileva dagli appunti quando torni alla sua finestra; in alternativa premi <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> su Windows e Linux) nel campo di inserimento e fai clic su **解析** (Analizza).
 3. Scegli gli elementi da scaricare: seleziona tutto, inverti la selezione, <kbd>Maiusc</kbd>-clic per un intervallo, oppure filtra per titolo o per numero (ad es. `1-5,7`).
 4. Scegli qualità, tipo di output e contenuti extra, poi fai clic su **下载** (Scarica).
 
@@ -123,6 +128,7 @@ Con l'accesso ottieni le qualità e i contenuti a cui il tuo account ha diritto 
 - **从浏览器导入** (Importa dal browser): riutilizza i cookie di accesso di Chrome, Edge, Brave, Arc (solo macOS), Vivaldi, Chromium o Firefox.
   - macOS protegge i dati di Chrome, Edge e Brave: abilita prima l'app in **Impostazioni di Sistema → Privacy e sicurezza → Accesso completo al disco** e riavviala. L'importazione dai browser basati su Chromium chiede anche l'accesso al Portachiavi.
   - Su Linux i browser basati su Chromium conservano la chiave dei cookie nel portachiavi di sistema (GNOME Keyring / libsecret). L'app la legge con `secret-tool` (`sudo apt install libsecret-tools`) e il portachiavi potrebbe chiederti di sbloccarlo. Sono supportati anche Firefox installato tramite Snap o Flatpak e Chromium in versione Snap.
+  - Su Windows i browser basati su Chromium bloccano il database dei cookie mentre sono in esecuzione, quindi chiudi completamente il browser (compresi eventuali processi in background) prima di importare. I cookie scritti da Chrome 127 o successivo usano la crittografia legata all'app e non possono essere importati; se il cookie di accesso è tra questi, usa invece l'accesso nell'app oppure incolla una stringa di cookie.
 - **在应用内登录** (Accedi nell'app): apre la pagina di accesso ufficiale di bilibili, con accesso tramite codice QR, password o SMS.
 - **手动粘贴 Cookie** (Incolla i cookie): una stringa di cookie separati da punto e virgola, oppure il JSON esportato da un'estensione del browser.
 
@@ -167,11 +173,11 @@ Il server ascolta solo su `127.0.0.1` (la porta è configurabile), richiede il t
 ## Limitazioni
 
 - Non è possibile scaricare contenuti protetti da DRM, con restrizioni geografiche o che il tuo account non è autorizzato a guardare. Queste attività vengono contrassegnate come **无法下载** (impossibile scaricare) con il motivo.
-- Solo macOS e Linux (x64); non esiste una versione per Windows. Su Linux solo l'AppImage si aggiorna da sola.
+- Sono supportati Windows x64, macOS x64 / arm64 e Linux x64. Non sono disponibili versioni ARM per Windows e Linux.
 
 ## Compilare dai sorgenti
 
-Servono macOS o Linux, Node.js 22.12 o successivo e npm.
+Servono Windows, macOS o Linux, Node.js 22.12 o successivo e npm.
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -182,6 +188,7 @@ npm test             # test unitari
 npm run typecheck    # controllo dei tipi
 npm run build:mac    # su macOS: genera i dmg / zip x64 e arm64 in dist/
 npm run build:linux  # su Linux: genera l'AppImage / il deb x64 in dist/
+npm run build:win    # su Windows: genera il programma di installazione NSIS x64 in dist/
 ```
 
 Vedi [CONTRIBUTING.md](CONTRIBUTING.md) (in inglese) per il flusso di sviluppo e [docs/RELEASING.md](docs/RELEASING.md) (in cinese) per pacchettizzazione e rilasci.
@@ -193,7 +200,7 @@ src/main/auth               Accesso: archiviazione dei cookie, finestra di acces
 src/main/bili               API bilibili: firma WBI, analisi di video / anime / corsi / elenchi, flussi, sottotitoli, danmaku
 src/main/download           Coda dei download, ripresa, multiplexing con ffmpeg, contenuti extra (copertina, sottotitoli, NFO…)
 src/main/net                Proxy e scelta del CDN
-src/main/update             Aggiornamenti integrati: controllo di update.json, verifica del download, sostituzione del .app o dell'AppImage
+src/main/update             Aggiornamenti integrati: controllo di update.json, verifica dei download, installazione degli aggiornamenti .app / AppImage / NSIS
 src/main/mcp                Server MCP locale
 src/main/subscriptions.ts   Abbonamenti
 src/shared                  Tipi, analisi dei link e modelli di denominazione condivisi tra i processi
@@ -216,4 +223,4 @@ Issue e pull request sono benvenute. Leggi prima [CONTRIBUTING.md](CONTRIBUTING.
 
 [MIT](LICENSE) © wangzi6224
 
-L'app include binari FFmpeg statici provenienti da [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg viene eseguito come programma separato con la propria licenza e non è coperto dalla licenza MIT indicata sopra. Il testo della sua licenza è incluso nell'app in `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Linux); vedi anche [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+L'app include binari FFmpeg statici provenienti da [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg viene eseguito come programma separato con la propria licenza e non è coperto dalla licenza MIT indicata sopra. Il testo della sua licenza è incluso nell'app in `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Windows e Linux); vedi anche [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).

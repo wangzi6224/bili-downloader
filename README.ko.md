@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동영상, 컬렉션, 애니메이션, 영화를 다운로드할 수 있는 macOS 및 Linux용 데스크톱 앱입니다.
+bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동영상, 컬렉션, 애니메이션, 영화를 다운로드할 수 있는 Windows, macOS 및 Linux용 데스크톱 앱입니다.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Windows x64](https://img.shields.io/badge/Windows-x64-black?logo=windows)
 ![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
@@ -85,6 +86,10 @@ bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동�
 
 macOS 12 이상이 필요합니다.
 
+### Windows
+
+[Releases](https://github.com/wangzi6224/bili-downloader/releases/latest)에서 `bili-downloader-<version>-x64.exe`를 다운로드해 설치 프로그램을 실행합니다. 현재 사용자 계정에 설치되며 관리자 권한이 필요하지 않습니다. 설치 프로그램은 서명되지 않았기 때문에 Windows에서 알 수 없는 게시자 경고가 표시될 수 있습니다.
+
 ### Linux
 
 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest)에서 다음 중 하나를 다운로드합니다(64비트 x86 전용):
@@ -103,14 +108,14 @@ macOS 12 이상이 필요합니다.
 
 ### 업데이트
 
-설치 후에는 앱이 스스로 업데이트를 확인합니다. macOS 앱과 Linux AppImage는 업데이트를 바로 설치할 수 있고, deb 버전은 업데이트 내용을 보여 준 뒤 다운로드 페이지로 안내합니다.
+설치 후에는 앱이 스스로 업데이트를 확인합니다. macOS 앱, Windows 설치 프로그램, Linux AppImage는 업데이트를 바로 설치할 수 있고, deb 버전은 업데이트 내용을 보여 준 뒤 다운로드 페이지로 안내합니다.
 
 현재 UI는 중국어 간체만 지원하며, 아래에서는 화면의 표기를 중국어 원문으로 적고 괄호 안에 한국어 번역을 덧붙였습니다.
 
 ## 빠른 시작
 
 1. bilibili 계정에 로그인합니다(아래 **로그인** 참고). 링크를 분석하려면 로그인이 필요합니다.
-2. bilibili 링크를 복사합니다. 앱으로 돌아오면 클립보드에서 자동으로 인식하며, 입력창에서 <kbd>⌘</kbd><kbd>V</kbd>(Linux에서는 <kbd>Ctrl</kbd><kbd>V</kbd>)를 누른 뒤 **解析**(분석)를 클릭해도 됩니다.
+2. bilibili 링크를 복사합니다. 앱으로 돌아오면 클립보드에서 자동으로 인식하며, 입력창에서 <kbd>⌘</kbd><kbd>V</kbd>(Windows와 Linux에서는 <kbd>Ctrl</kbd><kbd>V</kbd>)를 누른 뒤 **解析**(분석)를 클릭해도 됩니다.
 3. 다운로드할 항목을 고릅니다. 전체 선택, 선택 반전, <kbd>Shift</kbd> 범위 선택, 제목이나 번호(예: `1-5,7`)로 필터링할 수 있습니다.
 4. 화질, 출력 형식, 추가 콘텐츠를 고르고 **下载**(다운로드)를 클릭합니다.
 
@@ -123,6 +128,7 @@ macOS 12 이상이 필요합니다.
 - **从浏览器导入**(브라우저에서 가져오기): Chrome, Edge, Brave, Arc(macOS 전용), Vivaldi, Chromium, Firefox의 로그인 쿠키를 재사용합니다.
   - Chrome, Edge, Brave의 데이터는 macOS 개인정보 보호 대상이므로 먼저 **시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한**에서 이 앱을 허용하고 앱을 다시 시작하세요. Chromium 계열 브라우저에서 가져올 때는 키체인 접근 허용도 요청됩니다.
   - Linux에서는 Chromium 계열 브라우저가 쿠키 암호화 키를 시스템 키링(GNOME Keyring / libsecret)에 보관합니다. 앱은 `secret-tool`(`sudo apt install libsecret-tools`로 설치)로 이 키를 읽으며, 이때 키링 잠금 해제를 요청받을 수 있습니다. Snap·Flatpak으로 설치한 Firefox와 Snap 버전 Chromium도 지원합니다.
+  - Windows에서는 Chromium 계열 브라우저가 실행 중에 쿠키 데이터베이스를 잠그므로, 가져오기 전에 브라우저를 완전히 종료하세요(백그라운드 프로세스 포함). Chrome 127 이상에서 기록된 쿠키는 앱 바인딩 암호화를 사용하므로 가져올 수 없습니다. 로그인 쿠키가 여기에 해당하면 대신 앱 안에서 로그인하거나 쿠키 문자열을 붙여 넣으세요.
 - **在应用内登录**(앱 안에서 로그인): bilibili 공식 로그인 페이지를 열며 QR 코드, 비밀번호, SMS 로그인을 지원합니다.
 - **手动粘贴 Cookie**(쿠키 직접 붙여넣기): 세미콜론으로 구분된 쿠키 문자열 또는 브라우저 확장 프로그램으로 내보낸 JSON.
 
@@ -167,11 +173,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 ## 제한 사항
 
 - DRM으로 보호된 콘텐츠, 지역 제한 콘텐츠, 계정에 시청 권한이 없는 콘텐츠는 다운로드할 수 없습니다. 이런 작업은 **无法下载**(다운로드 불가)로 표시되고 이유가 함께 나옵니다.
-- macOS와 Linux(x64)만 지원하며 Windows 버전은 없습니다. Linux에서는 AppImage만 자동으로 업데이트됩니다.
+- Windows x64, macOS x64 / arm64, Linux x64를 지원합니다. Windows와 Linux용 ARM 버전은 제공하지 않습니다.
 
 ## 소스에서 빌드
 
-macOS 또는 Linux, Node.js 22.12 이상, npm이 필요합니다.
+Windows, macOS 또는 Linux, Node.js 22.12 이상, npm이 필요합니다.
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -182,6 +188,7 @@ npm test             # 단위 테스트
 npm run typecheck    # 타입 검사
 npm run build:mac    # macOS에서 실행: dist/에 x64, arm64용 dmg / zip 생성
 npm run build:linux  # Linux에서 실행: dist/에 x64용 AppImage / deb 생성
+npm run build:win    # Windows에서 실행: dist/에 x64용 NSIS 설치 프로그램 생성
 ```
 
 개발 과정은 [CONTRIBUTING.md](CONTRIBUTING.md)(영어), 패키징과 릴리스는 [docs/RELEASING.md](docs/RELEASING.md)(중국어)를 참고하세요.
@@ -193,7 +200,7 @@ src/main/auth               로그인: 쿠키 저장, 앱 내 로그인 창, 브
 src/main/bili               bilibili API: WBI 서명, 동영상 / 애니메이션 / 강좌 / 목록 분석, 스트림, 자막, 탄막
 src/main/download           다운로드 대기열, 이어받기, ffmpeg 병합, 추가 콘텐츠(커버, 자막, NFO…)
 src/main/net                프록시와 CDN 선택
-src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app 또는 AppImage 교체
+src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app / AppImage / NSIS 업데이트 설치
 src/main/mcp                로컬 MCP 서버
 src/main/subscriptions.ts   구독
 src/shared                  모든 프로세스가 공유하는 타입, 링크 분석, 이름 템플릿
@@ -216,4 +223,4 @@ scripts                     ffmpeg 다운로드, 아이콘 생성, 릴리스 게
 
 [MIT](LICENSE) © wangzi6224
 
-앱에는 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)(`b6.1.1`)의 정적 빌드 FFmpeg가 포함되어 있습니다. FFmpeg는 자체 라이선스를 따르는 별도의 프로그램으로 실행되며, 위의 MIT 라이선스 적용 대상이 아닙니다. 라이선스 전문은 앱 안의 `Contents/Resources/ffmpeg/LICENSE`(macOS) / `resources/ffmpeg/LICENSE`(Linux)에 들어 있으며, [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html)도 참고하세요.
+앱에는 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)(`b6.1.1`)의 정적 빌드 FFmpeg가 포함되어 있습니다. FFmpeg는 자체 라이선스를 따르는 별도의 프로그램으로 실행되며, 위의 MIT 라이선스 적용 대상이 아닙니다. 라이선스 전문은 앱 안의 `Contents/Resources/ffmpeg/LICENSE`(macOS) / `resources/ffmpeg/LICENSE`(Windows 및 Linux)에 들어 있으며, [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html)도 참고하세요.

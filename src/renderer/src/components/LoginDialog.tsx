@@ -58,7 +58,8 @@ export function LoginDialog() {
   const expired = auth && !auth.loggedIn && auth.expired
   const withLogin = profiles?.filter((p) => p.hasBiliLogin) ?? []
   const blocked = profiles?.filter((p) => p.blocked) ?? []
-  const withoutLogin = profiles?.filter((p) => !p.hasBiliLogin && !p.blocked) ?? []
+  const locked = profiles?.filter((p) => p.locked) ?? []
+  const withoutLogin = profiles?.filter((p) => !p.hasBiliLogin && !p.blocked && !p.locked) ?? []
 
   const section = 'flex items-center gap-2 text-[13px] font-medium'
 
@@ -119,7 +120,12 @@ export function LoginDialog() {
                   没有权限读取 {blocked.map((p) => p.browser).join('、')} 的数据（浏览器的配置文件夹不允许当前用户读取）。可以直接用下面的应用内登录。
                 </Banner>
               ))}
-            {profiles && !withLogin.length && !blocked.length && (
+            {locked.length > 0 && (
+              <Banner tone="warn">
+                {[...new Set(locked.map((p) => p.browser))].join('、')} 正在运行，读不到它的登录信息。请完全退出浏览器（包括后台运行的）后点“重新检测”。
+              </Banner>
+            )}
+            {profiles && !withLogin.length && !blocked.length && !locked.length && (
               <div className="text-xs leading-relaxed text-muted">
                 {profiles.length ? '找到的浏览器里都没有登录 B站' : '没有找到支持的浏览器'}
                 （支持 {sysText.browsers}）

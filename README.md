@@ -128,7 +128,7 @@ Logging in gives you the qualities and content your own account has access to (1
 - **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Chromium or Firefox.
   - macOS protects the data of Chrome, Edge and Brave, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
   - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
-  - On Windows, Chromium-based cookies encrypted with the current user's DPAPI can be imported. Recent Chrome and Edge profiles may use app-bound encryption that prevents import; use in-app sign-in or paste a cookie string for those profiles.
+  - On Windows, Chromium-based browsers lock their cookie database while running, so quit the browser completely (including any background process) before importing. Cookies written by Chrome 127 or later use app-bound encryption and cannot be imported; if the login cookie is one of them, use in-app sign-in or paste a cookie string instead.
 - **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
 - **手动粘贴 Cookie** (Paste cookies): a semicolon-separated cookie string, or the JSON exported by a browser extension.
 

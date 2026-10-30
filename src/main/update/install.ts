@@ -3,6 +3,7 @@ import { accessSync, chmodSync, constants, copyFileSync, mkdirSync, openSync, re
 import { basename, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { app } from 'electron'
+import { encodeCommand, POWERSHELL } from '../powershell'
 
 const run = promisify(execFile)
 
@@ -70,17 +71,34 @@ fi
 ) >/dev/null 2>&1 &
 `
 
-/** Windows 先等旧进程退出，再运行静默 NSIS 安装器并重新打开应用。 */
+/**
+ * Windows 版：旧进程退出后结束它留下的 ffmpeg（运行中的 exe 换不掉），静默运行 NSIS 安装器，最后重新打开应用。
+ * 用 -EncodedCommand 运行，不受执行策略限制；参数从环境变量传进来，用完就删掉，免得带给安装器和新版本
+ */
 export const WINDOWS_UPDATE_SCRIPT = [
-  'param([int]$OldPid, [string]$Installer, [string]$AppExe, [string]$Log)',
+  '$OldPid = [int]$env:BILI_UPDATE_PID; $Installer = $env:BILI_UPDATE_INSTALLER; $AppExe = $env:BILI_UPDATE_APP; $Log = $env:BILI_UPDATE_LOG',
+  "Remove-Item -Path 'Env:BILI_UPDATE_*'",
+  // update.log 是 UTF-8，Windows PowerShell 默认按系统代码页写，中文会乱码；标准输出也指向这个文件，要允许别人同时写
+  'function Write-Log([string]$Message) {',
+  '  $bytes = [Text.Encoding]::UTF8.GetBytes("$(Get-Date -Format o) $Message`r`n")',
+  "  $stream = [IO.File]::Open($Log, 'Append', 'Write', 'ReadWrite')",
+  '  try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }',
+  '}',
+  '$AppDir = Split-Path -Parent $AppExe',
   'try {',
   '  if (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) { Wait-Process -Id $OldPid -Timeout 120 -ErrorAction Stop }',
-  "  $updated = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru -Wait -WindowStyle Hidden",
-  "  if ($updated.ExitCode -ne 0) { throw \"NSIS 退出码 $($updated.ExitCode)\" }",
+  "  $ffmpeg = Join-Path $AppDir 'resources\\ffmpeg\\ffmpeg.exe'",
+  '  $left = @(Get-Process -Name ffmpeg -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ffmpeg })',
+  '  if ($left.Count) { $left | Stop-Process -Force; $left | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue }',
+  // --updated：按更新处理，用户删掉的桌面快捷方式不会再建回来
+  "  $updated = Start-Process -FilePath $Installer -ArgumentList '/S', '--updated' -PassThru -Wait -WindowStyle Hidden",
+  '  if ($updated.ExitCode -ne 0) { throw "NSIS 退出码 $($updated.ExitCode)" }',
+  "  Write-Log '已安装新版本'",
   '} catch {',
-  '  Add-Content -LiteralPath $Log -Value "$(Get-Date -Format o) 更新失败：$($_.Exception.Message)"',
+  '  Write-Log "更新失败：$($_.Exception.Message)"',
   '} finally {',
-  '  try { Start-Process -FilePath $AppExe -WindowStyle Hidden } catch { Add-Content -LiteralPath $Log -Value "$(Get-Date -Format o) 重新打开失败：$($_.Exception.Message)" }',
+  // 不能带 -WindowStyle Hidden：它会作用到新版本第一次显示窗口，主窗口就出不来了
+  '  try { Start-Process -FilePath $AppExe -WorkingDirectory $AppDir } catch { Write-Log "重新打开失败：$($_.Exception.Message)" }',
   '}'
 ].join('\n')
 
@@ -94,15 +112,7 @@ const appImage = (): string | undefined => process.env.APPIMAGE
 export function installBlocker(): string | undefined {
   if (!app.isPackaged) return '开发模式下不能自动安装，请用打包后的应用测试'
   if (process.platform === 'linux') return appImageBlocker()
-  if (process.platform === 'win32') {
-    const exe = app.getPath('exe')
-    try {
-      accessSync(dirname(exe), constants.W_OK)
-    } catch {
-      return `没有权限修改 ${dirname(exe)}`
-    }
-    return undefined
-  }
+  if (process.platform === 'win32') return nsisBlocker()
   if (process.platform !== 'darwin') return '自动安装只支持 macOS、Linux 和 Windows'
   const bundle = appBundle()
   if (!bundle.endsWith('.app')) return `找不到应用所在的位置（${bundle}）`
@@ -126,6 +136,27 @@ function appImageBlocker(): string | undefined {
     accessSync(file, constants.W_OK)
   } catch {
     return `没有权限修改 ${dirname(file)}`
+  }
+  return undefined
+}
+
+/** Windows：静默安装总是装回安装器记下的位置，只有从那里运行的（旁边有卸载程序）才能自动更新，别处拷来的更新完还是旧版本 */
+function nsisBlocker(): string | undefined {
+  const dir = dirname(app.getPath('exe'))
+  let names: string[] = []
+  try {
+    names = readdirSync(dir)
+  } catch {
+    // 读不了目录也当作不是安装版
+  }
+  if (!names.some((n) => /^Uninstall .+\.exe$/i.test(n))) return '只有用安装程序安装的版本支持自动安装'
+  // Windows 上 access() 不看文件夹的权限设置（ACL），只能真的写一下试试
+  const probe = join(dir, `.update-check-${process.pid}`)
+  try {
+    writeFileSync(probe, '')
+    rmSync(probe)
+  } catch {
+    return `没有权限修改 ${dir}`
   }
   return undefined
 }
@@ -178,14 +209,23 @@ export const prepare = (pkg: string, stageDir: string, version: string): Promise
 /** 启动独立的替换脚本；调用方随后退出应用 */
 export function replaceAfterExit(next: string, workDir: string, log: string): void {
   if (process.platform === 'win32') {
-    const script = join(workDir, 'install.ps1')
-    writeFileSync(script, `\uFEFF${WINDOWS_UPDATE_SCRIPT}`, 'utf8')
     const out = openSync(log, 'a')
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, String(process.pid), next, app.getPath('exe'), log],
-      { cwd: workDir, detached: true, windowsHide: true, stdio: ['ignore', out, out] }
-    )
+    const child = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodeCommand(WINDOWS_UPDATE_SCRIPT)], {
+      cwd: workDir,
+      detached: true,
+      windowsHide: true,
+      stdio: ['ignore', out, out],
+      env: {
+        ...process.env,
+        BILI_UPDATE_PID: String(process.pid),
+        BILI_UPDATE_INSTALLER: next,
+        BILI_UPDATE_APP: app.getPath('exe'),
+        BILI_UPDATE_LOG: log
+      }
+    })
+    // 没起来时 pid 是空的，error 事件稍后才到：先报错，调用方就不会退出应用
+    child.once('error', (e) => console.error('更新脚本没有启动', e))
+    if (child.pid === undefined) throw new Error('无法启动更新程序')
     child.unref()
     return
   }

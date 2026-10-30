@@ -12,6 +12,7 @@ type ExecCb = (err: (Error & { code?: number }) | null, stdout: string, stderr: 
 const m = vi.hoisted(() => ({
   execFile: vi.fn(),
   unprotect: vi.fn(),
+  copyFileSync: vi.fn(),
   checkAuth: vi.fn(),
   clearBiliCookies: vi.fn(async () => {}),
   setBiliCookies: vi.fn(async (_list: unknown[]) => {}),
@@ -20,6 +21,12 @@ const m = vi.hoisted(() => ({
 
 vi.mock('node:child_process', () => ({ execFile: m.execFile }))
 vi.mock('./dpapi', () => ({ unprotect: m.unprotect }))
+// 默认用真的复制，个别测试模拟浏览器锁住数据库
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
+  copyFileSync: m.copyFileSync
+}))
+const realFs = await vi.importActual<typeof import('node:fs')>('node:fs')
 vi.mock('./authGuard', () => ({ checkAuth: m.checkAuth }))
 // isBiliHost 用真实实现
 vi.mock('./session', async (importOriginal) => ({
@@ -90,10 +97,8 @@ describe('chromium cookie decryption', () => {
     expect(decryptWindowsChromiumValue(enc, key, 24)).toBe('win-sess')
   })
 
-  it('新版应用绑定加密 Cookie 给出可用的替代登录说明', () => {
-    expect(() => decryptWindowsChromiumValue(Buffer.from('v20encrypted'), Buffer.alloc(32), 24)).toThrow(
-      '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
-    )
+  it('Windows 密文短于 nonce 加认证标签时报不完整', () => {
+    expect(() => decryptWindowsChromiumValue(Buffer.from('v10short'), Buffer.alloc(32), 24)).toThrow('Chromium Cookie 加密数据不完整')
   })
 })
 
@@ -222,7 +227,8 @@ beforeEach(async () => {
   mkdirSync(process.env.APPDATA, { recursive: true })
   m.checkAuth.mockResolvedValue(IN)
   m.execFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: ExecCb) => cb(null, `${PASSWORD}\n`, ''))
-  m.unprotect.mockReset().mockResolvedValue(Buffer.alloc(32, 7))
+  m.unprotect.mockReset().mockImplementation(async (list: Buffer[]) => list.map(() => Buffer.alloc(32, 7)))
+  m.copyFileSync.mockReset().mockImplementation(realFs.copyFileSync)
 })
 
 afterEach(() => {
@@ -602,44 +608,90 @@ describe('Windows browser import', () => {
     ])
   })
 
-  it('用 DPAPI 解开 Local State 主密钥并导入 AES-GCM Cookie', async () => {
-    const key = Buffer.alloc(32, 9)
-    const root = localAppData('Google/Chrome/User Data')
+  const chromeRoot = (): string => localAppData('Google/Chrome/User Data')
+  const winEnc = (key: Buffer, host: string, value: string): Buffer =>
+    encryptWindows(Buffer.concat([createHash('sha256').update(host).digest(), Buffer.from(value)]), key)
+
+  function localState(root: string): void {
     mkdirSync(root, { recursive: true })
     writeFileSync(
       join(root, 'Local State'),
       JSON.stringify({ os_crypt: { encrypted_key: Buffer.concat([Buffer.from('DPAPI'), Buffer.from('wrapped-key')]).toString('base64') } })
     )
-    const hash = createHash('sha256').update('.bilibili.com').digest()
-    chromeDb(join(root, 'Default/Network/Cookies'), [
-      { host: '.bilibili.com', name: 'SESSDATA', enc: encryptWindows(Buffer.concat([hash, Buffer.from('win-sess')]), key) }
+  }
+
+  /** 浏览器开着时复制 Cookie 数据库会报 EBUSY */
+  const browserRunning = (): void => {
+    m.copyFileSync.mockImplementation(() => {
+      throw Object.assign(new Error('EBUSY: resource busy or locked, copyfile'), { code: 'EBUSY' })
+    })
+  }
+
+  it('用 DPAPI 解开 Local State 主密钥并导入 AES-GCM Cookie', async () => {
+    const key = Buffer.alloc(32, 9)
+    localState(chromeRoot())
+    chromeDb(join(chromeRoot(), 'Default/Network/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: winEnc(key, '.bilibili.com', 'win-sess') }
     ])
-    m.unprotect.mockResolvedValue(key)
+    m.unprotect.mockResolvedValue([key])
 
     await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
-    expect(m.unprotect).toHaveBeenCalledWith(Buffer.from('wrapped-key'))
+    expect(m.unprotect).toHaveBeenCalledTimes(1)
+    expect(m.unprotect).toHaveBeenCalledWith([Buffer.from('wrapped-key')])
     expect(lastImported().map((c) => [c.name, c.value])).toEqual([['SESSDATA', 'win-sess']])
   })
 
-  it('旧版 Windows Chromium Cookie 逐条用 DPAPI 解密', async () => {
-    const root = localAppData('Google/Chrome/User Data')
-    chromeDb(join(root, 'Default/Cookies'), [
-      { host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('legacy-dpapi-ciphertext') }
+  it('旧版 Windows Chromium Cookie 用 DPAPI 解密，多条一次解完', async () => {
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('legacy-sess-ciphertext') },
+      { host: '.bilibili.com', name: 'bili_jct', enc: Buffer.from('legacy-jct-ciphertext') }
     ])
-    m.unprotect.mockResolvedValue(Buffer.from('legacy-sess'))
+    m.unprotect.mockResolvedValue([Buffer.from('legacy-sess'), Buffer.from('legacy-jct')])
 
     await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
-    expect(m.unprotect).toHaveBeenCalledWith(Buffer.from('legacy-dpapi-ciphertext'))
-    expect(lastImported().map((c) => [c.name, c.value])).toEqual([['SESSDATA', 'legacy-sess']])
+    expect(m.unprotect).toHaveBeenCalledTimes(1)
+    expect(m.unprotect).toHaveBeenCalledWith([Buffer.from('legacy-sess-ciphertext'), Buffer.from('legacy-jct-ciphertext')])
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([
+      ['SESSDATA', 'legacy-sess'],
+      ['bili_jct', 'legacy-jct']
+    ])
   })
 
-  it('应用绑定加密的 Cookie 不尝试 DPAPI，提示应用内登录或手动 Cookie', async () => {
-    const root = localAppData('Google/Chrome/User Data')
-    chromeDb(join(root, 'Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }])
+  it('其他 Cookie 是应用绑定加密时跳过，照样导入 SESSDATA', async () => {
+    const key = Buffer.alloc(32, 9)
+    localState(chromeRoot())
+    chromeDb(join(chromeRoot(), 'Default/Network/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: winEnc(key, '.bilibili.com', 'win-sess') },
+      { host: '.bilibili.com', name: 'buvid3', enc: Buffer.from('v20bound-cookie') },
+      { host: '.bilibili.com', name: 'bili_jct', value: 'plain-jct' }
+    ])
+    m.unprotect.mockResolvedValue([key])
+
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([
+      ['SESSDATA', 'win-sess'],
+      ['bili_jct', 'plain-jct']
+    ])
+  })
+
+  it('SESSDATA 是应用绑定加密时不尝试 DPAPI，提示应用内登录或手动 Cookie', async () => {
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }])
 
     await expect(bi.importFromBrowser('chrome::Default')).rejects.toThrow(
       '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
     )
     expect(m.unprotect).not.toHaveBeenCalled()
+  })
+
+  it('浏览器开着、数据库被锁住时标记出来，不当成没登录', () => {
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [sess()])
+    browserRunning()
+    expect(bi.listBrowserProfiles().map((p) => [p.id, p.hasBiliLogin, p.locked])).toEqual([['chrome::Default', false, true]])
+  })
+
+  it('导入时浏览器开着，提示先退出浏览器', async () => {
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [sess()])
+    browserRunning()
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toThrow('Chrome 正在运行，读不到它的登录信息')
   })
 })

@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -18,6 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { encodeCommand, POWERSHELL } from '../powershell'
 
 const m = vi.hoisted(() => ({
   app: { isPackaged: true, exe: '/Applications/B站下载器.app/Contents/MacOS/B站下载器', getPath: vi.fn() },
@@ -31,7 +33,8 @@ vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
   spawn: m.spawn
 }))
-const { APPIMAGE_SCRIPT, SCRIPT, appBundle, installBlocker, prepare, replaceAfterExit, stageAppImage, unpack } = await import('./install')
+const { APPIMAGE_SCRIPT, SCRIPT, WINDOWS_UPDATE_SCRIPT, appBundle, installBlocker, prepare, replaceAfterExit, stageAppImage, unpack } =
+  await import('./install')
 
 const isDarwin = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
@@ -88,7 +91,7 @@ describe.skipIf(isWindows)('installBlocker', () => {
     expect(installBlocker()).toContain('开发模式')
 
     m.app.isPackaged = true
-    expect(installBlocker()).toBe('没有权限修改 /opt/bili/bin')
+    expect(installBlocker()).toBe('只有用安装程序安装的版本支持自动安装')
 
     setPlatform('darwin')
     m.app.exe = '/private/var/AppTranslocation/X/d/bin/bili'
@@ -167,49 +170,116 @@ describe.skipIf(isWindows)('installBlocker（Linux）', () => {
 
 describe('Windows NSIS updates', () => {
   beforeEach(() => setPlatform('win32'))
-
-  it('允许从可写的用户级安装目录自动更新', () => {
-    const exe = join(dir, 'Apps/B站下载器.exe')
-    mkdirSync(join(dir, 'Apps'), { recursive: true })
-    writeFileSync(exe, 'app')
-    m.app.exe = exe
-    expect(installBlocker()).toBeUndefined()
+  afterEach(() => {
+    if (existsSync(join(dir, 'Apps'))) chmodSync(join(dir, 'Apps'), 0o755)
   })
 
-  it('准备阶段保留 NSIS 安装器并创建等待进程退出的静默安装交接', async () => {
+  /** NSIS 装好的样子：应用旁边有卸载程序 */
+  const installedApp = (): string => {
+    mkdirSync(join(dir, 'Apps'), { recursive: true })
+    writeFileSync(join(dir, 'Apps/Uninstall B站下载器.exe'), 'uninstaller')
+    m.app.exe = join(dir, 'Apps/B站下载器.exe')
+    writeFileSync(m.app.exe, 'app')
+    return m.app.exe
+  }
+
+  it('从安装程序装的位置运行、目录可写时可以自动更新，试写的文件会删掉', () => {
+    installedApp()
+    expect(installBlocker()).toBeUndefined()
+    expect(readdirSync(join(dir, 'Apps')).sort()).toEqual(['B站下载器.exe', 'Uninstall B站下载器.exe'])
+  })
+
+  it('旁边没有卸载程序（拷来的、解压出来的）不能自动安装', () => {
+    mkdirSync(join(dir, 'Apps'))
+    m.app.exe = join(dir, 'Apps/B站下载器.exe')
+    writeFileSync(m.app.exe, 'app')
+    expect(installBlocker()).toBe('只有用安装程序安装的版本支持自动安装')
+  })
+
+  it.skipIf(isRoot)('安装目录写不进去时报没有权限', () => {
+    installedApp()
+    chmodSync(join(dir, 'Apps'), 0o555)
+    expect(installBlocker()).toBe(`没有权限修改 ${join(dir, 'Apps')}`)
+  })
+
+  it('准备阶段直接用下载的 NSIS 安装器，脚本编码后交给 PowerShell，参数走环境变量', async () => {
     const exe = join(dir, 'updates/bili-downloader-0.5.0-x64.exe')
-    const appExe = join(dir, 'Apps/B站下载器.exe')
     const work = join(dir, 'updates')
     const log = join(dir, 'logs/update.log')
     mkdirSync(work, { recursive: true })
-    mkdirSync(join(dir, 'Apps'), { recursive: true })
     mkdirSync(join(dir, 'logs'), { recursive: true })
     writeFileSync(exe, 'installer')
-    writeFileSync(appExe, 'app')
-    m.app.exe = appExe
-    m.spawn.mockReturnValue({ unref: vi.fn() })
+    const appExe = installedApp()
+    const unref = vi.fn()
+    m.spawn.mockReturnValue({ pid: 1234, once: vi.fn(), unref })
 
     await expect(prepare(exe, join(dir, 'stage'), '0.5.0')).resolves.toBe(exe)
     replaceAfterExit(exe, work, log)
 
     const [command, args, options] = m.spawn.mock.calls[0]
-    expect(command).toBe('powershell.exe')
-    expect(args).toContain('-File')
-    expect(args).toContain(exe)
-    expect(args).toContain(appExe)
-    expect(args).toContain(log)
-    const script = args[args.indexOf('-File') + 1] as string
-    const scriptText = readFileSync(script, 'utf8')
-    expect(scriptText.startsWith('\uFEFF')).toBe(true)
-    expect(scriptText).toContain("'/S'")
-    expect(scriptText).toContain('Wait-Process')
-    if (isWindows) {
-      const quoted = script.replace(/'/g, "''")
-      const parse = `$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile('${quoted}', [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | ForEach-Object { [Console]::Error.WriteLine($_) }; exit 1 }`
-      execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', parse])
-    }
-    expect(options).toMatchObject({ detached: true, windowsHide: true, cwd: work })
-  }, isWindows ? 20_000 : 5_000)
+    expect(command).toBe(POWERSHELL)
+    expect(args).toEqual(['-NoProfile', '-NonInteractive', '-EncodedCommand', encodeCommand(WINDOWS_UPDATE_SCRIPT)])
+    expect(options).toMatchObject({
+      cwd: work,
+      detached: true,
+      windowsHide: true,
+      env: { BILI_UPDATE_PID: String(process.pid), BILI_UPDATE_INSTALLER: exe, BILI_UPDATE_APP: appExe, BILI_UPDATE_LOG: log }
+    })
+    expect(unref).toHaveBeenCalled()
+    expect(existsSync(join(work, 'install.ps1'))).toBe(false)
+    closeSync((options as { stdio: number[] }).stdio[1])
+  })
+
+  it('脚本按更新方式静默安装，先结束残留的 ffmpeg，重新打开时不隐藏窗口', () => {
+    expect(WINDOWS_UPDATE_SCRIPT).toContain("-ArgumentList '/S', '--updated'")
+    expect(WINDOWS_UPDATE_SCRIPT).toContain("'resources\\ffmpeg\\ffmpeg.exe'")
+    expect(WINDOWS_UPDATE_SCRIPT).toContain('Start-Process -FilePath $AppExe -WorkingDirectory $AppDir }')
+    expect(WINDOWS_UPDATE_SCRIPT).not.toContain('Add-Content')
+  })
+
+  it('PowerShell 起不来时报错，调用方就不会退出应用', () => {
+    const once = vi.fn()
+    m.spawn.mockReturnValue({ pid: undefined, once, unref: vi.fn() })
+    expect(() => replaceAfterExit(join(dir, 'setup.exe'), dir, join(dir, 'update.log'))).toThrow('无法启动更新程序')
+    // 稍后到的 error 事件有人接，不会让主进程崩掉
+    expect(once).toHaveBeenCalledWith('error', expect.any(Function))
+  })
+})
+
+// 用 .cmd 冒充安装器和应用，在 Windows 上真的跑一遍更新脚本
+describe.runIf(isWindows)('Windows 更新脚本', () => {
+  const runUpdate = async (installerExit: number): Promise<{ log: string; launched: string }> => {
+    const appDir = join(dir, 'Apps')
+    mkdirSync(appDir)
+    const installer = join(dir, 'setup.cmd')
+    writeFileSync(installer, `@echo %* > "${join(dir, 'installer-args.txt')}"\r\n@exit /b ${installerExit}\r\n`)
+    const appExe = join(appDir, 'app.cmd')
+    const launched = join(dir, 'launched.txt')
+    writeFileSync(appExe, `@echo %CD% %BILI_UPDATE_LOG%> "${launched}"\r\n`)
+    const log = join(dir, 'update.log')
+    writeFileSync(log, '')
+    const exited = String(spawnSync('cmd.exe', ['/c', 'exit']).pid)
+    await run(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodeCommand(WINDOWS_UPDATE_SCRIPT)], {
+      env: { ...process.env, BILI_UPDATE_PID: exited, BILI_UPDATE_INSTALLER: installer, BILI_UPDATE_APP: appExe, BILI_UPDATE_LOG: log }
+    })
+    for (let i = 0; i < 100 && !existsSync(launched); i++) await new Promise((r) => setTimeout(r, 50))
+    return { log: readFileSync(log, 'utf8'), launched: readFileSync(launched, 'utf8').trim() }
+  }
+
+  it('静默安装后在安装目录里重新打开应用，日志是 UTF-8，环境变量不带给新版本', async () => {
+    const { log, launched } = await runUpdate(0)
+    expect(readFileSync(join(dir, 'installer-args.txt'), 'utf8').trim()).toBe('/S --updated')
+    expect(log).toContain('已安装新版本')
+    // 工作目录是安装目录（临时目录可能是短文件名，只比较结尾）；批处理里没定义的变量展开成空
+    expect(launched.toLowerCase()).toMatch(/\\apps$/)
+    expect(launched).not.toContain('update.log')
+  }, 60_000)
+
+  it('安装器失败时记下退出码，照样重新打开', async () => {
+    const { log, launched } = await runUpdate(3)
+    expect(log).toContain('更新失败：NSIS 退出码 3')
+    expect(launched.toLowerCase()).toMatch(/\\apps$/)
+  }, 60_000)
 })
 
 describe.skipIf(isWindows)('stageAppImage / prepare', () => {

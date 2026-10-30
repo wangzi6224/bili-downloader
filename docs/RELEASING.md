@@ -28,7 +28,7 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 - **macOS**：下载当前架构的 zip，按 sha512 校验后解压，确认是本应用的对应版本，退出时由一个独立脚本替换 `.app` 并重新打开；替换失败会恢复旧版本。应用没有开发者证书，electron-updater（Squirrel.Mac）要求正式签名，所以没有用它。应用不在可写的位置时（直接从 dmg 或“下载”文件夹里打开、没有 `/Applications` 写权限）不能自动安装，弹窗里会改为“前往下载页面”。
 - **Linux**：只有 AppImage 版能自动安装（AppImage 运行时会设置 `APPIMAGE` 环境变量，指向正在运行的文件）。下载新的 AppImage、按 sha512 校验后复制到原文件旁边，退出时由一个独立脚本覆盖原文件（路径不变，用户建的启动器照样能用）并重新打开；替换失败会保留旧版本。deb 安装的、或者 AppImage 所在目录不可写时，弹窗里会改为“前往下载页面”。
-- **Windows**：下载并校验 NSIS `.exe`，应用退出后由 PowerShell 启动静默安装，再重新打开应用；安装目录不可写时，弹窗里会改为“前往下载页面”。
+- **Windows**：下载并校验 NSIS `.exe`，应用退出后由 PowerShell 结束残留的 ffmpeg、静默安装（`/S --updated`），再重新打开应用；不是从安装器装好的位置运行（旁边没有卸载程序），或者安装目录不可写时，弹窗里会改为“前往下载页面”。
 
 替换日志都在数据文件夹的 `logs/update.log`。
 
@@ -51,7 +51,7 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 带后缀的版本号（如 `1.0.0-beta.1`）会发布成预发布版本，已安装的正式版不会收到。
 
-改了打包相关的配置，想先确认能打出包：在 Actions 页面手动运行“发布”工作流（Run workflow），它只打包不发布，三个系统的全部安装包和 `update.json` 作为这次运行的产物上传，保留 7 天。Windows 分支另有专用构建 workflow，推送 `codex/windows-package` 后也会上传 Windows 安装器。
+改了打包相关的配置，想先确认能打出包：在 Actions 页面手动运行“发布”工作流（Run workflow），它只打包不发布，三个系统的全部安装包和 `update.json` 作为这次运行的产物上传，保留 7 天。Windows 包打好后还会在 runner 上静默安装一遍，确认安装目录里有卸载程序、装进去的 ffmpeg 和应用都能启动。
 
 用 AI 编程助手发布时，直接说“发布新版本”即可：项目里的 `release` skill 写了上面整套步骤，推送 tag 前会先请你确认。它放在 `.agents/skills/release/`（Codex 和 GitHub Copilot 读这里），`.claude/skills/release` 是指向它的软链接（Claude Code 读这里），改流程时只改 `.agents/skills/release/SKILL.md` 一处。
 

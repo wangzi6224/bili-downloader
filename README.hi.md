@@ -4,12 +4,13 @@
 
 # Bili Downloader
 
-bilibili से डाउनलोड करने के लिए macOS और Linux का एक डेस्कटॉप ऐप: लिंक पेस्ट करें और वीडियो, कई हिस्सों वाले वीडियो, कलेक्शन, एनीमे और फ़िल्में पाएँ।
+bilibili से डाउनलोड करने के लिए Windows, macOS और Linux का एक डेस्कटॉप ऐप: लिंक पेस्ट करें और वीडियो, कई हिस्सों वाले वीडियो, कलेक्शन, एनीमे और फ़िल्में पाएँ।
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
 ![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
+![Windows x64](https://img.shields.io/badge/Windows-x64-black?logo=windows)
 ![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
 
@@ -85,6 +86,10 @@ bilibili से डाउनलोड करने के लिए macOS और
 
 macOS 12 या उसके बाद का वर्ज़न ज़रूरी है।
 
+### Windows
+
+[Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) से `bili-downloader-<version>-x64.exe` डाउनलोड करें और इंस्टॉलर चलाएँ। यह वर्तमान यूज़र के लिए इंस्टॉल होता है और इसके लिए एडमिनिस्ट्रेटर एक्सेस की ज़रूरत नहीं होती। इंस्टॉलर साइन नहीं है, इसलिए Windows अज्ञात प्रकाशक की चेतावनी दिखा सकता है।
+
 ### Linux
 
 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) से इनमें से कोई एक फ़ाइल डाउनलोड करें (केवल 64-बिट x86):
@@ -103,14 +108,14 @@ macOS 12 या उसके बाद का वर्ज़न ज़रूर
 
 ### अपडेट
 
-इंस्टॉल होने के बाद ऐप खुद अपडेट जाँचता है। macOS ऐप और Linux AppImage उन्हें सीधे इंस्टॉल कर लेते हैं; deb वर्ज़न रिलीज़ नोट्स दिखाता है और आपको डाउनलोड पेज पर भेजता है।
+इंस्टॉल होने के बाद ऐप खुद अपडेट जाँचता है। macOS ऐप, Windows इंस्टॉलर और Linux AppImage उन्हें सीधे इंस्टॉल कर लेते हैं; deb वर्ज़न रिलीज़ नोट्स दिखाता है और आपको डाउनलोड पेज पर भेजता है।
 
 इंटरफ़ेस अभी केवल सरलीकृत चीनी में उपलब्ध है; नीचे बताए गए लेबल चीनी में दिए गए हैं और साथ में उनका अनुवाद है।
 
 ## जल्दी शुरू करें
 
 1. अपने bilibili खाते में लॉग इन करें (नीचे **लॉग इन** देखें)। लिंक पार्स करने के लिए ऐप को खाते की ज़रूरत है।
-2. bilibili का लिंक कॉपी करें। ऐप पर वापस आने पर वह क्लिपबोर्ड से लिंक अपने-आप ले लेता है; या इनपुट बॉक्स में <kbd>⌘</kbd><kbd>V</kbd> (Linux पर <kbd>Ctrl</kbd><kbd>V</kbd>) दबाकर **解析** (पार्स) पर क्लिक करें।
+2. bilibili का लिंक कॉपी करें। ऐप पर वापस आने पर वह क्लिपबोर्ड से लिंक अपने-आप ले लेता है; या इनपुट बॉक्स में <kbd>⌘</kbd><kbd>V</kbd> (Windows और Linux पर <kbd>Ctrl</kbd><kbd>V</kbd>) दबाकर **解析** (पार्स) पर क्लिक करें।
 3. डाउनलोड करने वाले आइटम चुनें: सब चुनें, चयन उलटें, <kbd>Shift</kbd>-क्लिक से रेंज चुनें, या शीर्षक या क्रमांक (जैसे `1-5,7`) से फ़िल्टर करें।
 4. क्वालिटी, आउटपुट प्रकार और अतिरिक्त सामग्री चुनें, फिर **下载** (डाउनलोड) पर क्लिक करें।
 
@@ -123,6 +128,7 @@ macOS 12 या उसके बाद का वर्ज़न ज़रूर
 - **从浏览器导入** (ब्राउज़र से इम्पोर्ट): Chrome, Edge, Brave, Arc (केवल macOS), Vivaldi, Chromium या Firefox की लॉग इन कुकीज़ का दोबारा उपयोग।
   - macOS, Chrome, Edge और Brave के डेटा की सुरक्षा करता है, इसलिए पहले **System Settings → Privacy & Security → Full Disk Access** में इस ऐप को अनुमति दें और ऐप दोबारा शुरू करें। Chromium-आधारित ब्राउज़र से इम्पोर्ट करते समय Keychain एक्सेस की अनुमति भी माँगी जाती है।
   - Linux पर Chromium-आधारित ब्राउज़र कुकी की कुंजी सिस्टम कीरिंग (GNOME Keyring / libsecret) में रखते हैं। ऐप इसे `secret-tool` (`sudo apt install libsecret-tools`) से पढ़ता है, और हो सकता है कि कीरिंग अनलॉक करने को कहे। Snap और Flatpak से इंस्टॉल किया गया Firefox और Snap वाला Chromium भी समर्थित हैं।
+  - Windows पर Chromium-आधारित ब्राउज़र चलते समय अपना कुकी डेटाबेस लॉक कर देते हैं, इसलिए इम्पोर्ट करने से पहले ब्राउज़र को पूरी तरह बंद करें (बैकग्राउंड में चल रही प्रोसेस समेत)। Chrome 127 या उसके बाद के वर्ज़न की लिखी कुकीज़ ऐप-बाउंड एन्क्रिप्शन का उपयोग करती हैं और इम्पोर्ट नहीं की जा सकतीं; अगर लॉग इन कुकी इनमें से है, तो इसके बजाय ऐप में लॉग इन करें या कुकी स्ट्रिंग पेस्ट करें।
 - **在应用内登录** (ऐप में लॉग इन): bilibili का आधिकारिक लॉग इन पेज खोलता है — QR कोड, पासवर्ड या SMS से लॉग इन।
 - **手动粘贴 Cookie** (कुकी खुद पेस्ट करें): सेमीकोलन से अलग की गई कुकी स्ट्रिंग, या किसी ब्राउज़र एक्सटेंशन से एक्सपोर्ट किया गया JSON।
 
@@ -167,11 +173,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 ## सीमाएँ
 
 - DRM से सुरक्षित, क्षेत्र-प्रतिबंधित, या आपके खाते के लिए अनुपलब्ध सामग्री डाउनलोड नहीं की जा सकती। ऐसे काम **无法下载** (डाउनलोड नहीं हो सकता) के रूप में कारण सहित चिह्नित होते हैं।
-- केवल macOS और Linux (x64); Windows वर्ज़न उपलब्ध नहीं है। Linux पर केवल AppImage खुद अपडेट होता है।
+- Windows x64, macOS x64 / arm64 और Linux x64 समर्थित हैं। Windows और Linux के लिए ARM वर्ज़न उपलब्ध नहीं हैं।
 
 ## सोर्स से बिल्ड करें
 
-macOS या Linux, Node.js 22.12 या उसके बाद का वर्ज़न और npm चाहिए।
+Windows, macOS या Linux, Node.js 22.12 या उसके बाद का वर्ज़न और npm चाहिए।
 
 ```bash
 git clone https://github.com/wangzi6224/bili-downloader.git
@@ -182,6 +188,7 @@ npm test             # यूनिट टेस्ट
 npm run typecheck    # टाइप जाँच
 npm run build:mac    # macOS पर: dist/ में x64 और arm64 के dmg / zip बनाएँ
 npm run build:linux  # Linux पर: dist/ में x64 AppImage / deb बनाएँ
+npm run build:win    # Windows पर: dist/ में x64 NSIS इंस्टॉलर बनाएँ
 ```
 
 डेवलपमेंट की प्रक्रिया के लिए [CONTRIBUTING.md](CONTRIBUTING.md) (अंग्रेज़ी में) और पैकेजिंग व रिलीज़ के लिए [docs/RELEASING.md](docs/RELEASING.md) (चीनी में) देखें।
@@ -193,7 +200,7 @@ src/main/auth               लॉग इन: कुकी संग्रहण
 src/main/bili               bilibili API: WBI हस्ताक्षर, वीडियो / एनीमे / कोर्स / सूची पार्सिंग, स्ट्रीम, सबटाइटल, दानमाकु
 src/main/download           डाउनलोड कतार, अधूरे डाउनलोड जारी रखना, ffmpeg से जोड़ना, अतिरिक्त सामग्री (कवर, सबटाइटल, NFO…)
 src/main/net                प्रॉक्सी और CDN चयन
-src/main/update             ऐप के अंदर अपडेट: update.json जाँचना, डाउनलोड सत्यापित करना, .app या AppImage बदलना
+src/main/update             ऐप के अंदर अपडेट: update.json जाँचना, डाउनलोड सत्यापित करना, .app / AppImage / NSIS अपडेट इंस्टॉल करना
 src/main/mcp                लोकल MCP सर्वर
 src/main/subscriptions.ts   सब्सक्रिप्शन
 src/shared                  सभी प्रोसेस में साझा टाइप, लिंक पार्सिंग और नामकरण टेम्पलेट
@@ -216,4 +223,4 @@ Issues और pull requests का स्वागत है। कृपया 
 
 [MIT](LICENSE) © wangzi6224
 
-ऐप में [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`) से लिए गए स्टैटिक FFmpeg बाइनरी शामिल हैं। FFmpeg अपने लाइसेंस के तहत एक अलग प्रोग्राम के रूप में चलता है और ऊपर दिए गए MIT लाइसेंस के दायरे में नहीं आता। उसका लाइसेंस टेक्स्ट ऐप के अंदर `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Linux) में मौजूद है; [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html) भी देखें।
+ऐप में [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`) से लिए गए स्टैटिक FFmpeg बाइनरी शामिल हैं। FFmpeg अपने लाइसेंस के तहत एक अलग प्रोग्राम के रूप में चलता है और ऊपर दिए गए MIT लाइसेंस के दायरे में नहीं आता। उसका लाइसेंस टेक्स्ट ऐप के अंदर `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Windows और Linux) में मौजूद है; [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html) भी देखें।
