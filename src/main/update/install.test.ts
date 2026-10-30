@@ -58,7 +58,8 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', platform)
   if (ORIGINAL_APPIMAGE === undefined) delete process.env.APPIMAGE
   else process.env.APPIMAGE = ORIGINAL_APPIMAGE
-  rmSync(dir, { recursive: true, force: true })
+  // Windows 上重新打开的“应用”可能还没退出，它的工作目录在这里面，删除会报 EPERM，要等一下再删
+  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 })
 
 describe.skipIf(isWindows)('appBundle', () => {
