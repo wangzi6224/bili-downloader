@@ -10,6 +10,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     // Windows runners have fewer cores; cap workers to keep network/timer tests stable.
     maxWorkers: process.platform === 'win32' ? 4 : undefined,
+    // 用假计时器推进、同时有真实文件读写的下载测试在 Windows runner 上慢得多，默认的 5 秒不够
+    testTimeout: process.platform === 'win32' ? 15_000 : 5_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}', 'scripts/lib/**/*.mjs'],

@@ -121,7 +121,7 @@ describe('fetchFile', () => {
     fakeTimers()
     await drive(run('/flaky', dest))
     expect(readFileSync(dest).equals(DATA)).toBe(true)
-  }, process.platform === 'win32' ? 15_000 : 5_000)
+  })
 
   it('resumes after being aborted', async () => {
     const dest = join(dir, 'd.bin')
@@ -212,7 +212,7 @@ describe('fetchFile 的边界情况', () => {
     expect(readFileSync(dest).equals(SMALL)).toBe(true)
     expect(fetchMock.mock.calls.map(([u]) => u)).toEqual(['https://bad/', 'https://good/', 'https://bad/', 'https://good/'])
     expect(existsSync(`${dest}.meta.json`)).toBe(false)
-  }, process.platform === 'win32' ? 15_000 : 5_000)
+  })
 
   it('所有地址都连不上时报连接失败', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))

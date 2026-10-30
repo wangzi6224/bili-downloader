@@ -488,11 +488,13 @@ describe('download', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
     u.download()
     await until(() => u.getState().status === 'downloading' && (u.getState() as { done: number }).done > 0)
+    const sent = m.send.mock.calls.length
     await vi.advanceTimersByTimeAsync(65_000)
     await until(() => statusOf(u) === 'ready', 1000)
     expect(zipRequests()).toHaveLength(2)
-    // 隔了很久之后的进度会推送出去
-    expect(m.send.mock.calls.some((c) => c[0] === 'update:state' && (c[1] as { done?: number }).done)).toBe(true)
+    // 隔了很久之后的进度会推送出去。断开前收到的数据不一定已经写进 .part（Windows 上常常没有），重连可能是续传也可能从头下
+    const later = m.send.mock.calls.slice(sent).map((c) => c[1] as { status: string })
+    expect(later.some((s) => s.status === 'downloading')).toBe(true)
   })
 
   it('取消后回到 available，不重试，下载中不再检查', async () => {
