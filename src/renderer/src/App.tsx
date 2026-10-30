@@ -28,6 +28,7 @@ export default function App() {
       // MCP 改了设置时同步过来，免得界面之后用旧值写回去
       api.settings.onChanged((settings) => set({ settings })),
       api.app.onCloseRequested(() => set({ closeAsk: true })),
+      api.app.onOpenSettings(() => set({ view: 'settings' })),
       api.update.onState((update) => set({ update })),
       api.update.onPrompt(() => set({ updateOpen: true }))
     ]

@@ -1,13 +1,17 @@
 import { EventEmitter } from 'node:events'
 import type { BrowserWindow } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
+import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
 
-function fakeWindow(o: { destroyed?: boolean; fullScreen?: boolean } = {}) {
-  const state = { destroyed: o.destroyed ?? false, fullScreen: o.fullScreen ?? false }
+const h = vi.hoisted(() => ({ focus: vi.fn(), showMessageBox: vi.fn() }))
+vi.mock('electron', () => ({ app: { focus: h.focus }, dialog: { showMessageBox: h.showMessageBox } }))
+
+function fakeWindow(o: { destroyed?: boolean; fullScreen?: boolean; visible?: boolean } = {}) {
+  const state = { destroyed: o.destroyed ?? false, fullScreen: o.fullScreen ?? false, visible: o.visible ?? true }
   return Object.assign(new EventEmitter(), {
     isDestroyed: () => state.destroyed,
     isFullScreen: () => state.fullScreen,
+    isVisible: () => state.visible,
     setFullScreen: vi.fn((v: boolean) => {
       state.fullScreen = v
     }),
@@ -17,7 +21,36 @@ function fakeWindow(o: { destroyed?: boolean; fullScreen?: boolean } = {}) {
 }
 const use = (win: ReturnType<typeof fakeWindow>): void => setMainWindow(win as unknown as BrowserWindow)
 
-afterEach(() => setMainWindow(null))
+afterEach(() => {
+  setMainWindow(null)
+  vi.clearAllMocks()
+})
+
+describe('showDialog', () => {
+  const opts = { message: '确定吗？' }
+
+  it('窗口可见时挂在窗口上', () => {
+    const win = fakeWindow()
+    use(win)
+    void showDialog(opts)
+    expect(h.showMessageBox).toHaveBeenCalledWith(win, opts)
+  })
+
+  it.each([
+    ['窗口隐藏', () => use(fakeWindow({ visible: false }))],
+    ['没有窗口', () => {}]
+  ])('%s时单独弹出', (_, arrange) => {
+    arrange()
+    void showDialog(opts)
+    expect(h.showMessageBox).toHaveBeenCalledWith(opts)
+  })
+
+  it('弹出前先把应用切到前台', () => {
+    void showDialog(opts)
+    expect(h.focus).toHaveBeenCalledWith({ steal: true })
+    expect(h.focus.mock.invocationCallOrder[0]).toBeLessThan(h.showMessageBox.mock.invocationCallOrder[0])
+  })
+})
 
 describe('windows', () => {
   it('没有窗口时推送和隐藏什么都不做', () => {

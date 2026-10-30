@@ -10,11 +10,11 @@ import type {
   Settings,
   Subscription
 } from '@shared/types'
-import { checkAuth, ensureLoggedIn, getAuthState, requireLogin } from './auth/authGuard'
+import { checkAuth, ensureLoggedIn, getAuthState, logout, requireLogin } from './auth/authGuard'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
 import { importCookieText } from './auth/cookieImport'
 import { openLoginWindow } from './auth/loginWindow'
-import { biliSession, clearBiliCookies } from './auth/session'
+import { biliSession } from './auth/session'
 import { AUDIO_STREAM_INFO } from './bili/audio'
 import { expandLazy, loadPage, myFavFolders } from './bili/lists'
 import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
@@ -115,11 +115,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   handle('auth:listBrowsers', () => listBrowserProfiles())
   handle('auth:import', (id: string) => importFromBrowser(id))
   handle('auth:importCookie', (text: string) => importCookieText(text))
-  handle('auth:logout', async () => {
-    // 只清本地 cookie，不调用 B站退出接口——导入的 cookie 和浏览器共用同一个会话
-    await clearBiliCookies()
-    return checkAuth()
-  })
+  handle('auth:logout', logout)
   handle('auth:simulateExpiry', simulateExpiry)
 
   handle('parse', parseAndRecord)

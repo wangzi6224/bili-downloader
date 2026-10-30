@@ -456,6 +456,8 @@ export interface BiliApi {
   app: {
     /** 用户点了关闭按钮，需要询问退出还是后台运行 */
     onCloseRequested(cb: () => void): () => void
+    /** 用户从托盘菜单点了“设置” */
+    onOpenSettings(cb: () => void): () => void
     close(action: Exclude<CloseAction, 'ask'>, remember: boolean): Promise<void>
   }
   update: {

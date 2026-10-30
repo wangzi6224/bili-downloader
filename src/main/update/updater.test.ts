@@ -338,12 +338,15 @@ describe('check', () => {
     expect('info' in u.getState()).toBe(false)
   })
 
-  it('检查中再调用直接返回当前状态', async () => {
+  it('检查中再调用会等同一次的结果，查完可以再查', async () => {
     const u = await load()
     const first = u.check(true)
-    expect((await u.check(true)).status).toBe('checking')
-    await first
+    const second = u.check(true)
+    expect(await second).toBe(await first)
+    expect((await second).status).not.toBe('checking')
     expect(requests).toHaveLength(1)
+    await u.check(true)
+    expect(requests).toHaveLength(2)
   })
 
   it('没有设置测试地址时去 GitHub 取，且不接受本机 http 地址', async () => {

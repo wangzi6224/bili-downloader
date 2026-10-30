@@ -26,6 +26,12 @@ mac:
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
+  # 菜单栏图标（template 图片），由 npm run icons 从 build/tray.svg 生成
+  extraResources:
+    - from: build/trayTemplate.png
+      to: trayTemplate.png
+    - from: build/trayTemplate@2x.png
+      to: trayTemplate@2x.png
 dmg:
   title: B站下载器 ${version}
   # 打完后由 scripts/compress-dmg.mjs 改成 LZMA 压缩，electron-builder 给 dmg 生成的 blockmap 就对不上了，发布也用不到

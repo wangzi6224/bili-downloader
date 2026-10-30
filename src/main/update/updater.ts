@@ -52,6 +52,7 @@ export class Updater {
   private prompted = ''
   private lastEmit = 0
   private timer?: NodeJS.Timeout
+  private checking?: Promise<UpdateState>
 
   constructor(
     /** 安装包下载和解压的目录 */
@@ -89,7 +90,14 @@ export class Updater {
 
   async check(manual: boolean): Promise<UpdateState> {
     // 下载、安装中，或者已经下载好了，都不需要再查
-    if (['checking', 'downloading', 'ready', 'installing'].includes(this.state.status)) return this.state
+    if (['downloading', 'ready', 'installing'].includes(this.state.status)) return this.state
+    // 已经在查时等那一次的结果，免得手动点了检查却没有反馈
+    return (this.checking ??= this.runCheck(manual).finally(() => {
+      this.checking = undefined
+    }))
+  }
+
+  private async runCheck(manual: boolean): Promise<UpdateState> {
     const prev = this.state
     // 后台定时检查时保留已发现的新版本，免得打开着的更新弹窗闪一下
     if (manual || !('info' in prev && prev.info)) this.set({ status: 'checking' })

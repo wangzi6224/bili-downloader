@@ -17,7 +17,7 @@ export interface PlatformText {
 const MAC: PlatformText = {
   isMac: true,
   fileManager: '访达',
-  reopenFrom: '程序坞图标',
+  reopenFrom: '程序坞或菜单栏图标',
   quitKey: '⌘Q',
   pasteKey: '⌘V',
   av1Hint: '最省空间，需 M1 以后的 Mac',

@@ -138,6 +138,7 @@ function Account() {
 
 export function Sidebar() {
   const running = useStore((s) => s.tasks.filter((t) => ACTIVE.has(t.status) || t.status === 'queued').length)
+  const version = useStore((s) => s.update?.current)
 
   return (
     <aside className="flex w-[216px] shrink-0 flex-col">
@@ -145,7 +146,11 @@ export function Sidebar() {
       <div className="drag hidden h-[52px] shrink-0 mac:block" />
       <div className="drag flex items-center gap-2.5 px-5 pt-6 pb-5 mac:pt-0">
         <Logo size={30} className="shrink-0 drop-shadow-sm" />
-        <div className="text-[15px] font-semibold tracking-tight">B站下载器</div>
+        <div>
+          <div className="text-[15px] font-semibold tracking-tight">B站下载器</div>
+          {/* 先占好高度，拿到版本号时布局不跳 */}
+          <div className="h-4 text-[11px] leading-4 text-muted tabular-nums">{version && `v${version}`}</div>
+        </div>
       </div>
       <nav className="flex flex-col gap-0.5 px-3">
         {NAV.map((n) => (

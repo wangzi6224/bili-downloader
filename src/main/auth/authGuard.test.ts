@@ -5,7 +5,8 @@ const m = vi.hoisted(() => ({
   setAuthExpiredHook: vi.fn(),
   updateWbiKeys: vi.fn(),
   send: vi.fn(),
-  getCookie: vi.fn()
+  getCookie: vi.fn(),
+  clearBiliCookies: vi.fn()
 }))
 
 vi.mock('../bili/http', () => ({
@@ -16,7 +17,7 @@ vi.mock('../bili/http', () => ({
   updateWbiKeys: m.updateWbiKeys
 }))
 vi.mock('../windows', () => ({ send: m.send }))
-vi.mock('./session', () => ({ getCookie: m.getCookie }))
+vi.mock('./session', () => ({ clearBiliCookies: m.clearBiliCookies, getCookie: m.getCookie }))
 
 const WBI = { img_url: 'https://i0/img.png', sub_url: 'https://i0/sub.png' }
 
@@ -115,6 +116,45 @@ describe('onLoggedIn', () => {
     expect(fn).toHaveBeenCalledTimes(1)
     await guard.checkAuth()
     expect(fn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('onLoginChanged', () => {
+  it('登录和退出时各触发一次，状态没变时不触发', async () => {
+    const fn = vi.fn()
+    guard.onLoginChanged(fn)
+    m.getRaw.mockResolvedValue(loggedOut())
+    await guard.checkAuth()
+    expect(fn).not.toHaveBeenCalled()
+
+    m.getRaw.mockResolvedValue(loggedIn())
+    await guard.checkAuth()
+    await guard.checkAuth()
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    m.getRaw.mockResolvedValue(loggedOut())
+    await guard.checkAuth()
+    expect(fn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('logout', () => {
+  it('先清掉本地 cookie 再检查登录状态', async () => {
+    m.getRaw.mockResolvedValue(loggedOut())
+    expect(await guard.logout()).toEqual({ loggedIn: false, expired: false })
+    expect(m.clearBiliCookies).toHaveBeenCalledOnce()
+    expect(m.clearBiliCookies.mock.invocationCallOrder[0]).toBeLessThan(m.getRaw.mock.invocationCallOrder[0])
+  })
+
+  it('断网确认不了状态时也算已退出，并通知界面', async () => {
+    m.getRaw.mockResolvedValue(loggedIn())
+    await guard.checkAuth()
+    m.send.mockClear()
+
+    m.getRaw.mockRejectedValue(new Error('断网'))
+    expect(await guard.logout()).toEqual({ loggedIn: false })
+    expect(guard.getAuthState()).toEqual({ loggedIn: false })
+    expect(m.send).toHaveBeenCalledWith('auth:changed', { loggedIn: false })
   })
 })
 

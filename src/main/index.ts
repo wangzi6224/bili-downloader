@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron'
 import type { TaskInfo } from '@shared/types'
-import { checkAuth, checkAuthThrottled, onAuthRequired, onLoggedIn, requireLogin } from './auth/authGuard'
+import { checkAuth, checkAuthThrottled, getAuthState, logout, onAuthRequired, onLoggedIn, onLoginChanged, requireLogin } from './auth/authGuard'
 import { expandLazy, loadAllPages } from './bili/lists'
 import { DownloadManager } from './download/manager'
 import { makeEnqueue } from './enqueue'
@@ -18,9 +18,10 @@ import { allowQuit } from './quitGuard'
 import { getSettings, onSettingsChange, updateSettings } from './settings'
 import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
+import { trayMenu, updateCheckReply } from './tray'
 import { Updater } from './update/updater'
 import { closeDecision, restoreBounds, type Bounds } from './windowState'
-import { getMainWindow, hideMainWindow, send, setMainWindow } from './windows'
+import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 const isMac = process.platform === 'darwin'
@@ -32,7 +33,7 @@ const windowStateFile = (): string => join(app.getPath('userData'), 'window.json
 const appIcon = (): string =>
   app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '../../build/icons/256x256.png')
 
-/** 只在 Linux 上有：窗口隐藏到后台后从这里找回来。存着引用，免得被回收后图标消失 */
+/** 窗口隐藏到后台后从这里找回来。存着引用，免得被回收后图标消失 */
 let tray: Tray | undefined
 
 /** 上次的窗口位置；所在的显示器已经不在了就不用 */
@@ -105,6 +106,8 @@ function showMainWindow(): void {
   const win = getMainWindow() ?? createWindow()
   if (win.isMinimized()) win.restore()
   win.show()
+  // 从托盘打开时应用不在前台，旧版 macOS 上只调 focus 切不过来
+  app.focus({ steal: true })
   win.focus()
 }
 
@@ -165,18 +168,58 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-/** Windows 和 Linux 窗口隐藏到后台后靠托盘图标找回。菜单里也放“显示窗口” */
-function createTray(): void {
-  tray = new Tray(nativeImage.createFromPath(appIcon()).resize({ width: 32, height: 32 }))
+/** macOS 菜单栏用单色的 template 图片，系统按菜单栏深浅着色（同名的 @2x 会一并读入）；其他系统用彩色的应用图标 */
+function trayImage(): Electron.NativeImage {
+  if (!isMac) return nativeImage.createFromPath(appIcon()).resize({ width: 32, height: 32 })
+  return nativeImage.createFromPath(join(app.isPackaged ? process.resourcesPath : join(__dirname, '../../build'), 'trayTemplate.png'))
+}
+
+/** 打开窗口并让页面处理这个事件 */
+function showAndSend(channel: string): void {
+  showMainWindow()
+  send(channel)
+}
+
+async function confirmLogout(): Promise<void> {
+  const { response } = await showDialog({
+    type: 'warning',
+    message: '确定要退出登录吗？',
+    detail: '退出后需要重新导入或登录。',
+    buttons: ['退出登录', '取消'],
+    defaultId: 1,
+    cancelId: 1
+  })
+  if (response === 0) await logout()
+}
+
+async function checkUpdateFromTray(updater: Updater): Promise<void> {
+  const reply = updateCheckReply(await updater.check(true))
+  if (reply === 'prompt') showAndSend('update:prompt')
+  else if (reply) await showDialog(reply)
+}
+
+/** 窗口隐藏到后台后靠托盘（macOS 上是菜单栏）图标找回，常用操作也放在它的菜单里 */
+function createTray(updater: Updater): void {
+  tray = new Tray(trayImage())
   tray.setToolTip('B站下载器')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: '显示窗口', click: showMainWindow },
-      { type: 'separator' },
-      { label: '退出', click: () => app.quit() }
-    ])
-  )
-  tray.on('click', showMainWindow)
+  const refreshMenu = (): void =>
+    tray?.setContextMenu(
+      Menu.buildFromTemplate(
+        trayMenu(getAuthState(), {
+          show: showMainWindow,
+          settings: () => showAndSend('app:openSettings'),
+          checkUpdate: () => void checkUpdateFromTray(updater),
+          // 这里只打开登录框；窗口获得焦点时的登录检查还是可能暂停下载队列，和平时切回窗口一样
+          login: () => showAndSend('auth:required'),
+          logout: () => void confirmLogout().catch((e) => console.error('退出登录失败', e)),
+          quit: () => app.quit()
+        })
+      )
+    )
+  refreshMenu()
+  onLoginChanged(refreshMenu)
+  // macOS 上单击图标就弹出菜单，菜单栏图标的惯例也是这样，不再同时弹出窗口
+  if (!isMac) tray.on('click', showMainWindow)
 }
 
 app.setName('B站下载器')
@@ -268,7 +311,7 @@ async function start(): Promise<void> {
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
-  if (!isMac) createTray()
+  createTray(updater)
   createWindow()
 
   // 启动时确认登录状态，未登录就弹出登录；稍后再检查更新，免得和登录弹窗挤在一起

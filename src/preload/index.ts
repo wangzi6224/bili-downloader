@@ -88,6 +88,7 @@ const api: BiliApi = {
   },
   app: {
     onCloseRequested: on('app:closeRequested'),
+    onOpenSettings: on('app:openSettings'),
     close: (action, remember) => invoke('app:close', action, remember)
   },
   update: {

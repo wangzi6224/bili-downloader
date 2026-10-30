@@ -21,11 +21,11 @@ vi.mock('electron', () => ({
   shell: {}
 }))
 // 契约测试只看注册了哪些频道，主进程的依赖都换成空函数
-vi.mock('../main/auth/authGuard', () => ({ checkAuth: vi.fn(), ensureLoggedIn: vi.fn(), getAuthState: vi.fn(), requireLogin: vi.fn() }))
+vi.mock('../main/auth/authGuard', () => ({ checkAuth: vi.fn(), ensureLoggedIn: vi.fn(), getAuthState: vi.fn(), logout: vi.fn(), requireLogin: vi.fn() }))
 vi.mock('../main/auth/browserImport', () => ({ importFromBrowser: vi.fn(), listBrowserProfiles: vi.fn() }))
 vi.mock('../main/auth/cookieImport', () => ({ importCookieText: vi.fn() }))
 vi.mock('../main/auth/loginWindow', () => ({ openLoginWindow: vi.fn() }))
-vi.mock('../main/auth/session', () => ({ biliSession: vi.fn(), clearBiliCookies: vi.fn() }))
+vi.mock('../main/auth/session', () => ({ biliSession: vi.fn() }))
 vi.mock('../main/bili/audio', () => ({ AUDIO_STREAM_INFO: {} }))
 vi.mock('../main/bili/lists', () => ({ expandLazy: vi.fn(), loadPage: vi.fn(), myFavFolders: vi.fn() }))
 vi.mock('../main/bili/playurl', () => ({ getPlayInfo: vi.fn(), streamInfoFromPlay: vi.fn() }))
@@ -150,6 +150,7 @@ describe('preload', () => {
     expect(new Set(h.registered).size).toBe(h.registered.length)
     expect([...events].sort()).toEqual([
       'app:closeRequested',
+      'app:openSettings',
       'auth:changed',
       'auth:required',
       'dl:update',

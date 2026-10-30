@@ -28,6 +28,7 @@ const h = vi.hoisted(() => ({
   checkAuth: vi.fn(),
   ensureLoggedIn: vi.fn(),
   getAuthState: vi.fn(),
+  logout: vi.fn(),
   requireLogin: vi.fn(),
   importFromBrowser: vi.fn(),
   listBrowserProfiles: vi.fn(),
@@ -35,7 +36,6 @@ const h = vi.hoisted(() => ({
   openLoginWindow: vi.fn(),
   cookiesGet: vi.fn(),
   cookiesSet: vi.fn(),
-  clearBiliCookies: vi.fn(),
   // ./bili/*
   expandLazy: vi.fn(),
   loadPage: vi.fn(),
@@ -78,14 +78,14 @@ vi.mock('./auth/authGuard', () => ({
   checkAuth: h.checkAuth,
   ensureLoggedIn: h.ensureLoggedIn,
   getAuthState: h.getAuthState,
+  logout: h.logout,
   requireLogin: h.requireLogin
 }))
 vi.mock('./auth/browserImport', () => ({ importFromBrowser: h.importFromBrowser, listBrowserProfiles: h.listBrowserProfiles }))
 vi.mock('./auth/cookieImport', () => ({ importCookieText: h.importCookieText }))
 vi.mock('./auth/loginWindow', () => ({ openLoginWindow: h.openLoginWindow }))
 vi.mock('./auth/session', () => ({
-  biliSession: () => ({ cookies: { get: h.cookiesGet, set: h.cookiesSet } }),
-  clearBiliCookies: h.clearBiliCookies
+  biliSession: () => ({ cookies: { get: h.cookiesGet, set: h.cookiesSet } })
 }))
 vi.mock('./bili/audio', () => ({ AUDIO_STREAM_INFO: h.AUDIO }))
 vi.mock('./bili/lists', () => ({ expandLazy: h.expandLazy, loadPage: h.loadPage, myFavFolders: h.myFavFolders }))
@@ -221,10 +221,10 @@ describe('登录', () => {
     expect(await data('auth:check')).toEqual({ loggedIn: false, expired: true })
   })
 
-  it('auth:logout 先清掉本地 cookie 再检查登录状态', async () => {
+  it('auth:logout 返回退出后的登录状态', async () => {
+    h.logout.mockResolvedValue(LOGGED_OUT)
     expect(await data('auth:logout')).toEqual(LOGGED_OUT)
-    expect(h.clearBiliCookies).toHaveBeenCalledOnce()
-    expect(order(h.clearBiliCookies)).toBeLessThan(order(h.checkAuth))
+    expect(h.logout).toHaveBeenCalledOnce()
   })
 })
 

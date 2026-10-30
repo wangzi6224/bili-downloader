@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="192 193 640 640">
+  <!-- macOS 菜单栏图标源文件：应用图标里的小电视，只留线条、用纯黑（template 图片只看透明度，系统按菜单栏深浅着色）；改完后运行 npm run icons -->
+  <g fill="none" stroke="#000" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="244" y="376" width="536" height="380" rx="96"/>
+    <path d="M400 376 L338 270 M624 376 L686 270"/>
+    <path d="M512 468 V650 M438 578 L512 652 L586 578"/>
+  </g>
+</svg>

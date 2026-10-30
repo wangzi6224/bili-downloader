@@ -18,7 +18,7 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 - **Linux**：`bili-downloader-<版本>-x86_64.AppImage` 和 `bili-downloader-<版本>-amd64.deb`（文件名里的架构名是 electron-builder 起的）。AppImage 加上可执行权限就能运行；deb 用 `sudo apt install ./bili-downloader-<版本>-amd64.deb` 安装，装到 `/opt/B站下载器/`，应用菜单里会出现“B站下载器”。Ubuntu 24.04 起限制了非特权用户命名空间，AppImage 的启动脚本检测到后会自动加 `--no-sandbox`，deb 包自带 AppArmor 配置，都不需要额外处理。
 - **Windows**：`bili-downloader-<版本>-x64.exe` 是 NSIS 当前用户安装器，不需要管理员权限。尚未配置代码签名证书，首次运行时 Windows 可能提示发布者未知。
 
-应用图标的源文件是 `build/icon.svg`，dmg 安装窗口背景的源文件是 `build/dmg-background.svg`，改完后运行 `npm run icons` 重新生成 `build/icon.ico`、`build/icon.icns`、`build/icon.png`、`build/icons/` 和 `build/background{,@2x}.png`（生成物已提交，平时打包不需要这一步）。Windows ICO、PNG 可在各系统生成；icns 和 dmg 背景要用 macOS 的 iconutil 和冬青黑体，只能在 macOS 上生成。背景里图标的位置要和 `electron-builder.yml` 里 `dmg.contents` 的坐标一致。
+应用图标的源文件是 `build/icon.svg`，macOS 菜单栏图标的源文件是 `build/tray.svg`，dmg 安装窗口背景的源文件是 `build/dmg-background.svg`，改完后运行 `npm run icons` 重新生成 `build/icon.ico`、`build/icon.icns`、`build/icon.png`、`build/icons/`、`build/trayTemplate{,@2x}.png` 和 `build/background{,@2x}.png`（生成物已提交，平时打包不需要这一步）。Windows ICO、PNG 可在各系统生成；icns 和 dmg 背景要用 macOS 的 iconutil 和冬青黑体，只能在 macOS 上生成。背景里图标的位置要和 `electron-builder.yml` 里 `dmg.contents` 的坐标一致。
 
 ## 应用内更新的工作方式
 

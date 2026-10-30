@@ -1,7 +1,7 @@
 import type { AuthState } from '@shared/types'
 import { getRaw, LoginRequiredError, NAV_URL, setAuthExpiredHook, updateWbiKeys } from '../bili/http'
 import { send } from '../windows'
-import { getCookie } from './session'
+import { clearBiliCookies, getCookie } from './session'
 
 interface NavData {
   isLogin: boolean
@@ -19,6 +19,7 @@ let lastCheck = 0
 let lastRequired = 0
 const requiredListeners = new Set<() => void>()
 const loginListeners = new Set<() => void>()
+const loginChangeListeners = new Set<() => void>()
 
 export const getAuthState = (): AuthState => state
 
@@ -32,11 +33,18 @@ export function onLoggedIn(fn: () => void): void {
   loginListeners.add(fn)
 }
 
+/** 登录或退出登录时回调（托盘菜单据此切换“登录”和“退出登录”） */
+export function onLoginChanged(fn: () => void): void {
+  loginChangeListeners.add(fn)
+}
+
 function setState(next: AuthState): void {
   const wasLoggedIn = state.loggedIn
   state = next
   send('auth:changed', next)
-  if (next.loggedIn && !wasLoggedIn) for (const fn of loginListeners) fn()
+  if (next.loggedIn === wasLoggedIn) return
+  for (const fn of loginChangeListeners) fn()
+  if (next.loggedIn) for (const fn of loginListeners) fn()
 }
 
 /** 通知渲染进程弹出登录对话框（短时间内只弹一次） */
@@ -78,6 +86,18 @@ export async function checkAuth(): Promise<AuthState> {
 export async function checkAuthThrottled(minInterval: number): Promise<AuthState> {
   if (Date.now() - lastCheck < minInterval) return state
   return checkAuth()
+}
+
+/** 只清本地 cookie，不调用 B站退出接口——导入的 cookie 和浏览器共用同一个会话 */
+export async function logout(): Promise<AuthState> {
+  await clearBiliCookies()
+  try {
+    return await checkAuth()
+  } catch {
+    // 断网时确认不了状态，但 cookie 已经清掉，确实退出了
+    setState({ loggedIn: false })
+    return state
+  }
 }
 
 /** 需要登录的操作调用：未登录时弹出登录对话框并抛错 */

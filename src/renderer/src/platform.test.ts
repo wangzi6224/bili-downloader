@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { isSettingsShortcut, platformText } from './platform'
 
 describe('platformText', () => {
-  it('macOS 用访达、程序坞和 ⌘ 快捷键', () => {
+  it('macOS 用访达、程序坞或菜单栏和 ⌘ 快捷键', () => {
     const t = platformText('darwin')
     expect(t.isMac).toBe(true)
     expect(t.fileManager).toBe('访达')
-    expect(t.reopenFrom).toBe('程序坞图标')
+    expect(t.reopenFrom).toBe('程序坞或菜单栏图标')
     expect(t.quitKey).toBe('⌘Q')
     expect(t.browsers).toContain('Arc')
   })

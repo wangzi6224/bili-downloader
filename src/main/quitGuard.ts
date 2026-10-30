@@ -1,5 +1,5 @@
-import { app, dialog, powerMonitor, type MessageBoxOptions } from 'electron'
-import { getMainWindow, hideMainWindow } from './windows'
+import { app, powerMonitor } from 'electron'
+import { hideMainWindow, showDialog } from './windows'
 
 /** 这次退出已经确认过 */
 let confirmed = false
@@ -33,17 +33,14 @@ export function allowQuit(e: Electron.Event, pending: number): boolean {
 }
 
 async function ask(pending: number): Promise<void> {
-  const opts: MessageBoxOptions = {
+  const { response } = await showDialog({
     type: 'warning',
     message: `还有 ${pending} 个任务没下载完，确定要退出吗？`,
     detail: '退出后这些任务会暂停，下次打开后点“全部继续”就能接着下载，已下载的部分不会丢。',
     buttons: ['后台运行', '退出', '取消'],
     defaultId: 0,
     cancelId: 2
-  }
-  // 窗口在前台时挂在窗口上，隐藏在后台（从程序坞退出）时单独弹出
-  const win = getMainWindow()
-  const { response } = win?.isVisible() ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+  })
   if (response === 0) hideMainWindow()
   else if (response === 1) quitConfirmed()
 }

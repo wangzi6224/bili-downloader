@@ -214,7 +214,7 @@ export function SettingsPage() {
                 </Row>
                 <Row
                   label="关闭窗口时"
-                  hint={`后台运行时下载和订阅照常进行，点${sysText.reopenFrom}重新打开；${sysText.quitKey} 总是完全退出`}
+                  hint={`后台运行时下载和订阅照常进行，可以从${sysText.reopenFrom}重新打开；${sysText.quitKey} 总是完全退出`}
                 >
                   <Select value={s.closeAction} onChange={(e) => updateSettings({ closeAction: e.target.value as CloseAction })}>
                     <option value="ask">每次询问</option>
