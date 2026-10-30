@@ -9,7 +9,7 @@ export interface FetchFileOptions {
   dest: string
   /** 流的指纹（清晰度/编码/码率）；与已有 .part 不一致时丢弃重下 */
   fingerprint: string
-  /** 分几段并行下载 */
+  /** 同时开几个连接分段下载 */
   threads: number
   headers: Record<string, string>
   signal: AbortSignal
@@ -33,6 +33,12 @@ interface PartMeta {
 /** 小于这个大小的分段没必要再拆 */
 const MIN_SEGMENT = 2 * 1024 * 1024
 const SEGMENT_RETRIES = 4
+/** 这么久收不到数据就断开重连；连接没断时底层要等 5 分钟才报错 */
+const STALL_MS = 30_000
+/** 还要下这么久的段才值得拆：每拆一次多发一个请求，太多容易触发风控 */
+const SPLIT_MIN_SECONDS = 5
+/** 有空闲连接时，隔这么久看一次有没有段变慢了 */
+const SPLIT_CHECK_MS = 1000
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -44,6 +50,29 @@ export function splitSegments(total: number, threads: number): Segment[] {
     out.push({ start, end: Math.min(total, start + size) - 1, done: 0 })
   }
   return out
+}
+
+/**
+ * 在 worth 认为值得拆的段里，把剩余最多的从剩余部分的中点劈开，返回后一半（已加入 segments）；
+ * 拆出来的两半都不小于 MIN_SEGMENT，没有可拆的段时返回 undefined。
+ * 正在下载的段也可以直接拆：拆分点离写入位置至少 MIN_SEGMENT，正在写的那一块只有一次 read() 的大小，不会被截到。
+ */
+export function splitLargest(segments: Segment[], worth: (s: Segment, left: number) => boolean): Segment | undefined {
+  let target: Segment | undefined
+  let most = 0
+  for (const s of segments) {
+    const left = s.end + 1 - (s.start + s.done)
+    if (left >= 2 * MIN_SEGMENT && left > most && worth(s, left)) {
+      target = s
+      most = left
+    }
+  }
+  if (!target) return undefined
+  const mid = target.start + target.done + Math.ceil(most / 2)
+  const seg = { start: mid, end: target.end, done: 0 }
+  target.end = mid - 1
+  segments.push(seg)
+  return seg
 }
 
 /** 用 Range: bytes=0-0 取文件总大小 */
@@ -64,6 +93,16 @@ async function probeSize(o: FetchFileOptions): Promise<number> {
   throw lastErr instanceof DownloadError ? lastErr : new DownloadError(`连接下载服务器失败：${String(lastErr)}`)
 }
 
+/** 等 p 完成，等太久就中止 stall。只包住等网络的地方，限速和写盘的等待不算 */
+async function withinStall<T>(p: Promise<T>, stall: AbortController): Promise<T> {
+  const timer = setTimeout(() => stall.abort(new DownloadError('连接超时')), STALL_MS)
+  try {
+    return await p
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function fetchRange(
   url: string,
   seg: Segment,
@@ -73,7 +112,11 @@ async function fetchRange(
   report: () => void
 ): Promise<void> {
   const from = seg.start + seg.done
-  const res = await fetch(url, { headers: { ...o.headers, Range: `bytes=${from}-${seg.end}` }, signal })
+  const stall = new AbortController()
+  const res = await withinStall(
+    fetch(url, { headers: { ...o.headers, Range: `bytes=${from}-${seg.end}` }, signal: AbortSignal.any([signal, stall.signal]) }),
+    stall
+  )
   if (res.status !== 206 || !res.body) {
     await res.body?.cancel()
     throw new DownloadError(`下载失败（HTTP ${res.status}）`)
@@ -88,7 +131,7 @@ async function fetchRange(
   const reader = res.body.getReader()
   try {
     while (seg.start + seg.done <= seg.end) {
-      const { done, value } = await reader.read()
+      const { done, value } = await withinStall(reader.read(), stall)
       if (done) break
       await limiter.consume(value.length, signal)
       const remaining = seg.end + 1 - (seg.start + seg.done)
@@ -174,16 +217,44 @@ export async function fetchFile(o: FetchFileOptions): Promise<void> {
   o.signal.addEventListener('abort', onAbort, { once: true })
   const saver = setInterval(() => writeJson(metaFile, m), 2000)
   let firstError: unknown
-  try {
-    await Promise.allSettled(
-      m.segments.map((seg) =>
-        downloadSegment(seg, fh, o, inner.signal, report).catch((e) => {
+  // 每个连接先领没人下的段，没有可领的就拆还要下很久的段，刚开始测不出速度的也算；
+  // 续传时段数和设置对不上也由此消化
+  const taken = new Map<Segment, { at: number; done: number }>()
+  const slow = (s: Segment, left: number): boolean => {
+    const from = taken.get(s)!
+    const speed = (s.done - from.done) / ((Date.now() - from.at) / 1000)
+    return !speed || left / speed >= SPLIT_MIN_SECONDS
+  }
+  const next = (): Segment | undefined =>
+    m.segments.find((s) => !taken.has(s) && s.start + s.done <= s.end) ?? splitLargest(m.segments, slow)
+  const connections = Math.max(1, o.threads)
+  let active = 0
+  let finish = (): void => {}
+  const fill = (): void => {
+    while (active < connections && !inner.signal.aborted) {
+      const seg = next()
+      if (!seg) return
+      taken.set(seg, { at: Date.now(), done: seg.done })
+      active++
+      void downloadSegment(seg, fh, o, inner.signal, report)
+        .catch((e) => {
           if (!firstError && !(e instanceof AbortError)) firstError = e
           inner.abort()
         })
-      )
-    )
+        .finally(() => {
+          active--
+          fill()
+          if (!active) finish()
+        })
+    }
+  }
+  // 当时不值得拆的段之后可能变慢，空闲的连接要回头再看
+  const recheck = setInterval(fill, SPLIT_CHECK_MS)
+  try {
+    fill()
+    if (active) await new Promise<void>((r) => (finish = r))
   } finally {
+    clearInterval(recheck)
     clearInterval(saver)
     o.signal.removeEventListener('abort', onAbort)
     writeJson(metaFile, m)

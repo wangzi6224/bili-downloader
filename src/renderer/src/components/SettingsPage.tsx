@@ -271,7 +271,7 @@ export function SettingsPage() {
                     ))}
                   </Select>
                 </Row>
-                <Row label="分段下载" hint="每个文件拆成几段同时下载，网速受单连接限制时能明显提速；太多容易触发风控">
+                <Row label="分段下载" hint="每个文件同时开几个连接分段下载，网速受单连接限制时能明显提速；太多容易触发风控">
                   <Select value={s.threads} onChange={(e) => updateSettings({ threads: Number(e.target.value) })}>
                     {[1, 2, 4, 6, 8].map((n) => (
                       <option key={n} value={n}>

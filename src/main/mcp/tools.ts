@@ -267,7 +267,7 @@ const DEFINITIONS: ToolDefinition[] = [
       properties: {
         download_dir: { type: 'string', description: '绝对路径（可以用 ~/ 开头），不存在会创建' },
         concurrency: { type: 'integer', minimum: 1, maximum: 5, description: '同时下载的任务数' },
-        threads: { type: 'integer', minimum: 1, maximum: 8, description: '每个文件分几段并行下载' },
+        threads: { type: 'integer', minimum: 1, maximum: 8, description: '每个文件同时开几个连接分段下载' },
         speed_limit_kbps: { type: 'integer', minimum: 0, description: '全局限速 KB/s，0 为不限' },
         auto_retry: { type: 'integer', minimum: 0, maximum: 20, description: '网络错误自动重试次数' },
         default_qn: { type: 'integer', description: QN_DESCRIPTION },
@@ -325,7 +325,7 @@ function prepareDir(raw: string): string {
 const SETTING_EFFECTS: Record<string, string> = {
   download_dir: '只影响之后加入的任务，已在队列里的任务仍保存到原来的目录',
   concurrency: '立即生效：调高时排队的任务马上开始，调低时正在下载的任务不会被打断',
-  threads: '只对之后开始下载的任务生效',
+  threads: '正在下载的任务不受影响；之后开始下载、暂停后继续的任务按新值分段',
   speed_limit_kbps: '立即生效',
   auto_retry: '立即生效',
   default_qn: '只影响之后加入的任务',

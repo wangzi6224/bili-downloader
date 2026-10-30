@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AbortError, DiskError, DownloadError } from './errors'
-import { fetchFile, splitSegments, type FetchFileOptions } from './fetchFile'
+import { fetchFile, splitLargest, splitSegments, type FetchFileOptions, type Segment } from './fetchFile'
 import { limiter } from './rateLimiter'
 
 const DATA = randomBytes(7 * 1024 * 1024 + 123)
@@ -14,9 +14,32 @@ let server: Server
 let base = ''
 let wrongRangeOnce = true
 let dropFirstConnection = true
+let hangFirstConnection = true
+/** 收到的每个请求的 Range */
+const ranges: string[] = []
+
+/** 每 every 毫秒写 64KB；返回的函数把剩下的一次写完 */
+function drip(res: ServerResponse, start: number, end: number, every: number): () => void {
+  let pos = start
+  const timer = setInterval(() => {
+    const stop = Math.min(end + 1, pos + 64 * 1024)
+    res.write(DATA.subarray(pos, stop))
+    pos = stop
+    if (pos > end) {
+      clearInterval(timer)
+      res.end()
+    }
+  }, every)
+  res.on('close', () => clearInterval(timer))
+  return () => {
+    clearInterval(timer)
+    res.end(DATA.subarray(pos, end + 1))
+  }
+}
 
 beforeAll(async () => {
   server = createServer((req, res) => {
+    ranges.push(req.headers.range ?? '')
     const m = req.headers.range?.match(/bytes=(\d+)-(\d*)/)
     if (!m) {
       res.writeHead(200, { 'Content-Length': DATA.length })
@@ -39,6 +62,27 @@ beforeAll(async () => {
       dropFirstConnection = false
       res.write(DATA.subarray(start, start + 1000))
       res.destroy()
+      return
+    }
+    if (req.url === '/hang' && hangFirstConnection && start > 0) {
+      // 模拟连接没断、但不再来数据
+      hangFirstConnection = false
+      res.write(DATA.subarray(start, start + 1000))
+      return
+    }
+    if (req.url === '/slow-head' && start === 0) {
+      // 分到慢节点的连接；过一会儿再写完，免得用例要等它下完
+      setTimeout(drip(res, start, end, 100), 800)
+      return
+    }
+    if (req.url === '/fade-head' && start === 0) {
+      // 一开始很快，之后不再来数据
+      res.write(DATA.subarray(0, 1024 * 1024))
+      setTimeout(() => res.end(DATA.subarray(1024 * 1024, end + 1)), 2500)
+      return
+    }
+    if (req.url === '/steady' || req.url === '/slow-head' || req.url === '/fade-head') {
+      drip(res, start, end, 10)
       return
     }
     res.end(DATA.subarray(start, end + 1))
@@ -94,6 +138,55 @@ describe('splitSegments', () => {
   })
 })
 
+describe('splitLargest', () => {
+  const MB = 1024 * 1024
+  const all = (): boolean => true
+
+  it('从剩余部分的中点劈开剩余最多的段', () => {
+    const segs = [
+      { start: 0, end: 10 * MB - 1, done: 2 * MB },
+      { start: 10 * MB, end: 15 * MB - 1, done: 0 }
+    ]
+    const seg = splitLargest(segs, all)
+    expect(seg).toEqual({ start: 6 * MB, end: 10 * MB - 1, done: 0 })
+    expect(segs[0]).toEqual({ start: 0, end: 6 * MB - 1, done: 2 * MB })
+    expect(segs).toHaveLength(3)
+    expect(segs[2]).toBe(seg)
+  })
+
+  it('跳过已完成的段', () => {
+    const segs = [
+      { start: 0, end: 20 * MB - 1, done: 20 * MB },
+      { start: 20 * MB, end: 25 * MB - 1, done: 0 }
+    ]
+    expect(splitLargest(segs, all)).toEqual({ start: 20 * MB + Math.ceil(2.5 * MB), end: 25 * MB - 1, done: 0 })
+    expect(segs[0].end).toBe(20 * MB - 1)
+  })
+
+  it('剩余不够拆成两个最小段时不拆', () => {
+    const segs = [{ start: 0, end: 10 * MB - 1, done: 6 * MB + 1 }]
+    expect(splitLargest(segs, all)).toBeUndefined()
+    expect(segs).toEqual([{ start: 0, end: 10 * MB - 1, done: 6 * MB + 1 }])
+    expect(splitLargest([], all)).toBeUndefined()
+  })
+
+  it('跳过不值得拆的段，拆剩下的里面最大的', () => {
+    const fast = { start: 0, end: 20 * MB - 1, done: 0 }
+    const slow = { start: 20 * MB, end: 26 * MB - 1, done: 0 }
+    const worth = vi.fn((s: Segment) => s === slow)
+    expect(splitLargest([fast, slow], worth)).toEqual({ start: 23 * MB, end: 26 * MB - 1, done: 0 })
+    expect(worth).toHaveBeenCalledWith(fast, 20 * MB)
+    expect(fast.end).toBe(20 * MB - 1)
+    expect(slow.end).toBe(23 * MB - 1)
+  })
+
+  it('都不值得拆时不拆', () => {
+    const segs = [{ start: 0, end: 20 * MB - 1, done: 0 }]
+    expect(splitLargest(segs, () => false)).toBeUndefined()
+    expect(segs).toEqual([{ start: 0, end: 20 * MB - 1, done: 0 }])
+  })
+})
+
 describe('fetchFile', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fetchfile-'))
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -144,6 +237,64 @@ describe('fetchFile', () => {
     await expect(p).rejects.toThrow('aborted')
     expect(existsSync(`${dest}.meta.json`)).toBe(true)
     await run('/ok', dest, 2)
+    expect(readFileSync(dest).equals(DATA)).toBe(true)
+  })
+
+  /** 放好预分配的 .part 和进度，模拟上次按这些段下到一半 */
+  function leftover(dest: string, segments: Segment[]): void {
+    writeFileSync(`${dest}.part`, Buffer.alloc(DATA.length))
+    writeFileSync(`${dest}.meta.json`, JSON.stringify({ fingerprint: 'fp', total: DATA.length, segments }))
+    ranges.length = 0
+  }
+
+  it('续传时调大段数，空闲的连接拆开已有的段', async () => {
+    const dest = join(dir, 'e.bin')
+    const last = DATA.length - 1
+    leftover(dest, [{ start: 0, end: last, done: 0 }])
+    await run('/ok', dest, 4)
+    expect(readFileSync(dest).equals(DATA)).toBe(true)
+    // 剩下的两个连接拆不出不小于最小段的部分，不再发请求；两个请求到达的先后不定
+    expect(ranges.sort()).toEqual([`bytes=0-${last}`, `bytes=${Math.ceil(DATA.length / 2)}-${last}`].sort())
+  })
+
+  it('续传时调小段数，多出来的段排队下载', async () => {
+    const dest = join(dir, 'f.bin')
+    leftover(dest, splitSegments(DATA.length, 4))
+    await run('/ok', dest, 1)
+    expect(readFileSync(dest).equals(DATA)).toBe(true)
+    expect(ranges).toEqual(splitSegments(DATA.length, 4).map((s) => `bytes=${s.start}-${s.end}`))
+  })
+
+  /** 放好 [0, cut) 和 [cut, 结尾] 两段，用两个连接下载，返回第一段有没有被拆 */
+  async function firstSegmentSplit(path: string, dest: string, cut: number): Promise<boolean> {
+    leftover(dest, [
+      { start: 0, end: cut - 1, done: 0 },
+      { start: cut, end: DATA.length - 1, done: 0 }
+    ])
+    await run(path, dest, 2)
+    expect(readFileSync(dest).equals(DATA)).toBe(true)
+    const starts = ranges.map((r) => Number(r.match(/bytes=(\d+)-/)?.[1]))
+    return starts.some((s) => s > 0 && s < cut)
+  }
+
+  it('先下完的连接分担慢连接剩下的部分', async () => {
+    expect(await firstSegmentSplit('/slow-head', join(dir, 'g.bin'), 6 * 1024 * 1024)).toBe(true)
+  })
+
+  it('很快能下完的段不拆，不多发请求', async () => {
+    const cut = 6.5 * 1024 * 1024
+    expect(await firstSegmentSplit('/steady', join(dir, 'h.bin'), cut)).toBe(false)
+    expect(ranges).toHaveLength(2)
+  })
+
+  it('当时不值得拆的段后来变慢了也会被拆', async () => {
+    expect(await firstSegmentSplit('/fade-head', join(dir, 'i.bin'), 6 * 1024 * 1024)).toBe(true)
+  })
+
+  it('连接没断但不再来数据时断开重连', async () => {
+    const dest = join(dir, 'j.bin')
+    fakeTimers()
+    await drive(run('/hang', dest))
     expect(readFileSync(dest).equals(DATA)).toBe(true)
   })
 })
@@ -280,6 +431,30 @@ describe('fetchFile 的边界情况', () => {
     expect(fetchMock).toHaveBeenCalledTimes(6)
     expect(existsSync(dest)).toBe(false)
     expect(existsSync(`${dest}.meta.json`)).toBe(true)
+  })
+
+  it('服务器迟迟不响应时断开重连', async () => {
+    fakeTimers()
+    let ranged = 0
+    fetchMock.mockImplementation((_url, init) => {
+      if (new Headers(init?.headers).get('range') === 'bytes=0-0' || ++ranged > 1) return Promise.resolve(serve(init))
+      return new Promise((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+      })
+    })
+    await drive(get(['https://a/']))
+    expect(readFileSync(dest).equals(SMALL)).toBe(true)
+    expect(ranged).toBe(2)
+  })
+
+  it('限速等待的时间不算连接卡住', async () => {
+    fakeTimers()
+    // 1000 字节按每秒 10 字节要等 100 秒，比卡住的判定时间长
+    limiter.setLimit(0.01)
+    await drive(get(['https://a/']))
+    expect(readFileSync(dest).equals(SMALL)).toBe(true)
+    // 1 次探测 + 1 次下载，没有重连
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('限速等待中暂停能立即打断', async () => {

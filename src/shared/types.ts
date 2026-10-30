@@ -302,7 +302,7 @@ export interface Settings {
   duplicateAction: DuplicateAction
   danmaku: { fontSize: number; opacity: number; duration: number }
   clipboardWatch: boolean
-  /** 每个文件分几段并行下载 */
+  /** 每个文件同时开几个连接分段下载 */
   threads: number
   /** 全局限速 KB/s，0 为不限 */
   speedLimit: number
