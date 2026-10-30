@@ -140,6 +140,7 @@ let base: string
 let home: string
 let tmp: string
 const locked: string[] = []
+const isWindowsHost = process.platform === 'win32'
 const env = {
   HOME: process.env.HOME,
   TMPDIR: process.env.TMPDIR,
@@ -305,7 +306,7 @@ describe('listBrowserProfiles（macOS）', () => {
       { host: '.evilbilibili.com', name: 'SESSDATA', value: 's', expiry: FUTURE }
     ])
     firefoxDb(join(profiles, 'nodot/cookies.sqlite'), [])
-    firefoxDb(join(profiles, 'trailing./cookies.sqlite'), [])
+    if (!isWindowsHost) firefoxDb(join(profiles, 'trailing./cookies.sqlite'), [])
     // 没有 cookies.sqlite 的目录跳过
     mkdirSync(join(profiles, 'empty.profile'))
     expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.browser, p.profile, p.hasBiliLogin])).toEqual([
@@ -313,7 +314,7 @@ describe('listBrowserProfiles（macOS）', () => {
       ['firefox::def456.work', 'Firefox', 'work', true],
       ['firefox::ghi789.old', 'Firefox', 'old', false],
       ['firefox::nodot', 'Firefox', 'nodot', false],
-      ['firefox::trailing.', 'Firefox', 'trailing.', false]
+      ...(!isWindowsHost ? [['firefox::trailing.', 'Firefox', 'trailing.', false]] : [])
     ])
   })
 
