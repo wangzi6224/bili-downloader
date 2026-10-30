@@ -95,14 +95,19 @@ afterAll(() => {
   server.close()
 })
 
-/** fake timers 下推进重试退避，中间用真的 setImmediate 让网络和文件 IO 跑完 */
+/**
+ * fake timers 下推进重试退避，中间用真的 setImmediate 让网络和文件 IO 跑完。
+ * 上限按真实时间算（Date 没有被 fake）：按次数算的话一轮很快，磁盘慢时等 IO 就把次数用完了，
+ * 之后再也没人推进定时器，用例只能卡到超时
+ */
 async function drive<T>(p: Promise<T>): Promise<T> {
   let settled = false
   p.then(
     () => (settled = true),
     () => (settled = true)
   )
-  for (let i = 0; i < 500 && !settled; i++) {
+  const deadline = Date.now() + 4000
+  while (!settled && Date.now() < deadline) {
     await vi.advanceTimersByTimeAsync(500)
     await new Promise((r) => setImmediate(r))
   }
