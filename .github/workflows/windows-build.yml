@@ -43,8 +43,8 @@ jobs:
       - name: 启动已安装应用
         shell: pwsh
         run: |
-          $appExe = Join-Path $env:LOCALAPPDATA 'Programs/B站下载器/B站下载器.exe'
-          if (!(Test-Path $appExe)) { throw "找不到已安装应用：$appExe" }
+          $appExe = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'B站下载器.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if (!$appExe -or !(Test-Path $appExe)) { throw "找不到已安装应用：$appExe" }
           $app = Start-Process -FilePath $appExe -PassThru
           Start-Sleep -Seconds 6
           $app.Refresh()
