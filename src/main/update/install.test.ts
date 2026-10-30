@@ -209,7 +209,7 @@ describe('Windows NSIS updates', () => {
       execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', parse])
     }
     expect(options).toMatchObject({ detached: true, windowsHide: true, cwd: work })
-  })
+  }, isWindows ? 20_000 : 5_000)
 })
 
 describe.skipIf(isWindows)('stageAppImage / prepare', () => {
