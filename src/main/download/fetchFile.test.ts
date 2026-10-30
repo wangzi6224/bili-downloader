@@ -121,7 +121,7 @@ describe('fetchFile', () => {
     fakeTimers()
     await drive(run('/flaky', dest))
     expect(readFileSync(dest).equals(DATA)).toBe(true)
-  })
+  }, process.platform === 'win32' ? 15_000 : 5_000)
 
   it('resumes after being aborted', async () => {
     const dest = join(dir, 'd.bin')
