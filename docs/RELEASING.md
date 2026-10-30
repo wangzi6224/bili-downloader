@@ -12,9 +12,9 @@ npm run build:linux   # Linux：x64 的 AppImage 和 deb
 npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 ```
 
-都会先跑类型检查和单元测试（`npm run verify`），任何一项失败，或者覆盖率低于 `vitest.config.mts` 里的门槛，都会直接停下、不打包；通过后下载当前系统用的静态 ffmpeg（固定 sha256 校验，放在 `resources/ffmpeg/<系统>-<架构>/`），再在 `dist/` 里生成安装包。
+都会先跑类型检查和单元测试（`npm run verify`），任何一项失败，或者覆盖率低于 `vitest.config.mts` 里的门槛，都会直接停下、不打包；通过后下载当前系统用的静态 ffmpeg（固定 sha256 校验，放在 `resources/ffmpeg/<系统>-<架构>/`），再在 `dist/` 里生成安装包。Electron 自带的语言包只保留中文和英文（`electron-builder.yml` 的 `electronLanguages`）。
 
-- **macOS**：`x64` 和 `arm64` 各一个 dmg 和 zip。打开 dmg 后把应用图标拖到“应用程序”即可安装。应用使用 ad-hoc 签名、没有公证，第一次打开会被拦截，需要到“系统设置 → 隐私与安全性”里点“仍要打开”（macOS 15 起右键 →“打开”已不再有效）。
+- **macOS**：`x64` 和 `arm64` 各一个 dmg 和 zip。electron-builder 打出的 dmg 是 zlib 压缩，`scripts/compress-dmg.mjs` 随后用 hdiutil 把它转成 LZMA 压缩（ULMO，macOS 10.15 起支持），小约四分之一；zip 是应用内更新用的，保持原样。打开 dmg 后把应用图标拖到“应用程序”即可安装。应用使用 ad-hoc 签名、没有公证，第一次打开会被拦截，需要到“系统设置 → 隐私与安全性”里点“仍要打开”（macOS 15 起右键 →“打开”已不再有效）。
 - **Linux**：`bili-downloader-<版本>-x86_64.AppImage` 和 `bili-downloader-<版本>-amd64.deb`（文件名里的架构名是 electron-builder 起的）。AppImage 加上可执行权限就能运行；deb 用 `sudo apt install ./bili-downloader-<版本>-amd64.deb` 安装，装到 `/opt/B站下载器/`，应用菜单里会出现“B站下载器”。Ubuntu 24.04 起限制了非特权用户命名空间，AppImage 的启动脚本检测到后会自动加 `--no-sandbox`，deb 包自带 AppArmor 配置，都不需要额外处理。
 - **Windows**：`bili-downloader-<版本>-x64.exe` 是 NSIS 当前用户安装器，不需要管理员权限。尚未配置代码签名证书，首次运行时 Windows 可能提示发布者未知。
 

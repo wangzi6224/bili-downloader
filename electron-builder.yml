@@ -12,6 +12,11 @@ extraResources:
   - from: resources/ffmpeg/${platform}-${arch}
     to: ffmpeg
 npmRebuild: false
+# 界面只有简体中文，Electron 自带的语言包只留中文和英文（Chromium 缺语言包时退回英文，不能删）
+electronLanguages:
+  - zh_CN
+  - zh_TW
+  - en
 mac:
   category: public.app-category.video
   target:
@@ -23,6 +28,8 @@ mac:
   gatekeeperAssess: false
 dmg:
   title: B站下载器 ${version}
+  # 打完后由 scripts/compress-dmg.mjs 改成 LZMA 压缩，electron-builder 给 dmg 生成的 blockmap 就对不上了，发布也用不到
+  writeUpdateInfo: false
   # 背景自动取 build/background.png（含 @2x），由 npm run icons 从 build/dmg-background.svg 生成
   # 坐标是图标中心，要和背景里的托盘、箭头对齐
   iconSize: 96
