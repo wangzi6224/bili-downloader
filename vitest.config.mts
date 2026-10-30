@@ -26,7 +26,9 @@ export default defineConfig({
         'src/renderer/src/components/**',
         // 只有类型
         'src/shared/types.ts',
-        'src/renderer/src/env.d.ts'
+        'src/renderer/src/env.d.ts',
+        // 用 hdiutil 转 dmg，只能在 macOS 上测，别的系统上不计入
+        ...(process.platform === 'darwin' ? [] : ['scripts/lib/dmg.mjs'])
       ],
       // 逐文件的明细看 coverage/index.html
       reporter: ['text-summary', 'html'],
