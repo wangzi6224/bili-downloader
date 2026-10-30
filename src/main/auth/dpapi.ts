@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 
 const SCRIPT = [
+  'Add-Type -AssemblyName System.Security',
   '$value = [Console]::In.ReadToEnd().Trim()',
   '$data = [Convert]::FromBase64String($value)',
-  '$plain = [Security.Cryptography.ProtectedData]::Unprotect($data, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)',
+  '$plain = [System.Security.Cryptography.ProtectedData]::Unprotect($data, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)',
   '[Console]::Out.Write([Convert]::ToBase64String($plain))'
 ].join('; ')
 const COMMAND = Buffer.from(SCRIPT, 'utf16le').toString('base64')

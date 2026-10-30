@@ -178,7 +178,13 @@ describe('ffmpegPath', () => {
   })
 
   it('系统里没有时用项目 resources 里的，再没有就交给 PATH', async () => {
-    const bundled = join('/app', 'resources', 'ffmpeg', `${process.platform}-${process.arch}`, 'ffmpeg')
+    const bundled = join(
+      '/app',
+      'resources',
+      'ffmpeg',
+      `${process.platform}-${process.arch}`,
+      process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+    )
     h.existsSync.mockImplementation((p) => p === bundled)
     expect((await load()).ffmpegPath()).toBe(bundled)
     h.existsSync.mockReturnValue(false)
@@ -190,7 +196,7 @@ describe('ffmpegPath', () => {
     Object.assign(process, { resourcesPath: '/Res' })
     try {
       h.existsSync.mockReturnValue(true)
-      expect((await load()).ffmpegPath()).toBe('/Res/ffmpeg/ffmpeg')
+      expect((await load()).ffmpegPath()).toBe(join('/Res', 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'))
       expect(h.existsSync).toHaveBeenCalledTimes(1)
     } finally {
       delete (process as { resourcesPath?: string }).resourcesPath

@@ -6,9 +6,10 @@ describe.runIf(process.platform === 'win32')('Windows DPAPI integration', () => 
   it('decrypts a synthetic value protected for the current Windows user', async () => {
     const plain = Buffer.from('synthetic Chromium master key')
     const script = [
+      'Add-Type -AssemblyName System.Security',
       '$value = [Console]::In.ReadToEnd().Trim()',
       '$data = [Convert]::FromBase64String($value)',
-      '$wrapped = [Security.Cryptography.ProtectedData]::Protect($data, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)',
+      '$wrapped = [System.Security.Cryptography.ProtectedData]::Protect($data, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)',
       '[Console]::Out.Write([Convert]::ToBase64String($wrapped))'
     ].join('; ')
     const command = Buffer.from(script, 'utf16le').toString('base64')

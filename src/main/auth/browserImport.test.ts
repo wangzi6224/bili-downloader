@@ -144,7 +144,8 @@ const env = {
   HOME: process.env.HOME,
   TMPDIR: process.env.TMPDIR,
   LOCALAPPDATA: process.env.LOCALAPPDATA,
-  APPDATA: process.env.APPDATA
+  APPDATA: process.env.APPDATA,
+  USERPROFILE: process.env.USERPROFILE
 }
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 let bi: typeof import('./browserImport')
@@ -213,6 +214,7 @@ beforeEach(async () => {
   mkdirSync(tmp)
   process.env.HOME = home
   process.env.TMPDIR = tmp
+  process.env.USERPROFILE = home
   process.env.LOCALAPPDATA = join(base, 'local')
   process.env.APPDATA = join(base, 'roaming')
   mkdirSync(process.env.LOCALAPPDATA, { recursive: true })

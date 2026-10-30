@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+    // Windows runners have fewer cores; cap workers to keep network/timer tests stable.
+    maxWorkers: process.platform === 'win32' ? 4 : undefined,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}', 'scripts/lib/**/*.mjs'],
