@@ -3,6 +3,7 @@ import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, scree
 import type { TaskInfo } from '@shared/types'
 import { checkAuth, checkAuthThrottled, getAuthState, logout, onAuthRequired, onLoggedIn, onLoginChanged, requireLogin } from './auth/authGuard'
 import { expandLazy, loadAllPages } from './bili/lists'
+import { biliLookup } from './bili/lookup'
 import { DownloadManager } from './download/manager'
 import { makeEnqueue } from './enqueue'
 import { downloadedKeys, recordDownload, removeDownloads } from './history'
@@ -277,7 +278,8 @@ async function start(): Promise<void> {
     downloadedKeys,
     settings: getSettings,
     updateSettings,
-    authState: () => checkAuthThrottled(60_000)
+    authState: () => checkAuthThrottled(60_000),
+    lookup: biliLookup
   })
   const mcp = new McpServer(mcpTools)
   void mcp.apply(settings.mcp)

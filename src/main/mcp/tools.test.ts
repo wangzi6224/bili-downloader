@@ -20,6 +20,7 @@ const fs = await import('node:fs')
 const { statfs } = await import('node:fs/promises')
 const { BiliError, LoginRequiredError } = await import('../bili/http')
 const { McpTools } = await import('./tools')
+type Lookup = import('../bili/lookup').BiliLookup
 
 let dir = ''
 let queue: FakeQueue
@@ -59,7 +60,10 @@ const deps = {
     loggedIn: true,
     user: { mid: 1, uname: '用户', face: '', vipActive: true, vipLabel: '年度大会员' }
   })),
-  updateSettings: vi.fn((patch: Partial<Settings>) => (settings = { ...settings, ...patch }))
+  updateSettings: vi.fn((patch: Partial<Settings>) => (settings = { ...settings, ...patch })),
+  searchUsers: vi.fn(),
+  fetchVideoDetail: vi.fn(),
+  expandShort: vi.fn()
 }
 
 const call = async (name: string, args: Record<string, unknown> = {}) => {
@@ -105,7 +109,8 @@ beforeEach(() => {
       queue,
       batchFile: join(dir, 'batches.json'),
       downloadedKeys: () => history,
-      settings: () => settings
+      settings: () => settings,
+      lookup: { searchUsers: deps.searchUsers, fetchVideoDetail: deps.fetchVideoDetail, expandShort: deps.expandShort } as unknown as Lookup
     },
     () => now
   )
@@ -128,7 +133,12 @@ describe('工具列表和通用错误', () => {
       'list_tasks',
       'control_tasks',
       'get_settings',
-      'update_settings'
+      'update_settings',
+      'search_videos',
+      'search_users',
+      'get_video_info',
+      'get_video_transcript',
+      'get_video_comments'
     ])
     for (const t of tools.definitions) {
       expect(t.title && t.description).toBeTruthy()
@@ -435,6 +445,151 @@ describe('download_batch', () => {
     expect(await error('download_batch', { url: 'x', request_id: 5 })).toMatchObject({ message: 'request_id 必须是字符串' })
     // 子目录 . 等于下载目录本身
     expect((await data('download_batch', { url: 'x', all: true, subdir: '.' })).dir).toBe(settings.downloadDir)
+  })
+})
+
+describe('download_batch 的 videos', () => {
+  const VIDEOS = ['BV1000000000', 'https://www.bilibili.com/video/BV2000000000?p=3']
+
+  it('多个视频合成一个批次，在后台展开，不解析链接', async () => {
+    const r = await data('download_batch', { videos: VIDEOS, title: '猫视频', subdir: '搜索', options: { danmaku: true } })
+    expect(r).toMatchObject({ title: '猫视频', selected: 2, dir: join(settings.downloadDir, '搜索'), rejected: undefined })
+    expect(r.hint).toContain(`get_batch_status batch_id=${r.batch_id}`)
+    expect(deps.parseAll).not.toHaveBeenCalled()
+    await settle()
+    expect(deps.expandLazy.mock.calls[0][0].map((i) => [i.key, i.bvid, i.lazy, i.index])).toEqual([
+      ['ugc:BV1000000000', 'BV1000000000', true, 1],
+      ['ugc:BV2000000000', 'BV2000000000', true, 2]
+    ])
+    const req = queue.enqueue.mock.calls[0][0]
+    expect(req).toMatchObject({ title: '猫视频', kind: 'ugc', multi: true, batchId: r.batch_id })
+    expect(req.items).toHaveLength(4)
+    expect(req.options).toMatchObject({ danmaku: true })
+  })
+
+  it('默认标题和目录；批次的 url 留空', async () => {
+    const r = await data('download_batch', { videos: VIDEOS })
+    expect(r).toMatchObject({ title: '2 个视频', dir: settings.downloadDir })
+    await settle()
+    expect((await data('get_batch_status', { batch_id: r.batch_id })).url).toBeUndefined()
+    expect((await data('list_batches')).batches[0].url).toBeUndefined()
+  })
+
+  it('去重，无法识别的放进 rejected', async () => {
+    const r = await data('download_batch', { videos: ['BV1000000000', 'https://www.bilibili.com/video/BV1000000000', 'BV2000000000', 'av9', 'ep1', '随便'] })
+    expect(r.selected).toBe(2)
+    expect(r.rejected).toEqual(['av9', 'ep1', '随便'])
+    expect(r.hint).toContain('3 项')
+  })
+
+  it('按每一P跳过下载过的', async () => {
+    history = ['ugc:BV1000000000:1']
+    const r = await data('download_batch', { videos: VIDEOS })
+    await settle()
+    expect((await data('get_batch_status', { batch_id: r.batch_id })).skipped.downloaded).toBe(1)
+    expect(queue.enqueue.mock.calls[0][0].items.map((i) => i.key)).toEqual(['ugc:BV1000000000:2', 'ugc:BV2000000000:1', 'ugc:BV2000000000:2'])
+  })
+
+  it('批次没结束时重复提交返回原批次，顺序和重复项不影响', async () => {
+    deps.expandLazy.mockImplementation(() => new Promise(() => {}))
+    const a = await data('download_batch', { videos: ['BV1000000000', 'BV2000000000'] })
+    const b = await data('download_batch', { videos: ['BV2000000000', 'BV1000000000', 'BV1000000000'] })
+    expect(b).toMatchObject({ batch_id: a.batch_id, deduplicated: true })
+    const c = await data('download_batch', { videos: ['BV1000000000', 'BV2000000000'], title: '别的' })
+    expect(c.batch_id).not.toBe(a.batch_id)
+    expect((await data('download_batch', { videos: ['BV1000000000', 'BV3000000000'], request_id: 'r' })).deduplicated).toBeUndefined()
+    expect(await data('download_batch', { videos: ['BV4000000000', 'BV5000000000'], request_id: 'r' })).toMatchObject({ deduplicated: true })
+  })
+
+  const detail = { bvid: 'BV1000000000', title: '单个视频', cover: 'c.jpg' }
+
+  it('只有一个视频时用它的标题和封面，下载全部分P，不走链接解析', async () => {
+    deps.fetchVideoDetail.mockResolvedValue(detail)
+    const r = await data('download_batch', { videos: ['https://www.bilibili.com/video/BV1000000000?p=2'] })
+    expect(deps.parseAll).not.toHaveBeenCalled()
+    expect(r).toMatchObject({ title: '单个视频', selected: 1 })
+    await settle()
+    expect(deps.expandLazy.mock.calls[0][0][0]).toMatchObject({ title: '单个视频', cover: 'c.jpg', lazy: true })
+    expect(queue.enqueue.mock.calls[0][0]).toMatchObject({ title: '单个视频', cover: 'c.jpg' })
+    expect(queue.enqueue.mock.calls[0][0].items).toHaveLength(2)
+  })
+
+  it('只有一个视频时 title 也生效；视频不存在时直接报错', async () => {
+    deps.fetchVideoDetail.mockResolvedValueOnce(detail)
+    expect(await data('download_batch', { videos: ['BV1000000000'], title: '自定义' })).toMatchObject({ title: '自定义' })
+    deps.fetchVideoDetail.mockRejectedValueOnce(new BiliError('啥都木有', -404))
+    expect(await error('download_batch', { videos: ['BV2000000000'] })).toMatchObject({ code: 'FAILED', message: '啥都木有' })
+    expect((await data('list_batches')).total).toBe(1)
+  })
+
+  it('短链和 av 号先换成 BV 号', async () => {
+    deps.expandShort.mockResolvedValue({ type: 'ugc', bvid: 'BV2000000000' })
+    deps.fetchVideoDetail.mockResolvedValue({ bvid: 'BV3000000000' })
+    const r = await data('download_batch', { videos: ['BV1000000000', 'https://b23.tv/abc', 'av9'] })
+    expect(r).toMatchObject({ selected: 3, title: '3 个视频', rejected: undefined })
+    await settle()
+    expect(deps.expandLazy.mock.calls[0][0].map((i) => i.bvid)).toEqual(['BV1000000000', 'BV2000000000', 'BV3000000000'])
+  })
+
+  it('列表链接放不进 videos，提示用 url', async () => {
+    expect(await error('download_batch', { videos: ['https://space.bilibili.com/1'] })).toMatchObject({
+      code: 'INVALID_ARGS',
+      message: expect.stringContaining('用 url')
+    })
+  })
+
+  it('重复提交时也报告 rejected', async () => {
+    deps.expandLazy.mockImplementation(() => new Promise(() => {}))
+    const list = [...VIDEOS, 'ep1']
+    const a = await data('download_batch', { videos: list })
+    const b = await data('download_batch', { videos: list })
+    expect(b).toMatchObject({ batch_id: a.batch_id, deduplicated: true, rejected: ['ep1'] })
+  })
+
+  it('并行提交同样的请求只建一个批次', async () => {
+    deps.expandLazy.mockImplementation(() => new Promise(() => {}))
+    const [a, b] = await Promise.all([
+      data('download_batch', { videos: VIDEOS, request_id: 'r' }),
+      data('download_batch', { videos: VIDEOS, request_id: 'r' })
+    ])
+    expect(a.batch_id).toBe(b.batch_id)
+    expect((await data('list_batches')).total).toBe(1)
+  })
+
+  it('没登录时不提交', async () => {
+    deps.authState.mockResolvedValueOnce({ loggedIn: false })
+    expect(await error('download_batch', { videos: VIDEOS })).toMatchObject({ code: 'NOT_LOGGED_IN', hint: expect.stringContaining('登录') })
+    expect((await data('list_batches')).total).toBe(0)
+  })
+
+  it('参数校验', async () => {
+    for (const extra of [{ url: 'BV1000000000' }, { ids: ['a'] }, { all: true }, { max_items: 5 }]) {
+      expect(await error('download_batch', { videos: VIDEOS, ...extra })).toMatchObject({ code: 'INVALID_ARGS' })
+    }
+    expect(await error('download_batch', { videos: [] })).toMatchObject({ message: 'videos 不能是空的' })
+    expect(await error('download_batch', { videos: Array.from({ length: 201 }, (_, i) => `BV${i}`) })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await error('download_batch', { videos: ['ep1', 'ss2'] })).toMatchObject({ message: expect.stringContaining('ep1') })
+    expect(await error('download_batch', { videos: VIDEOS, title: '长'.repeat(101) })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await error('download_batch', {})).toMatchObject({ message: '缺少参数 url' })
+  })
+})
+
+describe('检索工具的接入', () => {
+  it('转给 LookupTools，结果和错误都用统一的格式', async () => {
+    deps.searchUsers.mockResolvedValueOnce({ total: 0, pages: 0, list: [] })
+    expect(await data('search_users', { keyword: '猫' })).toMatchObject({ total: 0, users: [] })
+    expect(await error('search_users')).toMatchObject({ code: 'INVALID_ARGS', message: '缺少参数 keyword' })
+  })
+})
+
+describe('download_batch 的并行提交', () => {
+  it('等解析时相同的请求先提交了，不再建新批次', async () => {
+    const [a, b] = await Promise.all([
+      data('download_batch', { url: 'BV2', request_id: 'r' }),
+      data('download_batch', { url: 'BV2', request_id: 'r' })
+    ])
+    expect(a.batch_id).toBe(b.batch_id)
+    expect((await data('list_batches')).total).toBe(1)
   })
 })
 

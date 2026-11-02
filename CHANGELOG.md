@@ -4,6 +4,12 @@
 推送版本 tag 后，GitHub Actions 会把当前版本这一段作为 GitHub Release 的说明，并把最近的各段写进 `update.json`，
 应用内的更新弹窗会显示用户当前版本之后的所有段落。还没发布的改动先记在“未发布”下面。
 
+## 未发布
+
+- MCP 服务可以检索 B站了：`search_videos` 按关键词搜索视频，结果带发布时间、播放量、分类、标签和简介摘要，可以按时间和时长筛选；`search_users` 搜索 UP 主
+- MCP 新增 `get_video_info` 批量查看视频详情和相关视频，`get_video_transcript` 查看 AI 总结、章节和字幕，`get_video_comments` 读取评论和楼中楼
+- MCP 的 `download_batch` 可以用 `videos` 把多个视频（例如搜索结果）合成一个批次下载
+
 ## 0.8.0 - 2026-10-30
 
 - macOS 菜单栏上也有图标了：关闭窗口转到后台后，可以从菜单栏图标重新打开窗口或退出

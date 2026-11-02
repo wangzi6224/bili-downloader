@@ -233,6 +233,20 @@ describe('enqueue', () => {
     expect(m.list()[3].nameValues?.type).toBe('番剧影视')
   })
 
+  it('批次没有 meta 时用视频自己的作者和简介，批次的 meta 优先', () => {
+    const m = make()
+    m.blockForAuth()
+    m.enqueue(req([item(1, { owner: '作者', ownerMid: 9, pubdate: 200, desc: '简介' })]))
+    m.enqueue(req([item(2, { owner: '作者', bvid: undefined })]))
+    m.enqueue(req([item(3)]))
+    m.enqueue(req([item(4, { owner: '作者' })], { meta: { owner: 'UP' } }))
+    const [a, b, c, d] = m.list()
+    expect(a.meta).toEqual({ owner: '作者', ownerMid: 9, pubdate: 200, desc: '简介', url: 'https://www.bilibili.com/video/BV1' })
+    expect(b.meta).toMatchObject({ owner: '作者', url: undefined })
+    expect(c.meta).toBeUndefined()
+    expect(d.meta).toEqual({ owner: 'UP' })
+  })
+
   it('series 和 owner 的取值，下载目录按入队时快照', async () => {
     const meta = { owner: 'UP', ownerMid: 1, pubdate: 100 }
     const m = make()

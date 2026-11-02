@@ -465,6 +465,12 @@ describe('expandLazy', () => {
     ...extra
   })
 
+  it('列表里没有封面时用视频自己的，有的话保留', async () => {
+    api.mockResolvedValue({ bvid: 'BVa', aid: 1, title: 't', pic: 'view.jpg', pages: [{ cid: 1, page: 1, part: 'p', duration: 1 }] })
+    expect((await lists.expandLazy([lazyItem('BVa')]))[0].cover).toBe('view.jpg')
+    expect((await lists.expandLazy([lazyItem('BVa', { cover: 'list.jpg' })]))[0].cover).toBe('list.jpg')
+  })
+
   it('没有懒加载条目时原样返回同一个数组', async () => {
     const items: MediaItem[] = [{ key: 'ugc:BV1:1', kind: 'ugc', title: 't', index: 1, cid: 1 }]
     expect(await lists.expandLazy(items)).toBe(items)

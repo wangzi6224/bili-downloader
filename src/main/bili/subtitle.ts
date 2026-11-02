@@ -13,7 +13,7 @@ export interface ViewPoint {
   content: string
 }
 
-interface Line {
+export interface SubtitleLine {
   from: number
   to: number
   content: string
@@ -28,20 +28,23 @@ function srtTime(sec: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms % 1000, 3)}`
 }
 
-export function toSrt(lines: Line[]): string {
+export function toSrt(lines: SubtitleLine[]): string {
   return lines
     .map((l, i) => `${i + 1}\n${srtTime(l.from)} --> ${srtTime(l.to)}\n${l.content.trim()}\n`)
     .join('\n')
 }
 
 /** 播放器接口里的字幕列表和进度条分段（章节） */
-export async function fetchPlayerMeta(item: MediaItem): Promise<{ tracks: SubtitleTrack[]; viewPoints: ViewPoint[] }> {
+export async function fetchPlayerMeta(
+  item: Pick<MediaItem, 'kind' | 'bvid' | 'aid' | 'cid' | 'epId'>,
+  opts: { quietAuth?: boolean; noRiskRetry?: boolean } = {}
+): Promise<{ tracks: SubtitleTrack[]; viewPoints: ViewPoint[] }> {
   const params =
     item.kind === 'ugc' ? { bvid: item.bvid, cid: item.cid } : { aid: item.aid, cid: item.cid, ep_id: item.epId }
   const d = await api<{ subtitle?: { subtitles?: SubtitleTrack[] }; view_points?: ViewPoint[] }>(
     'https://api.bilibili.com/x/player/wbi/v2',
     params,
-    { wbi: true }
+    { wbi: true, ...opts }
   )
   return {
     tracks: (d.subtitle?.subtitles ?? []).filter((t) => t.subtitle_url),
@@ -49,12 +52,18 @@ export async function fetchPlayerMeta(item: MediaItem): Promise<{ tracks: Subtit
   }
 }
 
-export async function downloadSubtitle(t: SubtitleTrack): Promise<string | undefined> {
+/** 下载一条字幕的全部台词；地址失效或没有内容时返回 undefined */
+export async function fetchSubtitleLines(t: Pick<SubtitleTrack, 'subtitle_url'>): Promise<SubtitleLine[] | undefined> {
   const url = t.subtitle_url.startsWith('//') ? `https:${t.subtitle_url}` : t.subtitle_url
   const res = await fetch(url, { headers: BASE_HEADERS })
   if (!res.ok) return undefined
-  const json = (await res.json()) as { body?: Line[] }
-  return json.body?.length ? toSrt(json.body) : undefined
+  const json = (await res.json()) as { body?: SubtitleLine[] }
+  return json.body?.length ? json.body : undefined
+}
+
+export async function downloadSubtitle(t: SubtitleTrack): Promise<string | undefined> {
+  const lines = await fetchSubtitleLines(t)
+  return lines && toSrt(lines)
 }
 
 const ISO639: [RegExp, string][] = [

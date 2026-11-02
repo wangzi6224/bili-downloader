@@ -332,7 +332,8 @@ describe('和真实的工具一起', () => {
       downloadedKeys: () => ['ugc:BV1:1'],
       settings: () => ({ downloadDir: join(dir, 'dl'), defaultQn: 80, defaults: DEFAULT_OPTIONS }) as never,
       updateSettings: (p) => p as never,
-      authState: async () => ({ loggedIn: false })
+      authState: async () => ({ loggedIn: false }),
+      lookup: {} as never
     })
     const port = await freePort()
     const s = new McpServer(tools)

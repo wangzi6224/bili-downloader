@@ -9,7 +9,7 @@ import { parseUgc } from './ugc'
 
 type Resolved = Exclude<Target, { type: 'short' }>
 
-async function expandShort(url: string): Promise<Resolved | null> {
+export async function expandShort(url: string): Promise<Resolved | null> {
   const res = await fetch(url, { headers: BASE_HEADERS, redirect: 'follow' })
   const target = parseInput(res.url)
   return target?.type === 'short' ? null : target

@@ -53,7 +53,13 @@ export function setAuthExpiredHook(fn: () => void): void {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-export async function biliFetch(url: string, init: RequestInit = {}, retries = 3): Promise<Response> {
+export async function biliFetch(
+  url: string,
+  init: RequestInit = {},
+  retries = 3,
+  /** 风控（HTTP 412）时直接失败：接着请求只会让风控更严，由调用方决定什么时候再试 */
+  noRiskRetry = false
+): Promise<Response> {
   let lastErr: unknown
   for (let i = 0; i <= retries; i++) {
     try {
@@ -71,6 +77,7 @@ export async function biliFetch(url: string, init: RequestInit = {}, retries = 3
     } catch (e) {
       lastErr = e
       if (init.signal?.aborted) throw e
+      if (noRiskRetry && e instanceof BiliError && e.code === 412) throw e
       console.warn(`[retry ${i + 1}/${retries}] ${url.split('?')[0]}: ${(e as Error).message}`)
       if (i < retries) await sleep(1000 * 2 ** i)
     }
@@ -131,7 +138,7 @@ function toQuery(params: Params = {}): Record<string, string | number> {
 }
 
 /** 返回完整 JSON，不检查 code */
-export async function getRaw<T>(url: string, params?: Params, opts: { wbi?: boolean } = {}): Promise<BiliJson<T>> {
+export async function getRaw<T>(url: string, params?: Params, opts: { wbi?: boolean; noRiskRetry?: boolean } = {}): Promise<BiliJson<T>> {
   await ensureBuvid()
   const q = toQuery(params)
   let qs: string
@@ -141,7 +148,7 @@ export async function getRaw<T>(url: string, params?: Params, opts: { wbi?: bool
   } else {
     qs = new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString()
   }
-  const res = await biliFetch(qs ? `${url}?${qs}` : url)
+  const res = await biliFetch(qs ? `${url}?${qs}` : url, {}, 3, opts.noRiskRetry)
   try {
     return (await res.json()) as BiliJson<T>
   } catch {
@@ -149,8 +156,17 @@ export async function getRaw<T>(url: string, params?: Params, opts: { wbi?: bool
   }
 }
 
-/** 检查 code === 0 并返回 data / result；-101 视为登录失效 */
-export async function api<T>(url: string, params?: Params, opts: { wbi?: boolean } = {}): Promise<T> {
+/**
+ * 检查 code === 0 并返回 data / result；-101 视为登录失效。
+ * quietAuth：-101 只抛错，不触发全局的登录失效流程。检索类请求用它：
+ * 部分接口没登录就返回 -101，不能因此让下载队列进入等待登录。
+ * noRiskRetry：HTTP 412 时不重试，见 biliFetch
+ */
+export async function api<T>(
+  url: string,
+  params?: Params,
+  opts: { wbi?: boolean; quietAuth?: boolean; noRiskRetry?: boolean } = {}
+): Promise<T> {
   let json = await getRaw<T>(url, params, opts)
   if (opts.wbi && (json.code === -352 || json.code === -403)) {
     // 签名密钥可能已轮换，刷新后重试一次
@@ -158,7 +174,7 @@ export async function api<T>(url: string, params?: Params, opts: { wbi?: boolean
     json = await getRaw<T>(url, params, opts)
   }
   if (json.code === -101) {
-    onAuthExpired()
+    if (!opts.quietAuth) onAuthExpired()
     throw new AuthExpiredError()
   }
   if (json.code !== 0) throw new BiliError(json.message || `接口错误（${json.code}）`, json.code)

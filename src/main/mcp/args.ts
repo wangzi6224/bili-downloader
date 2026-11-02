@@ -52,6 +52,21 @@ export function requireEnum<T extends string>(args: Args, key: string, allowed: 
   return v as T
 }
 
+export function optionalEnum<T extends string>(args: Args, key: string, allowed: readonly T[], fallback: T): T {
+  return missing(args[key]) ? fallback : requireEnum(args, key, allowed)
+}
+
+/** YYYY-MM-DD 按北京时间解析，返回这一天开始时的秒级时间戳 */
+export function optionalDay(args: Args, key: string): number | undefined {
+  const v = optionalString(args, key)
+  if (v === undefined) return undefined
+  const ms = Date.parse(`${v}T00:00:00+08:00`)
+  // 转回日期再比较：2 月 31 日这样的日期有时不会报错，而是顺延到下个月
+  const same = !Number.isNaN(ms) && new Date(ms + 8 * 3600_000).toISOString().slice(0, 10) === v
+  if (!same) throw invalid(`${key} 必须是 YYYY-MM-DD 格式的日期`)
+  return ms / 1000
+}
+
 export function optionalEnums<T extends string>(args: Args, key: string, allowed: readonly T[]): T[] | undefined {
   const list = optionalStrings(args, key)
   const bad = list?.find((x) => !allowed.includes(x as T))

@@ -68,7 +68,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 
 ### AI integration
 
-- A local [MCP](https://modelcontextprotocol.io) server lets AI clients such as Claude parse links, queue downloads and check progress (see **MCP server** below)
+- A local [MCP](https://modelcontextprotocol.io) server lets AI clients such as Claude search videos, read their details, parse links, queue downloads and check progress (see **MCP server** below)
 
 ## Installation
 
@@ -161,12 +161,17 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | --- | --- |
 | `get_status` | Login and premium (大会员) status, queue summary, free space in the download folder, and anything that needs attention. Call it first |
 | `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…); lists are paged through automatically. Item ids are stable; results can be read in pages and multi-part videos expanded |
-| `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice |
+| `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice Pass `videos` to submit several videos, such as search results, as one batch |
 | `get_batch_status` | Batch progress: counts per status, speed, estimated time left, actual quality, failure reasons. `wait_seconds` waits for changes |
 | `list_batches` | Recently submitted batches |
 | `list_tasks` | List tasks page by page, filtered by batch, status or title |
 | `control_tasks` | Pause, resume, retry, redownload or remove tasks in bulk (downloaded files are never deleted) |
 | `get_settings` / `update_settings` | Read or change the download folder, concurrency, threads, speed limit, auto-retry, default quality and download options |
+| `search_videos` | Search videos by keyword, with date and duration filters. Results include title, uploader, publish time, duration, play count, category, tags and a short description |
+| `search_users` | Search uploaders by name and return their `mid`, followers, video count and a space link for `parse_link` |
+| `get_video_info` | Details for up to 20 videos at once: stats, tags, description, part count and collection, optionally with related videos |
+| `get_video_transcript` | What a video is about: Bilibili's AI summary and outline, chapters and full subtitles, which can be read in pieces. Availability varies by video, and the AI summary and AI subtitles need a login |
+| `get_video_comments` | Comments and their replies with cursor paging, sorted by popularity or time. Without a login Bilibili returns only a few |
 
 The server listens only on `127.0.0.1` (the port is configurable), requires the Bearer token, and checks the `Host` / `Origin` headers to prevent DNS rebinding. You can regenerate the token at any time.
 

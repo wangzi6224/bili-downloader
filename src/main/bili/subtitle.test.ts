@@ -8,7 +8,7 @@ vi.mock('electron', () => ({}))
 vi.mock('./http', async (orig) => ({ ...(await orig<typeof import('./http')>()), api }))
 
 const { BASE_HEADERS } = await import('./http')
-const { fetchPlayerMeta, downloadSubtitle, subtitleTrackMeta, toFfmetadataChapters } = await import('./subtitle')
+const { fetchPlayerMeta, fetchSubtitleLines, downloadSubtitle, subtitleTrackMeta, toFfmetadataChapters } = await import('./subtitle')
 
 const PLAYER = 'https://api.bilibili.com/x/player/wbi/v2'
 const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>()
@@ -32,6 +32,12 @@ describe('fetchPlayerMeta', () => {
     expect(api).toHaveBeenLastCalledWith(PLAYER, { bvid: 'BV1', cid: 2 }, { wbi: true })
     await fetchPlayerMeta(item('pgc'))
     expect(api).toHaveBeenLastCalledWith(PLAYER, { aid: 3, cid: 2, ep_id: 4 }, { wbi: true })
+  })
+
+  it('可以带上 quietAuth', async () => {
+    api.mockResolvedValue({})
+    await fetchPlayerMeta({ kind: 'ugc', bvid: 'BV1', cid: 2 }, { quietAuth: true })
+    expect(api).toHaveBeenLastCalledWith(PLAYER, { bvid: 'BV1', cid: 2 }, { wbi: true, quietAuth: true })
   })
 
   it('过滤没有地址的字幕和无效章节', async () => {
@@ -58,6 +64,18 @@ describe('fetchPlayerMeta', () => {
   it('没有字幕和章节时返回空数组', async () => {
     api.mockResolvedValue({ subtitle: {} })
     expect(await fetchPlayerMeta(item('cheese'))).toEqual({ tracks: [], viewPoints: [] })
+  })
+})
+
+describe('fetchSubtitleLines', () => {
+  it('返回全部台词，失败或没有内容时返回 undefined', async () => {
+    const body = [{ from: 1, to: 2, content: '你好' }]
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ body })))
+    expect(await fetchSubtitleLines({ subtitle_url: '//x' })).toEqual(body)
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 404 }))
+    expect(await fetchSubtitleLines({ subtitle_url: '//x' })).toBeUndefined()
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ body: [] })))
+    expect(await fetchSubtitleLines({ subtitle_url: '//x' })).toBeUndefined()
   })
 })
 

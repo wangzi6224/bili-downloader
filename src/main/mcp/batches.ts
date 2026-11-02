@@ -234,7 +234,8 @@ export class BatchManager extends EventEmitter {
     return {
       batch_id: b.id,
       title: b.title,
-      url: b.url,
+      // 一次提交多个视频的批次没有单一链接
+      url: b.url || undefined,
       request_id: b.requestId,
       created_at: new Date(b.createdAt).toISOString(),
       state: this.state(b, counts),
@@ -274,7 +275,7 @@ export class BatchManager extends EventEmitter {
     return {
       batch_id: b.id,
       title: b.title,
-      url: b.url,
+      url: b.url || undefined,
       request_id: b.requestId,
       created_at: new Date(b.createdAt).toISOString(),
       state,

@@ -68,7 +68,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 
 ### Intégration IA
 
-- Un serveur [MCP](https://modelcontextprotocol.io) local permet à des clients IA comme Claude d'analyser des liens, d'ajouter des téléchargements et de suivre leur progression (voir **Serveur MCP** plus bas)
+- Un serveur [MCP](https://modelcontextprotocol.io) local permet à des clients IA comme Claude de rechercher des vidéos, de consulter leurs informations, d'analyser des liens, d'ajouter des téléchargements et de suivre leur progression (voir **Serveur MCP** plus bas)
 
 ## Installation
 
@@ -161,12 +161,17 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | --- | --- |
 | `get_status` | État de connexion et de l'abonnement premium (大会员), résumé de la file, espace libre du dossier de téléchargement et points à surveiller. À appeler en premier |
 | `parse_link` | Analyse un lien bilibili (vidéo, collection, animé, cours, favoris, créateur…) ; les listes sont parcourues page par page automatiquement. Les identifiants des éléments sont stables ; les résultats se lisent par tranches et les vidéos en plusieurs parties peuvent être dépliées |
-| `download_batch` | Ajoute tout un lien ou les éléments choisis en un seul lot et renvoie un `batch_id`. Les éléments déjà téléchargés sont ignorés par défaut, et renvoyer la même demande ne télécharge rien deux fois |
+| `download_batch` | Ajoute tout un lien ou les éléments choisis en un seul lot et renvoie un `batch_id`. Les éléments déjà téléchargés sont ignorés par défaut, et renvoyer la même demande ne télécharge rien deux fois Avec `videos`, plusieurs vidéos, par exemple des résultats de recherche, forment un seul lot |
 | `get_batch_status` | Avancement d'un lot : nombre de tâches par état, vitesse, temps restant estimé, qualité obtenue, causes d'échec. `wait_seconds` attend les changements |
 | `list_batches` | Lots soumis récemment |
 | `list_tasks` | Liste les tâches par pages, filtrées par lot, état ou titre |
 | `control_tasks` | Met en pause, reprend, relance, retélécharge ou retire des tâches en masse (les fichiers téléchargés ne sont jamais supprimés) |
 | `get_settings` / `update_settings` | Lit ou modifie le dossier de téléchargement, le nombre de téléchargements simultanés, les threads, la limite de débit, les nouvelles tentatives automatiques, la qualité et les options par défaut |
+| `search_videos` | Recherche des vidéos par mot-clé, avec filtres par date et durée. Les résultats indiquent le titre, l'auteur, la date de publication, la durée, le nombre de vues, la catégorie, les tags et un résumé de la description |
+| `search_users` | Recherche des créateurs par nom et renvoie leur `mid`, leurs abonnés, leur nombre de vidéos et un lien d'espace utilisable avec `parse_link` |
+| `get_video_info` | Détails de 20 vidéos maximum à la fois : statistiques, tags, description, nombre de parties et collection, avec les vidéos associées en option |
+| `get_video_transcript` | Le contenu d'une vidéo : résumé et plan générés par l'IA de Bilibili, chapitres et sous-titres complets, lisibles par morceaux. Ils ne sont pas disponibles pour toutes les vidéos, et le résumé et les sous-titres IA exigent une connexion |
+| `get_video_comments` | Commentaires et réponses avec pagination par curseur, triés par popularité ou par date. Sans connexion, Bilibili n'en renvoie que quelques-uns |
 
 Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le jeton Bearer et vérifie les en-têtes `Host` / `Origin` pour empêcher le DNS rebinding. Vous pouvez régénérer le jeton à tout moment.
 

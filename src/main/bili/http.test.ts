@@ -222,6 +222,29 @@ describe('api', () => {
     expect(err).toBeInstanceOf(BiliError)
     expect(err).toMatchObject({ code: -101, message: '登录已失效，请重新登录' })
   })
+
+  it('noRiskRetry：HTTP 412 时只请求一次，其他错误照常重试', async () => {
+    const { api } = await load()
+    const calls = () => fetchMock.mock.calls.filter(([u]) => String(u).startsWith(API)).length
+    handler = () => new Response('', { status: 412 })
+    await expect(api(API, undefined, { noRiskRetry: true })).rejects.toMatchObject({ code: 412 })
+    expect(calls()).toBe(1)
+    vi.useFakeTimers()
+    handler = () => new Response('', { status: 500 })
+    const p = api(API, undefined, { noRiskRetry: true }).catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(7000)
+    expect(await p).toMatchObject({ code: 500 })
+    expect(calls()).toBe(5)
+  })
+
+  it('quietAuth：-101 照常抛错，但不触发登录失效钩子', async () => {
+    const { api, setAuthExpiredHook, AuthExpiredError } = await load()
+    handler = () => json({ code: -101, message: '账号未登录' })
+    const hook = vi.fn()
+    setAuthExpiredHook(hook)
+    await expect(api(API, undefined, { quietAuth: true })).rejects.toBeInstanceOf(AuthExpiredError)
+    expect(hook).not.toHaveBeenCalled()
+  })
 })
 
 describe('WBI 签名', () => {

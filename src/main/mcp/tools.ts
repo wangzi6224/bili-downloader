@@ -6,6 +6,8 @@ import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
 import { normalizeOptions } from '@shared/options'
 import type { AuthState, MediaItem, ParseResult, Settings } from '@shared/types'
+import { lazyVideo } from '../bili/lists'
+import type { BiliLookup } from '../bili/lookup'
 import { toDiskError } from '../download/errors'
 import {
   optionalBool,
@@ -35,6 +37,7 @@ import {
   type McpStatus,
   type TaskSummary
 } from './format'
+import { LOOKUP_DEFINITIONS, LookupTools } from './lookupTools'
 import { ParseCache } from './parseCache'
 
 export interface McpDeps {
@@ -49,6 +52,8 @@ export interface McpDeps {
   settings: () => Settings
   updateSettings: (patch: Partial<Settings>) => Settings
   authState: () => Promise<AuthState>
+  /** 搜索、视频详情、评论这些检索接口 */
+  lookup: BiliLookup
 }
 
 export interface ToolDefinition {
@@ -75,6 +80,9 @@ const MAX_ITEMS = 5000
 const DEFAULT_ITEMS = 1000
 /** 展开分P要逐个请求接口，一次最多展开这么多 */
 const MAX_EXPAND = 100
+/** 一次提交多个视频时最多这么多个 */
+const MAX_VIDEOS = 200
+const MAX_TITLE = 100
 /** 剩余空间低于这个值时提醒 */
 const LOW_SPACE = 5 * 1024 ** 3
 
@@ -157,12 +165,20 @@ const DEFINITIONS: ToolDefinition[] = [
     title: '批量下载',
     description:
       '把链接里的条目作为一个批次加入下载队列，立即返回 batch_id，列表视频的分P在后台展开。' +
-      '用 ids 选条目，或 all=true 全部下载；单个视频的链接可以都不传。已下载过的默认跳过，已在队列里的不会重复添加。' +
+      '用 ids 选条目，或 all=true 全部下载；单个视频的链接可以都不传。' +
+      '要下载的视频来自不同链接（例如搜索结果）时用 videos 一次提交，不要逐个调用。已下载过的默认跳过，已在队列里的不会重复添加。' +
       '原批次还没结束时，同样的请求再提交会返回原来的批次（deduplicated=true）；传 request_id 可以明确指定幂等键。',
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: '和 parse_link 用的同一个链接' },
+        url: { type: 'string', description: '和 parse_link 用的同一个链接。和 videos 只能用一个' },
+        videos: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: MAX_VIDEOS,
+          description: `BV 号、av 号、视频链接或 b23.tv 短链（例如 search_videos 结果里的 url），合成一个批次，最多 ${MAX_VIDEOS} 个，其中短链和 av 号最多 20 个。每个视频下载全部分P，链接里的 p 参数不生效；合集、收藏夹这类列表链接用 url`
+        },
+        title: { type: 'string', maxLength: MAX_TITLE, description: 'videos 的批次名，多个视频时也是保存的文件夹名。默认：一个视频用它的标题，多个用“N 个视频”' },
         ids: { type: 'array', items: { type: 'string' }, description: 'parse_link 返回的条目 id（视频的 id 表示它的全部分P）' },
         all: { type: 'boolean', description: '下载全部条目（最多 max_items 条）' },
         max_items: {
@@ -176,8 +192,7 @@ const DEFINITIONS: ToolDefinition[] = [
         subdir: { type: 'string', description: '保存到下载目录下的这个子目录' },
         skip_downloaded: { type: 'boolean', description: '跳过下载历史里已有的条目，默认 true' },
         request_id: { type: 'string', description: '幂等键：同一个 request_id 只会创建一个批次' }
-      },
-      required: ['url']
+      }
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
@@ -334,9 +349,10 @@ const SETTING_EFFECTS: Record<string, string> = {
 
 /** MCP 的工具：参数校验、调用下载队列和批次管理，结果整理成 agent 好用的 JSON */
 export class McpTools implements ToolSet {
-  readonly definitions = DEFINITIONS
+  readonly definitions = [...DEFINITIONS, ...LOOKUP_DEFINITIONS]
   readonly batches: BatchManager
   private cache: ParseCache
+  private lookup: LookupTools
 
   constructor(
     private deps: McpDeps,
@@ -344,10 +360,12 @@ export class McpTools implements ToolSet {
   ) {
     this.batches = new BatchManager(deps.batchFile, deps.queue, deps.expandLazy, deps.downloadedKeys)
     this.cache = new ParseCache(deps.parseAll, now)
+    this.lookup = new LookupTools(deps.lookup, deps.authState, { now })
   }
 
   async call(name: string, args: Args): Promise<ToolResult> {
     try {
+      if (this.lookup.handles(name)) return result(await this.lookup.call(name, args))
       switch (name) {
         case 'get_status':
           return result(await this.getStatus())
@@ -483,35 +501,107 @@ export class McpTools implements ToolSet {
     }
   }
 
+  /** url 和 videos 两种提交方式共用的参数 */
+  private batchArgs(args: Args) {
+    const s = this.deps.settings()
+    const qn = optionalInt(args, 'qn', 1, 1000, s.defaultQn)
+    return {
+      downloadDir: s.downloadDir,
+      options: normalizeOptions({ ...s.defaults, ...parseOptions(args.options, 'options') }, qn),
+      subdir: optionalSubdir(args, 'subdir'),
+      skipDownloaded: optionalBool(args, 'skip_downloaded', true),
+      requestId: optionalString(args, 'request_id')
+    }
+  }
+
+  private deduplicated(dup: Batch) {
+    const resumed = this.batches.resume(dup)
+    return {
+      ...this.submitted(dup),
+      deduplicated: true,
+      hint: resumed
+        ? '同样的请求之前提交过，已经接着处理上次没加入队列的条目'
+        : `同样的请求之前提交过，没有重复添加；用 get_batch_status batch_id=${dup.id} 查看进度，要重新提交请换一个 request_id`
+    }
+  }
+
   private async downloadBatch(args: Args) {
-    const url = requireString(args, 'url')
+    const videos = optionalStrings(args, 'videos')
+    if (videos) {
+      for (const key of ['url', 'ids', 'all', 'max_items']) {
+        if (args[key] !== undefined && args[key] !== null) throw invalid(`videos 和 ${key} 不能一起用`)
+      }
+      const list = [...new Set(videos)]
+      if (!list.length) throw invalid('videos 不能是空的')
+      if (list.length > MAX_VIDEOS) throw invalid(`videos 一次最多 ${MAX_VIDEOS} 个，分成几批提交`)
+      return this.downloadVideos(list, args)
+    }
+    return this.downloadUrl(requireString(args, 'url'), args)
+  }
+
+  /**
+   * 视频合成一个批次：当成列表里还没展开分P的视频，
+   * 后台展开、风控时中断续传、按每一P跳过下载过的，都和收藏夹一样处理
+   */
+  private async downloadVideos(list: string[], args: Args) {
+    const { downloadDir, options, subdir, skipDownloaded, requestId } = this.batchArgs(args)
+    const custom = optionalString(args, 'title')
+    if (custom && custom.length > MAX_TITLE) throw invalid(`title 不能超过 ${MAX_TITLE} 个字`)
+    const { bvids, rejected } = await this.lookup.resolveBvids(list)
+    const unique = [...new Set(bvids)]
+    if (!unique.length) {
+      throw invalid(`videos 里没有能下载的视频（例如 ${rejected.slice(0, 3).join('、')}），合集、收藏夹这类列表链接用 url`)
+    }
+    // 只有一个视频时和直接传链接一样，用它的标题和封面；多个时后台展开才知道
+    const only = unique.length === 1 ? await this.lookup.videoDetail(unique[0]) : undefined
+    const title = custom ?? only?.title ?? `${unique.length} 个视频`
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify(['videos', [...unique].sort(), title, options, subdir, skipDownloaded]))
+      .digest('hex')
+
+    // 这条路径不解析链接，要自己确认登录：没登录时清晰度和可下载的内容都不对
+    const auth = await this.deps.authState()
+    if (!auth.loggedIn) throw new ToolError('NOT_LOGGED_IN', '应用没有登录', '请让用户在 B站下载器 里登录，然后再试')
+
+    const rejectedOut = rejected.length ? rejected : undefined
+    // 查重和提交之间不能有 await：并行的相同请求才不会都建出批次
+    const dup = this.batches.findDuplicate(requestId, fingerprint)
+    if (dup) return { ...this.deduplicated(dup), rejected: rejectedOut }
+    const b = this.batches.submit({
+      requestId,
+      fingerprint,
+      url: '',
+      title,
+      cover: only?.cover ?? '',
+      kind: 'ugc',
+      options,
+      dir: subdir ? join(downloadDir, subdir) : downloadDir,
+      items: unique.map((bvid, i) => lazyVideo({ bvid, title: only?.title ?? bvid, pic: only?.cover }, i + 1)),
+      skipDownloaded,
+      skipped: { downloaded: 0, unavailable: 0 }
+    })
+    const notes = [`用 get_batch_status batch_id=${b.id} wait_seconds=30 查看进度`]
+    if (rejected.length) notes.unshift(`${rejected.length} 项查不到对应的视频，已忽略，见 rejected`)
+    return { ...this.submitted(b), rejected: rejectedOut, hint: notes.join('；') }
+  }
+
+  private async downloadUrl(url: string, args: Args) {
     const ids = optionalStrings(args, 'ids')
     const all = optionalBool(args, 'all', false)
     if (ids && all) throw invalid('ids 和 all 只能用一个')
-    const s = this.deps.settings()
-    const qn = optionalInt(args, 'qn', 1, 1000, s.defaultQn)
-    const options = normalizeOptions({ ...s.defaults, ...parseOptions(args.options, 'options') }, qn)
-    const subdir = optionalSubdir(args, 'subdir')
-    const skipDownloaded = optionalBool(args, 'skip_downloaded', true)
-    const requestId = optionalString(args, 'request_id')
+    const { downloadDir, options, subdir, skipDownloaded, requestId } = this.batchArgs(args)
     const maxItems = optionalInt(args, 'max_items', 1, MAX_ITEMS, DEFAULT_ITEMS)
     const fingerprint = createHash('sha256')
       .update(JSON.stringify([url, ids ? [...ids].sort() : all, options, subdir, skipDownloaded]))
       .digest('hex')
 
     const dup = this.batches.findDuplicate(requestId, fingerprint)
-    if (dup) {
-      const resumed = this.batches.resume(dup)
-      return {
-        ...this.submitted(dup),
-        deduplicated: true,
-        hint: resumed
-          ? '同样的请求之前提交过，已经接着处理上次没加入队列的条目'
-          : `同样的请求之前提交过，没有重复添加；用 get_batch_status batch_id=${dup.id} 查看进度，要重新提交请换一个 request_id`
-      }
-    }
+    if (dup) return this.deduplicated(dup)
 
     const p = await this.cache.get(url, maxItems)
+    // 等解析的时候可能有相同的请求先提交了
+    const earlier = this.batches.findDuplicate(requestId, fingerprint)
+    if (earlier) return this.deduplicated(earlier)
     const r = p.result
     let chosen: MediaItem[]
     let unknown: string[] = []
@@ -563,7 +653,7 @@ export class McpTools implements ToolSet {
       kind: r.kind,
       meta: r.meta,
       options,
-      dir: subdir ? join(s.downloadDir, subdir) : s.downloadDir,
+      dir: subdir ? join(downloadDir, subdir) : downloadDir,
       items: fresh,
       skipDownloaded,
       skipped: { downloaded, unavailable }

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
-import type { EnqueueRequest, Settings, TaskInfo } from '@shared/types'
+import type { EnqueueRequest, MediaItem, MediaMeta, Settings, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
@@ -99,6 +99,13 @@ async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
   }
 }
 
+/** 多个视频合成的批次没有共同的元数据，作者、简介这些用视频自己的 */
+function videoMeta(item: MediaItem): MediaMeta | undefined {
+  if (!item.owner) return undefined
+  const { owner, ownerMid, pubdate, desc, bvid } = item
+  return { owner, ownerMid, pubdate, desc, url: bvid && `https://www.bilibili.com/video/${bvid}` }
+}
+
 /**
  * 下载队列。事件：
  * - update(tasks)：任务列表变化（节流）
@@ -188,7 +195,7 @@ export class DownloadManager extends EventEmitter {
         relBase: renderTemplate(template, nameValues),
         template,
         nameValues,
-        meta: req.meta,
+        meta: req.meta ?? videoMeta(item),
         series: episodic && multi,
         seriesCover: req.cover,
         dir: req.dir ?? settings.downloadDir,

@@ -68,7 +68,7 @@
 
 ### AI 集成
 
-- 本地 [MCP](https://modelcontextprotocol.io) 服务，让 Claude 等 AI 客户端解析链接、创建下载、查看进度（见下文 **MCP 服务**）
+- 本地 [MCP](https://modelcontextprotocol.io) 服务，让 Claude 等 AI 客户端搜索视频、查看视频信息、解析链接、创建下载、查看进度（见下文 **MCP 服务**）
 
 ## 安装
 
@@ -161,12 +161,17 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | --- | --- |
 | `get_status` | 登录和大会员状态、队列汇总、下载目录剩余空间和需要注意的提示，建议第一个调用 |
 | `parse_link` | 解析 B站链接（视频、合集、番剧、课程、收藏夹、UP 主等），列表会自动翻页；条目 id 稳定，可分段读取、展开分P |
-| `download_batch` | 把整个链接或选中的条目作为一个批次加入下载，返回 `batch_id`；默认跳过已下载的，重复提交不会重复下载 |
+| `download_batch` | 把整个链接或选中的条目作为一个批次加入下载，返回 `batch_id`；默认跳过已下载的，重复提交不会重复下载；用 `videos` 可以把多个视频（例如搜索结果）合成一个批次 |
 | `get_batch_status` | 批次进度：各状态的数量、速度、预计剩余时间、实际清晰度、失败原因；可以用 `wait_seconds` 等待 |
 | `list_batches` | 最近提交的批次 |
 | `list_tasks` | 分页查看任务，可按批次、状态、标题筛选 |
 | `control_tasks` | 批量暂停、继续、重试、重新下载或移除任务（不会删除已下载的文件） |
 | `get_settings` / `update_settings` | 读取、修改下载目录、并发数、线程数、限速、自动重试、默认清晰度和下载选项 |
+| `search_videos` | 按关键词搜索视频，可按发布时间、时长筛选；结果含标题、UP 主、发布时间、时长、播放量、分类、标签和简介摘要 |
+| `search_users` | 按名字搜索 UP 主，返回 `mid`、粉丝数、投稿数和可以传给 `parse_link` 的空间链接 |
+| `get_video_info` | 一次查询最多 20 个视频的详情：播放点赞等数据、标签、简介、分P数、所属合集，可以带相关视频 |
+| `get_video_transcript` | 了解视频主要内容：B站的 AI 总结和提纲、章节、字幕全文，字幕可以分段读取。不是每个视频都有，AI 总结和 AI 字幕要登录 |
+| `get_video_comments` | 读取评论和楼中楼，游标翻页，可按热门或时间排序；没有登录时 B站只给几条 |
 
 服务只监听 `127.0.0.1`（端口可改），必须带 Bearer 令牌，并校验 `Host` / `Origin` 以防 DNS 重绑定。令牌可以随时重新生成。
 

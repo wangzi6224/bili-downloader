@@ -4,14 +4,14 @@ import { api, BiliError } from './http'
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 /** "03:32" / "1:02:03" → 秒 */
-const toSeconds = (s: string | number | undefined): number | undefined => {
+export const toSeconds = (s: string | number | undefined): number | undefined => {
   if (typeof s === 'number') return s
   if (!s) return undefined
   return s.split(':').reduce((acc, x) => acc * 60 + Number(x), 0)
 }
 
 /** 列表里的视频：只有 aid/bvid，cid 和分P要等加入下载时再查 */
-function lazyVideo(
+export function lazyVideo(
   v: { aid?: number; bvid: string; title: string; pic?: string; cover?: string; duration?: number | string; pubdate?: number; desc?: string },
   index: number,
   owner?: { mid?: number; name?: string },
@@ -356,6 +356,7 @@ interface ViewPages {
   bvid: string
   aid: number
   title: string
+  pic?: string
   pubdate?: number
   desc?: string
   owner?: { mid: number; name: string }
@@ -391,6 +392,7 @@ export async function expandLazy(
           page: p.page,
           cid: p.cid,
           aid: v.aid,
+          cover: item.cover ?? v.pic,
           duration: p.duration,
           pubdate: v.pubdate ?? item.pubdate,
           desc: v.desc ?? item.desc,
