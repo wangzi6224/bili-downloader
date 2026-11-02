@@ -20,6 +20,10 @@ export interface BrowserProfile {
   blocked?: boolean
   /** 浏览器正在运行，Cookie 数据库被它锁着（Windows 上的 Chrome 系浏览器），要先退出浏览器 */
   locked?: boolean
+  /** 同一浏览器里最近用过的配置档 */
+  lastUsed?: boolean
+  /** Windows 上这个浏览器启用了应用绑定加密（v20）：退出浏览器后也可能读不出登录信息 */
+  appBound?: boolean
 }
 
 /** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区 */

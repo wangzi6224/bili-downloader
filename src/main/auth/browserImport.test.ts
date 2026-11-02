@@ -269,6 +269,57 @@ describe('listBrowserProfiles（macOS）', () => {
     ])
   })
 
+  it('记下最近用过的配置档', () => {
+    const root = support('Google/Chrome')
+    chromeDb(join(root, 'Default/Cookies'), [])
+    chromeDb(join(root, 'Profile 1/Cookies'), [])
+    writeFileSync(join(root, 'Local State'), JSON.stringify({ profile: { last_used: 'Profile 1' } }))
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.lastUsed])).toEqual([
+      ['chrome::Default', undefined],
+      ['chrome::Profile 1', true]
+    ])
+  })
+
+  it('macOS 上的应用绑定加密字段不算数', () => {
+    const root = support('Google/Chrome')
+    chromeDb(join(root, 'Default/Cookies'), [])
+    writeFileSync(join(root, 'Local State'), JSON.stringify({ os_crypt: { app_bound_encrypted_key: 'x' } }))
+    expect(bi.listBrowserProfiles()[0].appBound).toBeUndefined()
+  })
+
+  it('Opera 的根目录就是配置档，Cookie 库在 Network/ 下也认', () => {
+    chromeDb(support('com.operasoftware.Opera/Network/Cookies'), [sess()])
+    expect(bi.listBrowserProfiles()).toEqual([{ id: 'opera::Default', browser: 'Opera', profile: 'Default', hasBiliLogin: true }])
+  })
+
+  it('新版 Opera 的配置档和其他 Chromium 一样放在 Default、Profile * 下', () => {
+    const root = support('com.operasoftware.Opera')
+    chromeDb(join(root, 'Default/Network/Cookies'), [sess()])
+    chromeDb(join(root, 'Profile 1/Cookies'), [])
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.hasBiliLogin])).toEqual([
+      ['opera::Default', true],
+      ['opera::Profile 1', false]
+    ])
+  })
+
+  it('根目录和 Default 都有 Cookie 库时用 Default，升级留下的旧文件不算', () => {
+    const root = support('com.operasoftware.Opera')
+    chromeDb(join(root, 'Cookies'), [])
+    chromeDb(join(root, 'Default/Network/Cookies'), [sess()])
+    expect(bi.listBrowserProfiles().map((p) => [p.id, p.hasBiliLogin])).toEqual([['opera::Default', true]])
+  })
+
+  it.skipIf(isRoot)('Opera 目录没有读取权限时是 blocked，不当成没安装', () => {
+    mkdirSync(support('com.operasoftware.Opera'), { recursive: true })
+    lock(support('com.operasoftware.Opera'))
+    expect(bi.listBrowserProfiles()).toEqual([{ id: 'opera::', browser: 'Opera', profile: '无权限读取', hasBiliLogin: false, blocked: true }])
+  })
+
+  it('Opera 的 Cookie 库不在根目录时不列出', () => {
+    mkdirSync(support('com.operasoftware.Opera'), { recursive: true })
+    expect(bi.listBrowserProfiles()).toEqual([])
+  })
+
   it('Local State 缺失或损坏时用目录名', () => {
     chromeDb(support('Microsoft Edge/Default/Cookies'), [])
     chromeDb(support('BraveSoftware/Brave-Browser/Default/Cookies'), [])
@@ -410,6 +461,47 @@ describe('importFromBrowser（macOS）', () => {
     )
   })
 
+  it('Opera 用自己的钥匙串条目', async () => {
+    chromeDb(support('com.operasoftware.Opera/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: encV24('.bilibili.com', 'opera-sess') }
+    ])
+    await bi.importFromBrowser('opera::Default')
+    expect(m.execFile.mock.calls[0][1]).toEqual(['find-generic-password', '-w', '-s', 'Opera Safe Storage'])
+    expect(lastImported().map((c) => c.value)).toEqual(['opera-sess'])
+  })
+
+  it('错误带上原因代码，界面用的 message 不变', async () => {
+    await expect(bi.importFromBrowser('chrome::Nope')).rejects.toMatchObject({ code: 'not_found', message: '找不到这个浏览器配置档，或没有读取权限' })
+    chromeDb(support('Google/Chrome/Default/Cookies'), [])
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toMatchObject({ code: 'no_login' })
+    chromeDb(support('Microsoft Edge/Default/Cookies'), [sess()])
+    m.checkAuth.mockResolvedValueOnce({ loggedIn: false, expired: true }).mockResolvedValueOnce(IN)
+    await expect(bi.importFromBrowser('edge::Default')).rejects.toMatchObject({ code: 'expired' })
+    chromeDb(support('Vivaldi/Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: encV24('.bilibili.com', 's') }])
+    m.execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: ExecCb) =>
+      cb(Object.assign(new Error('denied'), { code: 128 }), '', '')
+    )
+    await expect(bi.importFromBrowser('vivaldi::Default')).rejects.toMatchObject({ code: 'keychain_denied' })
+  })
+
+  it.skipIf(isRoot)('没有读取权限时错误代码是 blocked', async () => {
+    mkdirSync(support('Google/Chrome'), { recursive: true })
+    lock(support('Google/Chrome'))
+    await expect(bi.importFromBrowser('chrome::')).rejects.toMatchObject({ code: 'blocked' })
+  })
+
+  it('读完 Cookie 后 shouldApply 说不用了，就不替换登录', async () => {
+    chromeDb(support('Microsoft Edge/Default/Cookies'), [sess()])
+    await expect(bi.importFromBrowser('edge::Default', { shouldApply: () => false })).rejects.toMatchObject({ code: 'cancelled' })
+    expect(m.clearBiliCookies).not.toHaveBeenCalled()
+  })
+
+  it('isProfileLocked：没找到、没权限、没被锁都是 false', () => {
+    chromeDb(support('Google/Chrome/Default/Cookies'), [])
+    expect(bi.isProfileLocked('chrome::Default')).toBe(false)
+    expect(bi.isProfileLocked('chrome::Nope')).toBe(false)
+  })
+
   it('Firefox：毫秒过期时间换算成秒，字段逐一映射', async () => {
     firefoxDb(support('Firefox/Profiles/abc.default/cookies.sqlite'), [
       { host: '.bilibili.com', name: 'SESSDATA', value: 's', expiry: FUTURE * 1000, secure: 1, httpOnly: 1, sameSite: 1 },
@@ -466,6 +558,106 @@ describe('importFromBrowser（macOS）', () => {
     writeFileSync(support('Firefox/Profiles/abc.default/cookies.sqlite'), 'not a database')
     await expect(bi.importFromBrowser('firefox::abc.default')).rejects.toThrow()
     expect(leftovers()).toEqual([])
+  })
+})
+
+// ---------- Safari：只有 macOS，文件是自己的二进制格式 ----------
+
+const MAC_EPOCH = 978307200
+const safariFile = (): string => join(home, 'Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies')
+
+/** 一页一条的 binarycookies，详细格式的测试在 safariCookies.test.ts */
+function binaryCookies(rows: { domain: string; name: string; value: string; expires?: number }[]): Buffer {
+  const records = rows.map((r) => {
+    const strings = [r.domain, r.name, '/', r.value].map((s) => Buffer.from(`${s}\0`))
+    const head = Buffer.alloc(56)
+    let at = head.length
+    strings.forEach((s, i) => {
+      head.writeUInt32LE(at, 16 + i * 4)
+      at += s.length
+    })
+    head.writeUInt32LE(at, 0)
+    head.writeDoubleLE((r.expires ?? FUTURE) - MAC_EPOCH, 40)
+    return Buffer.concat([head, ...strings])
+  })
+  const pages = records.map((rec) => {
+    const head = Buffer.alloc(12)
+    head.writeUInt32BE(0x100, 0)
+    head.writeUInt32LE(1, 4)
+    head.writeUInt32LE(12, 8)
+    return Buffer.concat([head, rec])
+  })
+  const head = Buffer.alloc(8 + pages.length * 4)
+  head.write('cook', 0, 'latin1')
+  head.writeUInt32BE(pages.length, 4)
+  pages.forEach((p, i) => head.writeUInt32BE(p.length, 8 + i * 4))
+  return Buffer.concat([head, ...pages])
+}
+
+function safari(rows: Parameters<typeof binaryCookies>[0], file = safariFile()): void {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, binaryCookies(rows))
+}
+
+describe('Safari', () => {
+  beforeEach(() => load('darwin'))
+
+  const LOGIN = { domain: '.bilibili.com', name: 'SESSDATA', value: 'safari-sess' }
+
+  it('沙盒容器里的文件优先，排在其他浏览器后面', () => {
+    safari([LOGIN])
+    safari([], join(home, 'Library/Cookies/Cookies.binarycookies'))
+    chromeDb(support('Google/Chrome/Default/Cookies'), [])
+    expect(bi.listBrowserProfiles()).toEqual([
+      { id: 'chrome::Default', browser: 'Chrome', profile: 'Default', hasBiliLogin: false },
+      { id: 'safari::Default', browser: 'Safari', profile: 'Default', hasBiliLogin: true }
+    ])
+  })
+
+  it('旧版 macOS 的文件在 ~/Library/Cookies', () => {
+    safari([LOGIN], join(home, 'Library/Cookies/Cookies.binarycookies'))
+    expect(bi.listBrowserProfiles().map((p) => [p.id, p.hasBiliLogin])).toEqual([['safari::Default', true]])
+  })
+
+  it('过期、其他网站、空值的 SESSDATA 不算登录', () => {
+    safari([
+      { ...LOGIN, expires: PAST },
+      { ...LOGIN, domain: '.evilbilibili.com' },
+      { ...LOGIN, value: '' }
+    ])
+    expect(bi.listBrowserProfiles().map((p) => p.hasBiliLogin)).toEqual([false])
+  })
+
+  it('没有 Cookie 文件时当作没有 Safari', () => {
+    expect(bi.listBrowserProfiles()).toEqual([])
+  })
+
+  it.skipIf(isRoot)('被隐私保护拦下时标记为 blocked，而不是当作没有 Safari', () => {
+    safari([LOGIN])
+    lock(dirname(safariFile()))
+    expect(bi.listBrowserProfiles()).toEqual([{ id: 'safari::', browser: 'Safari', profile: '无权限读取', hasBiliLogin: false, blocked: true }])
+  })
+
+  it.skipIf(isRoot)('文件看得到但读不了时也是 blocked，导入时报 blocked', async () => {
+    safari([LOGIN])
+    lock(safariFile())
+    expect(bi.listBrowserProfiles()).toEqual([
+      { id: 'safari::Default', browser: 'Safari', profile: 'Default', hasBiliLogin: false, blocked: true }
+    ])
+    await expect(bi.importFromBrowser('safari::Default')).rejects.toMatchObject({ code: 'blocked', message: '没有权限读取 Safari 的数据' })
+  })
+
+  it('导入时只留 B站的 Cookie，不碰钥匙串', async () => {
+    safari([LOGIN, { domain: '.example.com', name: 'other', value: 'x' }])
+    expect(await bi.importFromBrowser('safari::Default')).toBe(IN)
+    expect(m.execFile).not.toHaveBeenCalled()
+    expect(lastImported().map((c) => [c.domain, c.name, c.value, c.expires])).toEqual([['.bilibili.com', 'SESSDATA', 'safari-sess', FUTURE]])
+  })
+
+  it('Linux 上不找 Safari', async () => {
+    safari([LOGIN])
+    await load('linux')
+    expect(bi.listBrowserProfiles()).toEqual([])
   })
 })
 
@@ -538,6 +730,13 @@ describe('importFromBrowser（Linux）', () => {
       ['SESSDATA', 'v10-sess'],
       ['bili_jct', 'plain-jct']
     ])
+  })
+
+  it('Opera 沿用 Chromium 的密钥环条目', async () => {
+    chromeDb(config('opera/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: encLinux('opera-sess', 'v11') }])
+    await bi.importFromBrowser('opera::Default')
+    expect(m.execFile.mock.calls[0][1]).toEqual(['lookup', 'application', 'chromium'])
+    expect(lastImported().map((c) => c.value)).toEqual(['opera-sess'])
   })
 
   it('有 v11 时用 secret-tool 从密钥环取密码，v10、v11 混在一起也能解', async () => {
@@ -627,6 +826,21 @@ describe('Windows browser import', () => {
     })
   }
 
+  it('Opera 在 Roaming 目录下', () => {
+    chromeDb(roamingAppData('Opera Software/Opera Stable/Network/Cookies'), [sess()])
+    expect(bi.listBrowserProfiles().map((p) => [p.id, p.hasBiliLogin])).toEqual([['opera::Default', true]])
+  })
+
+  it('标记启用了应用绑定加密的浏览器', () => {
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [])
+    chromeDb(localAppData('Microsoft/Edge/User Data/Default/Cookies'), [])
+    writeFileSync(join(chromeRoot(), 'Local State'), JSON.stringify({ os_crypt: { app_bound_encrypted_key: 'APPB' } }))
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.appBound])).toEqual([
+      ['chrome::Default', true],
+      ['edge::Default', undefined]
+    ])
+  })
+
   it('用 DPAPI 解开 Local State 主密钥并导入 AES-GCM Cookie', async () => {
     const key = Buffer.alloc(32, 9)
     localState(chromeRoot())
@@ -677,9 +891,10 @@ describe('Windows browser import', () => {
   it('SESSDATA 是应用绑定加密时不尝试 DPAPI，提示应用内登录或手动 Cookie', async () => {
     chromeDb(join(chromeRoot(), 'Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }])
 
-    await expect(bi.importFromBrowser('chrome::Default')).rejects.toThrow(
-      '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
-    )
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toMatchObject({
+      code: 'app_bound',
+      message: '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
+    })
     expect(m.unprotect).not.toHaveBeenCalled()
   })
 
@@ -692,6 +907,20 @@ describe('Windows browser import', () => {
   it('导入时浏览器开着，提示先退出浏览器', async () => {
     chromeDb(join(chromeRoot(), 'Default/Cookies'), [sess()])
     browserRunning()
-    await expect(bi.importFromBrowser('chrome::Default')).rejects.toThrow('Chrome 正在运行，读不到它的登录信息')
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toMatchObject({
+      code: 'locked',
+      message: expect.stringContaining('Chrome 正在运行，读不到它的登录信息')
+    })
+  })
+
+  it('isProfileLocked 看 Cookie 文件是否被占用，其他错误不算', () => {
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [sess()])
+    expect(bi.isProfileLocked('chrome::Default')).toBe(false)
+    browserRunning()
+    expect(bi.isProfileLocked('chrome::Default')).toBe(true)
+    m.copyFileSync.mockImplementation(() => {
+      throw Object.assign(new Error('gone'), { code: 'ENOENT' })
+    })
+    expect(bi.isProfileLocked('chrome::Default')).toBe(false)
   })
 })

@@ -21,6 +21,8 @@ const { statfs } = await import('node:fs/promises')
 const { BiliError, LoginRequiredError } = await import('../bili/http')
 const { McpTools } = await import('./tools')
 type Lookup = import('../bili/lookup').BiliLookup
+type LoginFlow = import('./loginFlow').LoginFlow
+type LoginSnapshot = import('./loginFlow').LoginSnapshot
 
 let dir = ''
 let queue: FakeQueue
@@ -66,6 +68,14 @@ const deps = {
   expandShort: vi.fn()
 }
 
+/** 登录流程：只看工具有没有接到它上面，流程本身在 loginFlow.test.ts */
+const login = {
+  start: vi.fn(async () => {}),
+  wait: vi.fn(async () => {}),
+  browsers: vi.fn(() => []),
+  snapshot: vi.fn((): LoginSnapshot => ({ status: 'idle', tried: [], alsoAvailable: [], auth: { loggedIn: false } }))
+} as unknown as LoginFlow
+
 const call = async (name: string, args: Record<string, unknown> = {}) => {
   const r = await tools.call(name, args)
   expect(JSON.parse(r.content[0].text)).toEqual(JSON.parse(JSON.stringify(r.structuredContent)))
@@ -110,7 +120,8 @@ beforeEach(() => {
       batchFile: join(dir, 'batches.json'),
       downloadedKeys: () => history,
       settings: () => settings,
-      lookup: { searchUsers: deps.searchUsers, fetchVideoDetail: deps.fetchVideoDetail, expandShort: deps.expandShort } as unknown as Lookup
+      lookup: { searchUsers: deps.searchUsers, fetchVideoDetail: deps.fetchVideoDetail, expandShort: deps.expandShort } as unknown as Lookup,
+      login
     },
     () => now
   )
@@ -134,6 +145,8 @@ describe('工具列表和通用错误', () => {
       'control_tasks',
       'get_settings',
       'update_settings',
+      'start_login',
+      'get_login_status',
       'search_videos',
       'search_users',
       'get_video_info',
@@ -162,6 +175,27 @@ describe('工具列表和通用错误', () => {
     expect(await error('parse_link', { url: 'z' })).toEqual({ code: 'FAILED', message: '视频不存在' })
     deps.parseAll.mockRejectedValueOnce('奇怪')
     expect(await error('parse_link', { url: 'w' })).toEqual({ code: 'FAILED', message: '奇怪' })
+  })
+})
+
+describe('登录工具', () => {
+  it('接到登录流程上，参数不对时和其他工具一样报错', async () => {
+    expect(await data('get_login_status')).toMatchObject({ status: 'idle', logged_in: false })
+    expect(await data('start_login', { method: 'qr' })).toMatchObject({ status: 'idle' })
+    expect(login.start).toHaveBeenCalledWith('qr', undefined)
+    expect(await error('start_login', { method: 'x' })).toMatchObject({ code: 'INVALID_ARGS' })
+  })
+
+  it('登录成功时列出被打断的批次', async () => {
+    const { batch_id } = await data('download_batch', { url: 'x', all: true })
+    tools.batches.find(batch_id)!.state = 'interrupted'
+    vi.mocked(login.snapshot).mockReturnValueOnce({
+      status: 'logged_in',
+      tried: [],
+      alsoAvailable: [],
+      auth: { loggedIn: true, user: { mid: 1, uname: 'u', face: '', vipActive: false, vipLabel: '' } }
+    })
+    expect(await data('get_login_status')).toMatchObject({ interrupted_batches: [batch_id] })
   })
 })
 
@@ -195,6 +229,7 @@ describe('get_status', () => {
     r = await data('get_status')
     expect(r.login).toEqual({ logged_in: false })
     expect(r.hints[0]).toContain('没有登录')
+    expect(r.hints[0]).toContain('start_login')
 
     deps.authState.mockResolvedValueOnce({ loggedIn: false, expired: true })
     expect((await data('get_status')).login).toEqual({ logged_in: false, expired: true })

@@ -1,5 +1,7 @@
 import type { AuthState } from '@shared/types'
+import { BiliError } from '../bili/http'
 import { checkAuth } from './authGuard'
+import { ImportError } from './importError'
 import { clearBiliCookies, isBiliHost, setBiliCookies, snapshotCookies, type PlainCookie, type SameSite } from './session'
 
 const HTTP_ONLY = new Set(['SESSDATA'])
@@ -71,23 +73,46 @@ export async function importCookieText(text: string): Promise<AuthState> {
   return replaceLogin(cookies, '这段 Cookie 已经失效，请重新获取')
 }
 
+let lastReplace: Promise<unknown> = Promise.resolve()
+/** 请求本身没有超时，网络卡住时不能让后面排队的导入一直等 */
+const CONFIRM_TIMEOUT = 30_000
+
+function confirmLogin(): Promise<AuthState> {
+  let timer: NodeJS.Timeout
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new BiliError('确认登录超时，请检查网络')), CONFIRM_TIMEOUT)
+  })
+  return Promise.race([checkAuth(), timeout]).finally(() => clearTimeout(timer))
+}
+
 /**
  * 用导入的 cookie 换掉现在的登录，确认登录有效才保留；
- * 无效或确认时出错就写回原来的 cookie，导入失败不会把用户登出
+ * 无效或确认时出错就写回原来的 cookie，导入失败不会把用户登出。
+ * 界面和 MCP 都可能同时导入，一个一个来：两次交叉时后一次会把前一次写到一半的 cookie 当成备份。
+ * shouldApply 在轮到这次时才判断，排队期间用户已经用别的方式登录的话就不替换
  */
-export async function replaceLogin(cookies: PlainCookie[], invalid: string): Promise<AuthState> {
+export function replaceLogin(cookies: PlainCookie[], invalid: string, shouldApply?: () => boolean): Promise<AuthState> {
+  const run = lastReplace.then(() => {
+    if (shouldApply && !shouldApply()) throw new ImportError('cancelled', '这次导入已取消')
+    return swapCookies(cookies, invalid)
+  })
+  lastReplace = run.catch(() => {})
+  return run
+}
+
+async function swapCookies(cookies: PlainCookie[], invalid: string): Promise<AuthState> {
   const backup = await snapshotCookies()
   try {
     await clearBiliCookies()
     await setBiliCookies(cookies)
-    const state = await checkAuth()
-    if (!state.loggedIn) throw new Error(invalid)
+    const state = await confirmLogin()
+    if (!state.loggedIn) throw new ImportError('expired', invalid)
     return state
   } catch (e) {
     try {
       await clearBiliCookies()
       await setBiliCookies(backup)
-      await checkAuth()
+      await confirmLogin()
     } catch (err) {
       console.warn('恢复原来的登录失败', err)
     }

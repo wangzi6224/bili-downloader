@@ -58,6 +58,9 @@ export function summarizeTask(t: TaskInfo) {
 
 export type TaskSummary = ReturnType<typeof summarizeTask>
 
+/** 未登录时告诉 agent 怎么办 */
+export const LOGIN_HINT = '用 start_login 导入用户浏览器里的登录信息（默认优先 Chrome），不行再用 start_login method=qr 弹出扫码窗口'
+
 export type ErrorCode = 'NOT_LOGGED_IN' | 'RATE_LIMITED' | 'INVALID_ARGS' | 'NOT_FOUND' | 'FAILED'
 
 /** 带错误码和下一步提示的工具错误 */
@@ -83,7 +86,7 @@ export function describeError(e: unknown): { code: ErrorCode; message: string; h
   if (e instanceof ToolError) return { code: e.code, message: e.message, hint: e.hint }
   const message = e instanceof Error ? e.message : String(e)
   if (e instanceof LoginRequiredError || e instanceof AuthExpiredError) {
-    return { code: 'NOT_LOGGED_IN', message, hint: '请让用户在 B站下载器 里登录，然后再试' }
+    return { code: 'NOT_LOGGED_IN', message, hint: `${LOGIN_HINT}，登录后再试` }
   }
   if (e instanceof BiliError && RATE_LIMIT_CODES.has(e.code)) {
     return { code: 'RATE_LIMITED', message, hint: '触发了 B站风控，等几分钟再试，不要连续重试' }

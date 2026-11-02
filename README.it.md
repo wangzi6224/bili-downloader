@@ -68,7 +68,7 @@ Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un li
 
 ### Integrazione con l'IA
 
-- Un server [MCP](https://modelcontextprotocol.io) locale permette a client IA come Claude di cercare video, consultarne le informazioni, analizzare link, mettere in coda download e controllarne l'avanzamento (vedi **Server MCP** più avanti)
+- Un server [MCP](https://modelcontextprotocol.io) locale permette a client IA come Claude di accedere, cercare video, consultarne le informazioni, analizzare link, mettere in coda download e controllarne l'avanzamento (vedi **Server MCP** più avanti)
 
 ## Installazione
 
@@ -125,8 +125,8 @@ Al posto di un link puoi anche scrivere queste parole chiave: `稍后再看` o `
 
 Con l'accesso ottieni le qualità e i contenuti a cui il tuo account ha diritto (1080P e oltre, contenuti premium). Ci sono tre modi:
 
-- **从浏览器导入** (Importa dal browser): riutilizza i cookie di accesso di Chrome, Edge, Brave, Arc (solo macOS), Vivaldi, Chromium o Firefox.
-  - macOS protegge i dati di Chrome, Edge e Brave: abilita prima l'app in **Impostazioni di Sistema → Privacy e sicurezza → Accesso completo al disco** e riavviala. L'importazione dai browser basati su Chromium chiede anche l'accesso al Portachiavi.
+- **从浏览器导入** (Importa dal browser): riutilizza i cookie di accesso di Chrome, Edge, Brave, Arc (solo macOS), Vivaldi, Opera, Chromium, Firefox o Safari (solo macOS).
+  - macOS protegge i dati di Chrome, Edge, Brave e Safari: abilita prima l'app in **Impostazioni di Sistema → Privacy e sicurezza → Accesso completo al disco** e riavviala. L'importazione dai browser basati su Chromium chiede anche l'accesso al Portachiavi.
   - Su Linux i browser basati su Chromium conservano la chiave dei cookie nel portachiavi di sistema (GNOME Keyring / libsecret). L'app la legge con `secret-tool` (`sudo apt install libsecret-tools`) e il portachiavi potrebbe chiederti di sbloccarlo. Sono supportati anche Firefox installato tramite Snap o Flatpak e Chromium in versione Snap.
   - Su Windows i browser basati su Chromium bloccano il database dei cookie mentre sono in esecuzione, quindi chiudi completamente il browser (compresi eventuali processi in background) prima di importare. I cookie scritti da Chrome 127 o successivo usano la crittografia legata all'app e non possono essere importati; se il cookie di accesso è tra questi, usa invece l'accesso nell'app oppure incolla una stringa di cookie.
 - **在应用内登录** (Accedi nell'app): apre la pagina di accesso ufficiale di bilibili, con accesso tramite codice QR, password o SMS.
@@ -172,6 +172,10 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_video_info` | Dettagli di massimo 20 video alla volta: statistiche, tag, descrizione, numero di parti e raccolta, con video correlati su richiesta |
 | `get_video_transcript` | Il contenuto di un video: riassunto e scaletta IA di Bilibili, capitoli e sottotitoli completi, leggibili a blocchi. Non sono disponibili per tutti i video, e riassunto e sottotitoli IA richiedono l'accesso |
 | `get_video_comments` | Commenti e risposte con paginazione a cursore, ordinati per popolarità o data. Senza accesso Bilibili ne restituisce solo pochi |
+| `start_login` | Accede quando l'app non è connessa: importa l'accesso dal browser dell'utente (prima Chrome, usando i browser leggibili) oppure apre la finestra di accesso per scansionare il codice QR con `method=qr` |
+| `get_login_status` | Segue l'accesso o elenca i browser del computer. Con `wait_seconds` risponde nel momento in cui l'accesso riesce: è così che l'agente sa che la scansione è finita |
+
+I cookie restano nell'app e non vengono mai restituiti al client IA. Se l'app è già connessa `start_login` non fa nulla, quindi un agente non può cambiare account. Se prima bisogna chiudere un browser (su Windows il database dei cookie è bloccato mentre il browser è in esecuzione), l'app te lo chiede in una finestra di dialogo e solo tu puoi approvare.
 
 Il server ascolta solo su `127.0.0.1` (la porta è configurabile), richiede il token Bearer e controlla le intestazioni `Host` / `Origin` per prevenire il DNS rebinding. Puoi rigenerare il token in qualsiasi momento.
 

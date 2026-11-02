@@ -29,6 +29,7 @@ import {
   countStatuses,
   describeError,
   invalid,
+  LOGIN_HINT,
   mcpStatus,
   STATUSES,
   summarizeTask,
@@ -37,6 +38,8 @@ import {
   type McpStatus,
   type TaskSummary
 } from './format'
+import type { LoginFlow } from './loginFlow'
+import { LOGIN_DEFINITIONS, LoginTools } from './loginTools'
 import { LOOKUP_DEFINITIONS, LookupTools } from './lookupTools'
 import { ParseCache } from './parseCache'
 
@@ -54,6 +57,7 @@ export interface McpDeps {
   authState: () => Promise<AuthState>
   /** 搜索、视频详情、评论这些检索接口 */
   lookup: BiliLookup
+  login: LoginFlow
 }
 
 export interface ToolDefinition {
@@ -349,10 +353,11 @@ const SETTING_EFFECTS: Record<string, string> = {
 
 /** MCP 的工具：参数校验、调用下载队列和批次管理，结果整理成 agent 好用的 JSON */
 export class McpTools implements ToolSet {
-  readonly definitions = [...DEFINITIONS, ...LOOKUP_DEFINITIONS]
+  readonly definitions = [...DEFINITIONS, ...LOGIN_DEFINITIONS, ...LOOKUP_DEFINITIONS]
   readonly batches: BatchManager
   private cache: ParseCache
   private lookup: LookupTools
+  private login: LoginTools
 
   constructor(
     private deps: McpDeps,
@@ -361,11 +366,13 @@ export class McpTools implements ToolSet {
     this.batches = new BatchManager(deps.batchFile, deps.queue, deps.expandLazy, deps.downloadedKeys)
     this.cache = new ParseCache(deps.parseAll, now)
     this.lookup = new LookupTools(deps.lookup, deps.authState, { now })
+    this.login = new LoginTools(deps.login, () => this.batches.list().filter((b) => this.batches.state(b) === 'interrupted').map((b) => b.id))
   }
 
   async call(name: string, args: Args): Promise<ToolResult> {
     try {
       if (this.lookup.handles(name)) return result(await this.lookup.call(name, args))
+      if (this.login.handles(name)) return result(await this.login.call(name, args))
       switch (name) {
         case 'get_status':
           return result(await this.getStatus())
@@ -407,13 +414,13 @@ export class McpTools implements ToolSet {
         if (!auth.user.vipActive) hints.push('不是大会员：4K、1080P 高码率等大会员清晰度拿不到，会自动降到能下载的最高档')
       } else {
         login = { logged_in: false, expired: auth.expired || undefined }
-        hints.push('应用没有登录：解析链接需要登录，请让用户在 B站下载器 里登录')
+        hints.push(`应用没有登录：解析链接需要登录。${LOGIN_HINT}`)
       }
     } catch (e) {
       login = { logged_in: null, error: describeError(e).message }
       hints.push('暂时无法确认登录状态（可能是网络问题）')
     }
-    if (counts.waiting_auth) hints.push(`${counts.waiting_auth} 个任务在等待登录，用户重新登录后会自动继续`)
+    if (counts.waiting_auth) hints.push(`${counts.waiting_auth} 个任务在等待登录，重新登录后会自动继续。${LOGIN_HINT}`)
     if (counts.paused) hints.push(`${counts.paused} 个任务已暂停（应用重启后未完成的任务会自动暂停），可以用 control_tasks action=resume 继续`)
     if (counts.failed) hints.push(`${counts.failed} 个任务失败，可以用 control_tasks action=retry status=failed 重试`)
     if (free !== undefined && free < LOW_SPACE) hints.push('下载目录所在磁盘剩余空间不足 5 GB')
@@ -561,7 +568,7 @@ export class McpTools implements ToolSet {
 
     // 这条路径不解析链接，要自己确认登录：没登录时清晰度和可下载的内容都不对
     const auth = await this.deps.authState()
-    if (!auth.loggedIn) throw new ToolError('NOT_LOGGED_IN', '应用没有登录', '请让用户在 B站下载器 里登录，然后再试')
+    if (!auth.loggedIn) throw new ToolError('NOT_LOGGED_IN', '应用没有登录', `${LOGIN_HINT}，登录后再试`)
 
     const rejectedOut = rejected.length ? rejected : undefined
     // 查重和提交之间不能有 await：并行的相同请求才不会都建出批次

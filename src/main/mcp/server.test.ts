@@ -207,6 +207,20 @@ describe('认证', () => {
   })
 })
 
+describe('停止服务', () => {
+  it('不用等进行中的长轮询，否则改设置、退出应用都要跟着等', async () => {
+    const port = await freePort()
+    const hanging: ToolSet = { definitions: [], call: () => new Promise(() => {}) }
+    const s = new McpServer(hanging)
+    await s.apply({ enabled: true, port, token: TOKEN })
+    const pending = send({ port, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'x' } }) }).catch((e: Error) => e)
+    await vi.waitFor(async () => expect((await send({ port, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }) })).status).toBe(200))
+    await s.stop()
+    expect(await pending).toBeInstanceOf(Error)
+    expect(s.status().running).toBe(false)
+  })
+})
+
 describe('HTTP 状态', () => {
   it('没通过认证时，路径不对也先返回 401', async () => {
     expect((await send({ path: '/nope', headers: { authorization: undefined } })).status).toBe(401)
@@ -333,7 +347,8 @@ describe('和真实的工具一起', () => {
       settings: () => ({ downloadDir: join(dir, 'dl'), defaultQn: 80, defaults: DEFAULT_OPTIONS }) as never,
       updateSettings: (p) => p as never,
       authState: async () => ({ loggedIn: false }),
-      lookup: {} as never
+      lookup: {} as never,
+      login: {} as never
     })
     const port = await freePort()
     const s = new McpServer(tools)

@@ -2,6 +2,10 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron'
 import type { TaskInfo } from '@shared/types'
 import { checkAuth, checkAuthThrottled, getAuthState, logout, onAuthRequired, onLoggedIn, onLoginChanged, requireLogin } from './auth/authGuard'
+import { canCloseBrowser, closeBrowser, confirmCloseBrowser } from './auth/browserClose'
+import { importFromBrowser, isProfileLocked, listBrowserProfiles } from './auth/browserImport'
+import { FULL_DISK_ACCESS_URL } from './auth/importError'
+import { isLoginWindowOpen, openLoginWindow } from './auth/loginWindow'
 import { expandLazy, loadAllPages } from './bili/lists'
 import { biliLookup } from './bili/lookup'
 import { DownloadManager } from './download/manager'
@@ -11,6 +15,7 @@ import { limiter } from './download/rateLimiter'
 import { parseAndRecord, registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
 import { stopsBatch } from './mcp/format'
+import { LoginFlow } from './mcp/loginFlow'
 import { McpServer } from './mcp/server'
 import { McpTools } from './mcp/tools'
 import { applyNetwork } from './net/network'
@@ -270,6 +275,22 @@ async function start(): Promise<void> {
   subs.on('found', ({ title, count }: { title: string; count: number }) => notify('订阅有更新', `“${title}”有 ${count} 个新内容，已加入下载`))
   subs.start()
 
+  const login = new LoginFlow({
+    checkAuth,
+    authState: getAuthState,
+    onLoginChanged,
+    listBrowsers: listBrowserProfiles,
+    importBrowser: importFromBrowser,
+    openQr: openLoginWindow,
+    isQrOpen: isLoginWindowOpen,
+    isLocked: isProfileLocked,
+    canClose: canCloseBrowser,
+    confirmClose: confirmCloseBrowser,
+    closeBrowser,
+    openPermissionSettings: isMac
+      ? () => void shell.openExternal(FULL_DISK_ACCESS_URL).catch((e) => console.warn('打开系统设置失败', e))
+      : undefined
+  })
   const mcpTools = new McpTools({
     parseAll: async (input, maxItems) => loadAllPages(await parseAndRecord(input), { maxItems }),
     expandLazy: (items) => expandLazy(items, undefined, stopsBatch),
@@ -279,7 +300,8 @@ async function start(): Promise<void> {
     settings: getSettings,
     updateSettings,
     authState: () => checkAuthThrottled(60_000),
-    lookup: biliLookup
+    lookup: biliLookup,
+    login
   })
   const mcp = new McpServer(mcpTools)
   void mcp.apply(settings.mcp)
@@ -304,6 +326,7 @@ async function start(): Promise<void> {
     quitting = true
     manager.flush()
     mcpTools.batches.flush()
+    login.dispose()
     subs.stop()
     void mcp.stop()
     updater.stop()

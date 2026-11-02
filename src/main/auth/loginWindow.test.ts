@@ -8,6 +8,7 @@ const m = vi.hoisted(() => ({
   wins: [] as FakeWindow[],
   cookies: undefined as unknown as import('node:events').EventEmitter,
   openExternal: vi.fn(),
+  appFocus: vi.fn(),
   checkAuth: vi.fn(),
   getAuthState: vi.fn(),
   mainWindow: null as unknown
@@ -18,6 +19,7 @@ class FakeWindow extends EventEmitter {
   handler?: OpenHandler
   loadURL = vi.fn()
   focus = vi.fn()
+  show = vi.fn()
   close = vi.fn(() => {
     this.destroyed = true
     this.emit('closed')
@@ -39,6 +41,7 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(function (this: unknown, opts: Record<string, unknown>) {
     return new FakeWindow(opts)
   }),
+  app: { focus: m.appFocus },
   shell: { openExternal: m.openExternal }
 }))
 vi.mock('../windows', () => ({ getMainWindow: () => m.mainWindow }))
@@ -56,6 +59,7 @@ const sess = (value = 'x', removed = false, name = 'SESSDATA') =>
   m.cookies.emit('changed', {}, { name, value }, 'explicit', removed)
 
 let openLoginWindow: typeof import('./loginWindow').openLoginWindow
+let isLoginWindowOpen: typeof import('./loginWindow').isLoginWindowOpen
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -67,7 +71,7 @@ beforeEach(async () => {
   m.getAuthState.mockReturnValue(OUT)
   // 模块里记着正在打开的窗口，每个用例重新加载
   vi.resetModules()
-  ;({ openLoginWindow } = await import('./loginWindow'))
+  ;({ openLoginWindow, isLoginWindowOpen } = await import('./loginWindow'))
 })
 
 afterEach(() => {
@@ -76,7 +80,7 @@ afterEach(() => {
 
 describe('openLoginWindow', () => {
   it('用 B站分区打开登录页，挂在主窗口下', () => {
-    const parent = {}
+    const parent = { isVisible: () => true, isMinimized: () => false }
     m.mainWindow = parent
     void openLoginWindow()
     const [win] = m.wins
@@ -93,12 +97,47 @@ describe('openLoginWindow', () => {
     expect(m.wins[0].opts.parent).toBeUndefined()
   })
 
+  it('主窗口藏在后台时不挂上去，并把应用切到前台', () => {
+    m.mainWindow = { isVisible: () => false }
+    void openLoginWindow()
+    expect(m.wins[0].opts.parent).toBeUndefined()
+    expect(m.appFocus).toHaveBeenCalledWith({ steal: true })
+  })
+
+  it('主窗口最小化时也不挂上去，否则 Windows 上登录窗会跟着看不见', () => {
+    m.mainWindow = { isVisible: () => true, isMinimized: () => true }
+    void openLoginWindow()
+    expect(m.wins[0].opts.parent).toBeUndefined()
+  })
+
+  it('建窗口失败后还能重新打开', async () => {
+    const { BrowserWindow } = await import('electron')
+    vi.mocked(BrowserWindow).mockImplementationOnce(() => {
+      throw new Error('建不出来')
+    })
+    await expect(openLoginWindow()).rejects.toThrow('建不出来')
+    expect(isLoginWindowOpen()).toBe(false)
+    void openLoginWindow()
+    expect(m.wins).toHaveLength(1)
+  })
+
+  it('isLoginWindowOpen 跟着窗口走', async () => {
+    expect(isLoginWindowOpen()).toBe(false)
+    const p = openLoginWindow()
+    expect(isLoginWindowOpen()).toBe(true)
+    m.wins[0].close()
+    await p
+    expect(isLoginWindowOpen()).toBe(false)
+  })
+
   it('重复调用返回同一个 promise，并把窗口提到前面', () => {
     const a = openLoginWindow()
     const b = openLoginWindow()
     expect(b).toBe(a)
     expect(m.wins).toHaveLength(1)
     expect(m.wins[0].focus).toHaveBeenCalledTimes(1)
+    expect(m.wins[0].show).toHaveBeenCalledTimes(1)
+    expect(m.appFocus).toHaveBeenCalledTimes(2)
   })
 })
 

@@ -68,7 +68,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 
 ### Intégration IA
 
-- Un serveur [MCP](https://modelcontextprotocol.io) local permet à des clients IA comme Claude de rechercher des vidéos, de consulter leurs informations, d'analyser des liens, d'ajouter des téléchargements et de suivre leur progression (voir **Serveur MCP** plus bas)
+- Un serveur [MCP](https://modelcontextprotocol.io) local permet à des clients IA comme Claude de se connecter, de rechercher des vidéos, de consulter leurs informations, d'analyser des liens, d'ajouter des téléchargements et de suivre leur progression (voir **Serveur MCP** plus bas)
 
 ## Installation
 
@@ -125,8 +125,8 @@ Vous pouvez aussi saisir ces mots-clés à la place d'un lien : `稍后再看` o
 
 Une fois connecté, vous obtenez les qualités et contenus auxquels votre compte a accès (1080P et plus, contenus premium). Trois méthodes sont possibles :
 
-- **从浏览器导入** (Importer depuis le navigateur) : réutilise les cookies de connexion de Chrome, Edge, Brave, Arc (macOS uniquement), Vivaldi, Chromium ou Firefox.
-  - macOS protège les données de Chrome, Edge et Brave : activez d'abord l'application dans **Réglages Système → Confidentialité et sécurité → Accès complet au disque**, puis redémarrez-la. L'import depuis un navigateur basé sur Chromium demande aussi l'accès au trousseau.
+- **从浏览器导入** (Importer depuis le navigateur) : réutilise les cookies de connexion de Chrome, Edge, Brave, Arc (macOS uniquement), Vivaldi, Opera, Chromium, Firefox ou Safari (macOS uniquement).
+  - macOS protège les données de Chrome, Edge, Brave et Safari : activez d'abord l'application dans **Réglages Système → Confidentialité et sécurité → Accès complet au disque**, puis redémarrez-la. L'import depuis un navigateur basé sur Chromium demande aussi l'accès au trousseau.
   - Sous Linux, les navigateurs basés sur Chromium conservent la clé des cookies dans le trousseau du système (GNOME Keyring / libsecret). L'application la lit avec `secret-tool` (`sudo apt install libsecret-tools`), et le trousseau peut demander à être déverrouillé. Les versions Snap et Flatpak de Firefox, ainsi que Chromium en Snap, sont également prises en charge.
   - Sous Windows, les navigateurs basés sur Chromium verrouillent leur base de données de cookies pendant leur exécution : quittez complètement le navigateur (y compris ses processus en arrière-plan) avant l'import. Les cookies écrits par Chrome 127 ou ultérieur utilisent le chiffrement lié à l'application et ne peuvent pas être importés ; si le cookie de connexion en fait partie, utilisez plutôt la connexion dans l'application ou collez une chaîne de cookies.
 - **在应用内登录** (Se connecter dans l'application) : ouvre la page de connexion officielle de bilibili, avec connexion par QR code, mot de passe ou SMS.
@@ -172,6 +172,10 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_video_info` | Détails de 20 vidéos maximum à la fois : statistiques, tags, description, nombre de parties et collection, avec les vidéos associées en option |
 | `get_video_transcript` | Le contenu d'une vidéo : résumé et plan générés par l'IA de Bilibili, chapitres et sous-titres complets, lisibles par morceaux. Ils ne sont pas disponibles pour toutes les vidéos, et le résumé et les sous-titres IA exigent une connexion |
 | `get_video_comments` | Commentaires et réponses avec pagination par curseur, triés par popularité ou par date. Sans connexion, Bilibili n'en renvoie que quelques-uns |
+| `start_login` | Se connecte quand l'application ne l'est pas : importe la connexion du navigateur de l'utilisateur (Chrome d'abord, en utilisant les navigateurs lisibles), ou ouvre la fenêtre de connexion pour scanner un QR code avec `method=qr` |
+| `get_login_status` | Suit la connexion ou liste les navigateurs de l'ordinateur. Avec `wait_seconds`, il répond dès que la connexion réussit : c'est ainsi que l'agent sait que le scan est terminé |
+
+Les cookies restent dans l'application et ne sont jamais renvoyés au client IA. `start_login` ne fait rien si l'application est déjà connectée : un agent ne peut donc pas changer de compte. S'il faut d'abord fermer un navigateur (Windows verrouille la base de cookies tant qu'il tourne), l'application vous le demande dans une boîte de dialogue et vous seul pouvez l'accepter.
 
 Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le jeton Bearer et vérifie les en-têtes `Host` / `Origin` pour empêcher le DNS rebinding. Vous pouvez régénérer le jeton à tout moment.
 

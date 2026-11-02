@@ -68,7 +68,7 @@ bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동�
 
 ### AI 연동
 
-- 로컬 [MCP](https://modelcontextprotocol.io) 서버를 통해 Claude 같은 AI 클라이언트가 영상 검색, 영상 정보 확인, 링크 분석, 다운로드 추가, 진행 상황 확인 가능(아래 **MCP 서버** 참고)
+- 로컬 [MCP](https://modelcontextprotocol.io) 서버를 통해 Claude 같은 AI 클라이언트가 로그인, 영상 검색, 영상 정보 확인, 링크 분석, 다운로드 추가, 진행 상황 확인 가능(아래 **MCP 서버** 참고)
 
 ## 설치
 
@@ -125,8 +125,8 @@ macOS 12 이상이 필요합니다.
 
 로그인하면 본인 계정으로 시청할 수 있는 화질과 콘텐츠(1080P 이상, 프리미엄 회원 콘텐츠)를 받을 수 있습니다. 방법은 세 가지입니다:
 
-- **从浏览器导入**(브라우저에서 가져오기): Chrome, Edge, Brave, Arc(macOS 전용), Vivaldi, Chromium, Firefox의 로그인 쿠키를 재사용합니다.
-  - Chrome, Edge, Brave의 데이터는 macOS 개인정보 보호 대상이므로 먼저 **시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한**에서 이 앱을 허용하고 앱을 다시 시작하세요. Chromium 계열 브라우저에서 가져올 때는 키체인 접근 허용도 요청됩니다.
+- **从浏览器导入**(브라우저에서 가져오기): Chrome, Edge, Brave, Arc(macOS 전용), Vivaldi, Opera, Chromium, Firefox, Safari(macOS 전용)의 로그인 쿠키를 재사용합니다.
+  - Chrome, Edge, Brave, Safari의 데이터는 macOS 개인정보 보호 대상이므로 먼저 **시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한**에서 이 앱을 허용하고 앱을 다시 시작하세요. Chromium 계열 브라우저에서 가져올 때는 키체인 접근 허용도 요청됩니다.
   - Linux에서는 Chromium 계열 브라우저가 쿠키 암호화 키를 시스템 키링(GNOME Keyring / libsecret)에 보관합니다. 앱은 `secret-tool`(`sudo apt install libsecret-tools`로 설치)로 이 키를 읽으며, 이때 키링 잠금 해제를 요청받을 수 있습니다. Snap·Flatpak으로 설치한 Firefox와 Snap 버전 Chromium도 지원합니다.
   - Windows에서는 Chromium 계열 브라우저가 실행 중에 쿠키 데이터베이스를 잠그므로, 가져오기 전에 브라우저를 완전히 종료하세요(백그라운드 프로세스 포함). Chrome 127 이상에서 기록된 쿠키는 앱 바인딩 암호화를 사용하므로 가져올 수 없습니다. 로그인 쿠키가 여기에 해당하면 대신 앱 안에서 로그인하거나 쿠키 문자열을 붙여 넣으세요.
 - **在应用内登录**(앱 안에서 로그인): bilibili 공식 로그인 페이지를 열며 QR 코드, 비밀번호, SMS 로그인을 지원합니다.
@@ -172,6 +172,10 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_video_info` | 한 번에 최대 20개 영상의 상세 정보 조회: 통계, 태그, 설명, 파트 수, 컬렉션, 선택 시 관련 영상 포함 |
 | `get_video_transcript` | 영상의 주요 내용 확인: Bilibili AI 요약과 개요, 챕터, 자막 전문을 가져오며 자막은 나누어 읽을 수 있음. 모든 영상에 있지는 않고, AI 요약과 AI 자막은 로그인 필요 |
 | `get_video_comments` | 댓글과 답글을 커서로 넘겨 가며 조회하고 인기순이나 시간순으로 정렬. 로그인하지 않으면 Bilibili가 몇 개만 반환 |
+| `start_login` | 앱이 로그인되어 있지 않을 때 로그인: 사용자 브라우저의 로그인 정보를 가져오거나(Chrome 우선, 읽을 수 있는 브라우저부터 사용) `method=qr`로 로그인 창을 열어 QR 코드를 스캔 |
+| `get_login_status` | 로그인 진행 상황 확인, 이 컴퓨터의 브라우저 목록 조회. `wait_seconds`를 주면 로그인에 성공하는 즉시 반환되므로 에이전트가 스캔 완료를 알 수 있음 |
+
+쿠키는 앱 안에만 저장되며 AI 클라이언트에는 반환되지 않습니다. 이미 로그인되어 있으면 `start_login`은 아무것도 하지 않으므로 에이전트가 계정을 바꿀 수 없습니다. 브라우저를 먼저 닫아야 할 때(Windows에서는 브라우저 실행 중 쿠키 데이터베이스가 잠깁니다)는 앱이 대화상자로 묻고, 사용자 본인만 승인할 수 있습니다.
 
 서버는 `127.0.0.1`에서만 수신하며(포트 변경 가능), Bearer 토큰이 필수이고, DNS 리바인딩을 막기 위해 `Host` / `Origin` 헤더를 검사합니다. 토큰은 언제든 다시 생성할 수 있습니다.
 

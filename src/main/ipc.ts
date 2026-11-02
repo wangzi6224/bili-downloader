@@ -13,6 +13,7 @@ import type {
 import { checkAuth, ensureLoggedIn, getAuthState, logout, requireLogin } from './auth/authGuard'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
 import { importCookieText } from './auth/cookieImport'
+import { FULL_DISK_ACCESS_URL } from './auth/importError'
 import { openLoginWindow } from './auth/loginWindow'
 import { biliSession } from './auth/session'
 import { AUDIO_STREAM_INFO } from './bili/audio'
@@ -216,7 +217,5 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   handle('clipboard:read', () => clipboard.readText())
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
   handle('shell:showInFolder', (path: string) => shell.showItemInFolder(path))
-  handle('shell:openFullDiskAccess', () =>
-    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles')
-  )
+  handle('shell:openFullDiskAccess', () => shell.openExternal(FULL_DISK_ACCESS_URL))
 }

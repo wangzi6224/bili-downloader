@@ -57,7 +57,8 @@ export function LoginDialog() {
 
   const expired = auth && !auth.loggedIn && auth.expired
   const withLogin = profiles?.filter((p) => p.hasBiliLogin) ?? []
-  const blocked = profiles?.filter((p) => p.blocked) ?? []
+  // Safari 没有完全磁盘访问权限时总是读不了，已经有别的浏览器可以导入就不用提醒
+  const blocked = profiles?.filter((p) => p.blocked && (p.browser !== 'Safari' || !withLogin.length)) ?? []
   const locked = profiles?.filter((p) => p.locked) ?? []
   const withoutLogin = profiles?.filter((p) => !p.hasBiliLogin && !p.blocked && !p.locked) ?? []
 
@@ -136,7 +137,7 @@ export function LoginDialog() {
                 未登录 B站：{withoutLogin.map((p) => `${p.browser}（${p.profile}）`).join('、')}
               </div>
             )}
-            {withLogin.some((p) => p.browser !== 'Firefox') && (
+            {withLogin.some((p) => p.browser !== 'Firefox' && p.browser !== 'Safari') && (
               <div className="text-xs text-subtle">{sysText.chromiumAuthHint}</div>
             )}
           </div>

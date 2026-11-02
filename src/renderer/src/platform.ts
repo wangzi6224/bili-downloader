@@ -21,7 +21,7 @@ const MAC: PlatformText = {
   quitKey: '⌘Q',
   pasteKey: '⌘V',
   av1Hint: '最省空间，需 M1 以后的 Mac',
-  browsers: 'Chrome、Edge、Brave、Arc、Vivaldi、Chromium、Firefox；Safari 暂不支持',
+  browsers: 'Chrome、Edge、Brave、Arc、Vivaldi、Opera、Chromium、Firefox、Safari',
   chromiumAuthHint: '导入 Chrome 系浏览器时 macOS 会弹出钥匙串授权，请点“允许”。'
 }
 
@@ -32,7 +32,7 @@ const LINUX: PlatformText = {
   quitKey: 'Ctrl+Q',
   pasteKey: 'Ctrl+V',
   av1Hint: '最省空间，较旧的电脑播放可能卡顿',
-  browsers: 'Chrome、Edge、Brave、Vivaldi、Chromium、Firefox',
+  browsers: 'Chrome、Edge、Brave、Vivaldi、Opera、Chromium、Firefox',
   chromiumAuthHint: 'Chrome 系浏览器的登录信息存在系统密钥环里，导入时如果弹出解锁密钥环，请输入登录密码。'
 }
 
@@ -43,7 +43,7 @@ const WINDOWS: PlatformText = {
   quitKey: 'Ctrl+Q',
   pasteKey: 'Ctrl+V',
   av1Hint: '最省空间，较旧的电脑播放可能卡顿',
-  browsers: 'Chrome、Edge、Brave、Vivaldi、Chromium、Firefox',
+  browsers: 'Chrome、Edge、Brave、Vivaldi、Opera、Chromium、Firefox',
   chromiumAuthHint: 'Windows 使用当前用户的 DPAPI 保护浏览器密钥；新版 Chrome 或 Edge 的应用绑定加密无法导入，请改用应用内登录或手动粘贴 Cookie。'
 }
 

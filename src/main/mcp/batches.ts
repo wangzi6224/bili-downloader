@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import type { DownloadOptions, EnqueueRequest, MediaItem, MediaKind, MediaMeta, TaskInfo } from '@shared/types'
 import type { EnqueueResult } from '../download/manager'
 import { readJsonArray, writeJson } from '../store'
-import { countStatuses, describeError, mcpStatus, stopsBatch, summarizeTask, totalSpeed, type McpStatus } from './format'
+import { countStatuses, describeError, LOGIN_HINT, mcpStatus, stopsBatch, summarizeTask, totalSpeed, type McpStatus } from './format'
 
 /** MCP 用到的下载队列操作（DownloadManager 的子集，方便测试） */
 export interface TaskQueue {
@@ -309,7 +309,7 @@ export class BatchManager extends EventEmitter {
           ? `获取视频分P时出错（${b.error}），已经停下，还有 ${b.pending.length} 个条目没加入队列；过一会儿调用 control_tasks action=resume batch_id=${id} 继续`
           : `应用退出时还有 ${b.pending.length} 个条目没加入队列，调用 control_tasks action=resume batch_id=${id} 继续`
       case 'waiting_auth':
-        return '登录已失效，请让用户在 B站下载器 里重新登录，登录后会自动继续'
+        return `登录已失效，重新登录后会自动继续。${LOGIN_HINT}`
       case 'downloading':
       case 'queued':
         return counts.retrying

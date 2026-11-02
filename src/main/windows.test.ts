@@ -6,12 +6,13 @@ import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from '
 const h = vi.hoisted(() => ({ focus: vi.fn(), showMessageBox: vi.fn() }))
 vi.mock('electron', () => ({ app: { focus: h.focus }, dialog: { showMessageBox: h.showMessageBox } }))
 
-function fakeWindow(o: { destroyed?: boolean; fullScreen?: boolean; visible?: boolean } = {}) {
-  const state = { destroyed: o.destroyed ?? false, fullScreen: o.fullScreen ?? false, visible: o.visible ?? true }
+function fakeWindow(o: { destroyed?: boolean; fullScreen?: boolean; visible?: boolean; minimized?: boolean } = {}) {
+  const state = { destroyed: o.destroyed ?? false, fullScreen: o.fullScreen ?? false, visible: o.visible ?? true, minimized: o.minimized ?? false }
   return Object.assign(new EventEmitter(), {
     isDestroyed: () => state.destroyed,
     isFullScreen: () => state.fullScreen,
     isVisible: () => state.visible,
+    isMinimized: () => state.minimized,
     setFullScreen: vi.fn((v: boolean) => {
       state.fullScreen = v
     }),
@@ -38,6 +39,7 @@ describe('showDialog', () => {
 
   it.each([
     ['窗口隐藏', () => use(fakeWindow({ visible: false }))],
+    ['窗口最小化', () => use(fakeWindow({ minimized: true }))],
     ['没有窗口', () => {}]
   ])('%s时单独弹出', (_, arrange) => {
     arrange()

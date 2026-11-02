@@ -9,6 +9,8 @@
 - MCP 服务可以检索 B站了：`search_videos` 按关键词搜索视频，结果带发布时间、播放量、分类、标签和简介摘要，可以按时间和时长筛选；`search_users` 搜索 UP 主
 - MCP 新增 `get_video_info` 批量查看视频详情和相关视频，`get_video_transcript` 查看 AI 总结、章节和字幕，`get_video_comments` 读取评论和楼中楼
 - MCP 的 `download_batch` 可以用 `videos` 把多个视频（例如搜索结果）合成一个批次下载
+- MCP 新增 `start_login`：应用没有登录时，AI 助手可以导入浏览器里的登录信息（默认优先 Chrome），也可以弹出登录窗口扫码；新增 `get_login_status`，登录成功时立即返回。Cookie 不会交给 AI 助手；需要关闭浏览器时由应用弹窗询问你本人
+- 可以从 Opera 和 Safari（仅 macOS，需要完全磁盘访问权限）导入登录
 
 ## 0.8.0 - 2026-10-30
 

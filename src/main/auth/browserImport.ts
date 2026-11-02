@@ -1,12 +1,14 @@
 import { execFile } from 'node:child_process'
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto'
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { AuthState, BrowserProfile } from '@shared/types'
 import { replaceLogin } from './cookieImport'
 import { unprotect } from './dpapi'
+import { ImportError } from './importError'
+import { parseBinaryCookies } from './safariCookies'
 import { isBiliHost, type PlainCookie, type SameSite } from './session'
 
 const IS_MAC = process.platform === 'darwin'
@@ -19,6 +21,8 @@ interface ChromiumBrowser {
   root: string
   /** 加密 Cookie 的密码存在哪：macOS 是钥匙串里的条目名，Linux 是密钥环里 application 属性的值；Windows 不用（主密钥在 Local State 里） */
   secret: string
+  /** 根目录本身也可能是配置档：旧版 Opera 没有 Default 这层，新版和其他 Chromium 一样 */
+  flat?: boolean
 }
 
 // 数据文件夹在模块加载时按 HOME 算好（测试里换了 HOME 要重新加载模块）
@@ -34,6 +38,7 @@ const CHROMIUM: ChromiumBrowser[] = IS_MAC
       { key: 'brave', name: 'Brave', root: join(SUPPORT, 'BraveSoftware/Brave-Browser'), secret: 'Brave Safe Storage' },
       { key: 'arc', name: 'Arc', root: join(SUPPORT, 'Arc/User Data'), secret: 'Arc Safe Storage' },
       { key: 'vivaldi', name: 'Vivaldi', root: join(SUPPORT, 'Vivaldi'), secret: 'Vivaldi Safe Storage' },
+      { key: 'opera', name: 'Opera', root: join(SUPPORT, 'com.operasoftware.Opera'), secret: 'Opera Safe Storage', flat: true },
       { key: 'chromium', name: 'Chromium', root: join(SUPPORT, 'Chromium'), secret: 'Chromium Safe Storage' }
     ]
   : IS_WINDOWS
@@ -42,14 +47,16 @@ const CHROMIUM: ChromiumBrowser[] = IS_MAC
         { key: 'edge', name: 'Edge', root: join(LOCAL, 'Microsoft/Edge/User Data'), secret: '' },
         { key: 'brave', name: 'Brave', root: join(LOCAL, 'BraveSoftware/Brave-Browser/User Data'), secret: '' },
         { key: 'vivaldi', name: 'Vivaldi', root: join(LOCAL, 'Vivaldi/User Data'), secret: '' },
+        { key: 'opera', name: 'Opera', root: join(ROAMING, 'Opera Software/Opera Stable'), secret: '', flat: true },
         { key: 'chromium', name: 'Chromium', root: join(LOCAL, 'Chromium/User Data'), secret: '' }
       ]
-    : // Edge 和 Vivaldi 在 Linux 上沿用 Chromium、Chrome 的密钥环条目
+    : // Edge、Opera 和 Vivaldi 在 Linux 上沿用 Chromium、Chrome 的密钥环条目
     [
       { key: 'chrome', name: 'Chrome', root: join(CONFIG, 'google-chrome'), secret: 'chrome' },
       { key: 'edge', name: 'Edge', root: join(CONFIG, 'microsoft-edge'), secret: 'chromium' },
       { key: 'brave', name: 'Brave', root: join(CONFIG, 'BraveSoftware/Brave-Browser'), secret: 'brave' },
       { key: 'vivaldi', name: 'Vivaldi', root: join(CONFIG, 'vivaldi'), secret: 'chrome' },
+      { key: 'opera', name: 'Opera', root: join(CONFIG, 'opera'), secret: 'chromium', flat: true },
       { key: 'chromium', name: 'Chromium', root: join(CONFIG, 'chromium'), secret: 'chromium' },
       // Ubuntu 软件商店（snap）装的 Chromium
       { key: 'chromium-snap', name: 'Chromium', root: join(homedir(), 'snap/chromium/common/chromium'), secret: 'chromium' }
@@ -68,6 +75,14 @@ const FIREFOX_ROOTS: string[] = IS_MAC
       join(homedir(), 'snap/firefox/common/.mozilla/firefox'),
       join(homedir(), '.var/app/org.mozilla.firefox/.mozilla/firefox')
     ]
+
+/** 新版 macOS 上 Safari 的数据在沙盒容器里，旧版在 ~/Library/Cookies */
+const SAFARI_FILES: string[] = IS_MAC
+  ? [
+      join(homedir(), 'Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies'),
+      join(homedir(), 'Library/Cookies/Cookies.binarycookies')
+    ]
+  : []
 
 // ---------- Chromium 解密（导出供单元测试） ----------
 
@@ -149,7 +164,7 @@ function withDbCopy<T>(file: string, fn: (db: DatabaseSync) => T): T {
 interface Found {
   profile: BrowserProfile
   cookieFile: string
-  browser: ChromiumBrowser | 'firefox'
+  browser: ChromiumBrowser | 'firefox' | 'safari'
 }
 
 const isPermissionError = (e: unknown): boolean => ['EPERM', 'EACCES'].includes((e as { code?: string }).code ?? '')
@@ -175,22 +190,43 @@ function chromiumProfiles(b: ChromiumBrowser): Found[] {
   }
 }
 
-function readChromiumProfiles(b: ChromiumBrowser, root: string): Found[] {
-  let names: Record<string, { name?: string }> = {}
+interface LocalState {
+  profile?: { info_cache?: Record<string, { name?: string }>; last_used?: string }
+  os_crypt?: { app_bound_encrypted_key?: string }
+}
+
+function readLocalState(root: string): LocalState {
   try {
-    names = JSON.parse(readFileSync(join(root, 'Local State'), 'utf8')).profile?.info_cache ?? {}
+    return JSON.parse(readFileSync(join(root, 'Local State'), 'utf8')) as LocalState
   } catch {
     // 没有 Local State 就用目录名
+    return {}
   }
+}
+
+function readChromiumProfiles(b: ChromiumBrowser, root: string): Found[] {
+  const state = readLocalState(root)
+  const names = state.profile?.info_cache ?? {}
+  const dirs = readdirSync(root).filter((dir) => dir === 'Default' || dir.startsWith('Profile '))
   const out: Found[] = []
-  for (const dir of readdirSync(root)) {
-    if (dir !== 'Default' && !dir.startsWith('Profile ')) continue
+  for (const dir of b.flat ? [...dirs, ''] : dirs) {
     const cookieFile = [join(root, dir, 'Cookies'), join(root, dir, 'Network/Cookies')].find(existsSync)
     if (!cookieFile) continue
+    const name = dir || 'Default'
+    // 升级后根目录可能还留着旧文件，Default 里的才是在用的
+    if (out.some((f) => f.profile.id === `${b.key}::${name}`)) continue
     out.push({
       browser: b,
       cookieFile,
-      profile: { id: `${b.key}::${dir}`, browser: b.name, profile: names[dir]?.name || dir, hasBiliLogin: false }
+      profile: {
+        id: `${b.key}::${name}`,
+        browser: b.name,
+        profile: names[name]?.name || name,
+        hasBiliLogin: false,
+        lastUsed: state.profile?.last_used === name || undefined,
+        // 只说明启用了这种加密，旧 Cookie 可能还是 v10，要读了才知道
+        appBound: (IS_WINDOWS && Boolean(state.os_crypt?.app_bound_encrypted_key)) || undefined
+      }
     })
   }
   return out
@@ -219,12 +255,32 @@ function firefoxProfiles(root: string): Found[] {
     }))
 }
 
+/** 系统的隐私保护拦下时 existsSync 只会返回 false，看着就像没装 Safari，要看具体的错误码 */
+function safariProfiles(): Found[] {
+  for (const file of SAFARI_FILES) {
+    try {
+      statSync(file)
+      return [
+        {
+          browser: 'safari',
+          cookieFile: file,
+          profile: { id: 'safari::Default', browser: 'Safari', profile: 'Default', hasBiliLogin: false }
+        }
+      ]
+    } catch (e) {
+      if (isPermissionError(e)) return [blockedEntry('safari', 'Safari')]
+    }
+  }
+  return []
+}
+
 function findAll(): Found[] {
-  return [...CHROMIUM.flatMap(chromiumProfiles), ...FIREFOX_ROOTS.flatMap(firefoxProfiles)]
+  return [...CHROMIUM.flatMap(chromiumProfiles), ...FIREFOX_ROOTS.flatMap(firefoxProfiles), ...safariProfiles()]
 }
 
 function hasSessData(f: Found): boolean {
   const now = Date.now() / 1000
+  if (f.browser === 'safari') return readSafari(f).some((c) => c.name === 'SESSDATA' && c.value && (c.expires ?? Infinity) > now)
   return withDbCopy(f.cookieFile, (db) => {
     if (f.browser === 'firefox') {
       const rows = db.prepare(`SELECT host, expiry FROM moz_cookies WHERE name = 'SESSDATA'`).all()
@@ -260,11 +316,9 @@ function keychainPassword(service: string): Promise<string> {
       if (err) {
         const code = (err as { code?: number }).code
         reject(
-          new Error(
-            code === 44
-              ? `钥匙串里没有找到“${service}”`
-              : `没有拿到钥匙串授权（${service}），请在系统弹窗里点“允许”`
-          )
+          code === 44
+            ? new Error(`钥匙串里没有找到“${service}”`)
+            : new ImportError('keychain_denied', `没有拿到钥匙串授权（${service}），请在系统弹窗里点“允许”`)
         )
       } else resolve(stdout.trim())
     })
@@ -355,7 +409,7 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
 async function windowsCookies(b: ChromiumBrowser, rows: CookieRow[], version: number): Promise<PlainCookie[]> {
   const sealed = rows.filter((r) => !r.value && (r.encrypted_value as Uint8Array).length)
   const bound = sealed.filter((r) => isAppBound(r.encrypted_value as Uint8Array))
-  if (bound.some((r) => r.name === 'SESSDATA')) throw new Error(APP_BOUND_COOKIE_ERROR)
+  if (bound.some((r) => r.name === 'SESSDATA')) throw new ImportError('app_bound', APP_BOUND_COOKIE_ERROR)
   const aes = sealed.filter((r) => encryptedPrefix(r.encrypted_value as Uint8Array))
   const legacy = sealed.filter((r) => !bound.includes(r) && !aes.includes(r))
   const key = aes.length ? await windowsMasterKey(b) : undefined
@@ -392,21 +446,46 @@ function readFirefox(f: Found): PlainCookie[] {
   )
 }
 
+function readSafari(f: Found): PlainCookie[] {
+  return parseBinaryCookies(readFileSync(f.cookieFile)).filter((c) => isBiliHost(c.domain))
+}
+
 const lockedMessage = (browser: string): string =>
   `${browser} 正在运行，读不到它的登录信息。请完全退出 ${browser}（包括后台运行的）后再导入，或改用应用内登录`
 
-export async function importFromBrowser(id: string): Promise<AuthState> {
+async function readCookies(f: Found): Promise<PlainCookie[]> {
+  if (f.browser === 'firefox') return readFirefox(f)
+  if (f.browser === 'safari') return readSafari(f)
+  return readChromium(f as Found & { browser: ChromiumBrowser })
+}
+
+/** 配置档的 Cookie 文件是否还被浏览器锁着；关闭浏览器时用它判断是否真的关干净了 */
+export function isProfileLocked(id: string): boolean {
   const f = findAll().find((x) => x.profile.id === id)
-  if (!f || f.profile.blocked) throw new Error('找不到这个浏览器配置档，或没有读取权限')
+  if (!f || f.profile.blocked) return false
+  try {
+    withDbCopy(f.cookieFile, () => undefined)
+    return false
+  } catch (e) {
+    return isLockedError(e)
+  }
+}
+
+/** shouldApply：替换登录前最后再确认一次，读浏览器要等钥匙串授权，等待期间用户可能已经用别的方式登录了 */
+export async function importFromBrowser(id: string, opts: { shouldApply?: () => boolean } = {}): Promise<AuthState> {
+  const f = findAll().find((x) => x.profile.id === id)
+  if (!f) throw new ImportError('not_found', '找不到这个浏览器配置档，或没有读取权限')
+  if (f.profile.blocked) throw new ImportError('blocked', '找不到这个浏览器配置档，或没有读取权限')
   let cookies: PlainCookie[]
   try {
-    cookies = f.browser === 'firefox' ? readFirefox(f) : await readChromium(f as Found & { browser: ChromiumBrowser })
+    cookies = await readCookies(f)
   } catch (e) {
-    if (isLockedError(e)) throw new Error(lockedMessage(f.profile.browser))
+    if (isLockedError(e)) throw new ImportError('locked', lockedMessage(f.profile.browser))
+    if (isPermissionError(e)) throw new ImportError('blocked', `没有权限读取 ${f.profile.browser} 的数据`)
     throw e
   }
   if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) {
-    throw new Error(`${f.profile.browser}（${f.profile.profile}）里没有 B站登录信息`)
+    throw new ImportError('no_login', `${f.profile.browser}（${f.profile.profile}）里没有 B站登录信息`)
   }
-  return replaceLogin(cookies, '导入的登录信息已失效，请先在浏览器里重新登录 B站，或改用应用内登录')
+  return replaceLogin(cookies, '导入的登录信息已失效，请先在浏览器里重新登录 B站，或改用应用内登录', opts.shouldApply)
 }

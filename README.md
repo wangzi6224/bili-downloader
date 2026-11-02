@@ -68,7 +68,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 
 ### AI integration
 
-- A local [MCP](https://modelcontextprotocol.io) server lets AI clients such as Claude search videos, read their details, parse links, queue downloads and check progress (see **MCP server** below)
+- A local [MCP](https://modelcontextprotocol.io) server lets AI clients such as Claude sign in, search videos, read their details, parse links, queue downloads and check progress (see **MCP server** below)
 
 ## Installation
 
@@ -125,8 +125,8 @@ You can also type these keywords instead of a link: `稍后再看` or `watchlate
 
 Logging in gives you the qualities and content your own account has access to (1080P and above, premium content). There are three ways to do it:
 
-- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Chromium or Firefox.
-  - macOS protects the data of Chrome, Edge and Brave, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
+- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Opera, Chromium, Firefox or Safari (macOS only).
+  - macOS protects the data of Chrome, Edge, Brave and Safari, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
   - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
   - On Windows, Chromium-based browsers lock their cookie database while running, so quit the browser completely (including any background process) before importing. Cookies written by Chrome 127 or later use app-bound encryption and cannot be imported; if the login cookie is one of them, use in-app sign-in or paste a cookie string instead.
 - **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
@@ -172,6 +172,10 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_video_info` | Details for up to 20 videos at once: stats, tags, description, part count and collection, optionally with related videos |
 | `get_video_transcript` | What a video is about: Bilibili's AI summary and outline, chapters and full subtitles, which can be read in pieces. Availability varies by video, and the AI summary and AI subtitles need a login |
 | `get_video_comments` | Comments and their replies with cursor paging, sorted by popularity or time. Without a login Bilibili returns only a few |
+| `start_login` | Sign in when the app is not logged in: imports the login from the user's browser (Chrome first, using whichever browser is readable), or opens the login window for a QR scan with `method=qr` |
+| `get_login_status` | Follows the login, or lists the browsers on this computer. With `wait_seconds` it returns the moment the login succeeds, which is how the agent learns the scan is done |
+
+Cookies stay inside the app and are never returned to the AI client. `start_login` does nothing if the app is already logged in, so an agent cannot switch accounts. If a browser must be closed first (Windows locks the cookie database while the browser runs), the app asks you in a dialog and only you can approve it.
 
 The server listens only on `127.0.0.1` (the port is configurable), requires the Bearer token, and checks the `Host` / `Origin` headers to prevent DNS rebinding. You can regenerate the token at any time.
 

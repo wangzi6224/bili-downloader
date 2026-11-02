@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState } from '@shared/types'
 
 const m = vi.hoisted(() => ({
@@ -17,7 +17,8 @@ vi.mock('./session', async (importOriginal) => ({
   snapshotCookies: m.snapshotCookies
 }))
 
-const { importCookieText, parseCookieText } = await import('./cookieImport')
+const { importCookieText, parseCookieText, replaceLogin } = await import('./cookieImport')
+const { ImportError } = await import('./importError')
 
 const NOW = 1_700_000_000
 const HALF_YEAR = 180 * 86400
@@ -190,6 +191,52 @@ describe('importCookieText', () => {
     m.checkAuth.mockRejectedValueOnce(err).mockResolvedValueOnce(IN)
     await expect(importCookieText('SESSDATA=s')).rejects.toBe(err)
     expect(m.setBiliCookies.mock.calls.at(-1)![0]).toBe(OLD)
+  })
+
+  it('失效的错误能和网络错误区分开', async () => {
+    m.checkAuth.mockResolvedValueOnce(OUT).mockResolvedValueOnce(IN)
+    await expect(importCookieText('SESSDATA=old')).rejects.toBeInstanceOf(ImportError)
+    await expect(importCookieText('SESSDATA=old')).resolves.toBe(IN)
+  })
+
+  it('同时导入时一个一个来，后一个的备份是前一个的结果', async () => {
+    let finish: (s: AuthState) => void = () => {}
+    m.checkAuth.mockReturnValueOnce(new Promise<AuthState>((r) => (finish = r)))
+    const first = importCookieText('SESSDATA=a')
+    const second = importCookieText('SESSDATA=b')
+    await vi.waitFor(() => expect(m.checkAuth).toHaveBeenCalledTimes(1))
+    expect(m.snapshotCookies).toHaveBeenCalledTimes(1)
+    finish(IN)
+    await first
+    await second
+    expect(m.snapshotCookies).toHaveBeenCalledTimes(2)
+    expect(m.setBiliCookies.mock.calls.at(-1)![0]).toEqual([expect.objectContaining({ value: 'b' })])
+  })
+
+  it('前一个失败不影响后一个', async () => {
+    m.checkAuth.mockRejectedValueOnce(new Error('断网')).mockResolvedValue(IN)
+    await expect(importCookieText('SESSDATA=a')).rejects.toThrow('断网')
+    await expect(importCookieText('SESSDATA=b')).resolves.toBe(IN)
+  })
+
+  describe('确认登录卡住时', () => {
+    beforeEach(() => void vi.useFakeTimers())
+    afterEach(() => void vi.useRealTimers())
+
+    it('30 秒后放弃并恢复原来的登录，后面的导入不用一直等', async () => {
+      m.checkAuth.mockReturnValueOnce(new Promise(() => {})).mockResolvedValue(IN)
+      const stuck = importCookieText('SESSDATA=a').catch((e: Error) => e)
+      const next = importCookieText('SESSDATA=b')
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(await stuck).toMatchObject({ message: expect.stringContaining('确认登录超时') })
+      expect(await next).toBe(IN)
+      expect(m.setBiliCookies.mock.calls.at(-1)![0]).toEqual([expect.objectContaining({ value: 'b' })])
+    })
+  })
+
+  it('轮到时发现不用替换了，就不动 Cookie', async () => {
+    await expect(replaceLogin([], '失效', () => false)).rejects.toMatchObject({ code: 'cancelled' })
+    expect(m.clearBiliCookies).not.toHaveBeenCalled()
   })
 
   it('恢复也失败时只记日志，报的还是导入的错误', async () => {
