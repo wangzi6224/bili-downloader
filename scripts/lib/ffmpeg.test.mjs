@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { binaryName, isUpToDate, licenseText, verifySha256 } from './ffmpeg.mjs'
+import { binaryName, checkFfmpeg, isUpToDate, licenseText, verifySha256 } from './ffmpeg.mjs'
 
 const SHA = 'a'.repeat(64)
 let dir = ''
@@ -66,5 +66,54 @@ describe('licenseText', () => {
 
   it('没有说明时只有许可证', () => {
     expect(licenseText(undefined, [Buffer.from('GPL')])).toBe('GPL')
+  })
+})
+
+describe('checkFfmpeg', () => {
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0])
+  const ok = (stdout = '') => ({ status: 0, stdout: Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout), stderr: '' })
+  /** 按参数里的特征返回假结果，over 里可以替换某一项 */
+  const fake = (over = {}) => (args) => {
+    const s = args.join(' ')
+    const pick = (key, value) => (key in over ? over[key] : value)
+    if (s.includes('-filters')) return pick('filters', ok(' T. delogo            V->V       Remove logo from input video.'))
+    if (s.includes('libx264')) return pick('encode', ok())
+    if (s.includes('mjpeg')) return pick('jpeg', ok(JPEG))
+    if (s.includes('format=gray')) return pick('gray', ok(Buffer.alloc(64 * 36)))
+    if (s.includes('-decoders')) return pick('decoders', ok(' V....D libdav1d              dav1d AV1 decoder'))
+    return pick('encoders', ok(' V....D h264_nvenc   NVIDIA\n V....D hevc_nvenc  NVIDIA\n V....D h264_nvenc dup\n V....D libx264'))
+  }
+
+  it('功能都在时没有错误，列出编进去的硬件编码器', () => {
+    expect(checkFfmpeg(fake())).toEqual({ errors: [], warnings: [], hw: ['h264_nvenc', 'hevc_nvenc'] })
+  })
+
+  it('缺 delogo、编码失败、抽不出帧都算错误', () => {
+    const r = checkFfmpeg(
+      fake({
+        filters: ok(' T. boxblur'),
+        encode: { status: 1, stdout: Buffer.alloc(0), stderr: 'x\nUnknown encoder libx264\n' },
+        jpeg: ok(Buffer.from([0x89, 0x50])),
+        gray: ok(Buffer.alloc(10))
+      })
+    )
+    expect(r.errors).toEqual(['没有 delogo 滤镜', 'delogo + libx264 编码失败：Unknown encoder libx264', '抽不出 JPEG 预览帧', '抽不出灰度帧'])
+  })
+
+  it('退出码不是 0 也算抽帧失败；不能解码 AV1 只提示；没有硬件编码器时为空', () => {
+    const r = checkFfmpeg(
+      fake({
+        jpeg: { status: 1, stdout: JPEG, stderr: '' },
+        gray: { status: 1, stdout: Buffer.alloc(64 * 36), stderr: '' },
+        decoders: ok(' V....D h264'),
+        encoders: ok(' V....D libx264')
+      })
+    )
+    expect(r).toEqual({ errors: ['抽不出 JPEG 预览帧', '抽不出灰度帧'], warnings: ['不能解码 AV1，AV1 视频没法去水印'], hw: [] })
+  })
+
+  it('启动不了时只报这一条', () => {
+    const r = checkFfmpeg(() => ({ status: null, stdout: Buffer.alloc(0), stderr: '', error: new Error('spawn Unknown system error -86') }))
+    expect(r).toEqual({ errors: ['启动失败：spawn Unknown system error -86'], warnings: [], hw: [] })
   })
 })
