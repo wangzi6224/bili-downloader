@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ArrowUp } from 'lucide-react'
-import type { AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo } from '@shared/types'
+import type { AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo, WatermarkMode } from '@shared/types'
 import { sysText } from '../store'
 import { actualCodec, AUDIO_LABEL, moveUp, type EditableOptions } from '../viewLogic'
 import { IconButton, Segmented, Select } from './ui'
@@ -159,6 +159,24 @@ export function OptionsEditor({
             { value: 'mkv', label: 'MKV', hint: '能放无损音轨，字幕和杜比视界兼容更好' }
           ]}
         />
+      </Section>
+
+      <Section title="水印" dim={audioOnly}>
+        <Segmented<WatermarkMode>
+          fill
+          value={o.watermark}
+          disabled={audioOnly}
+          onChange={(watermark) => set({ watermark })}
+          options={[
+            { value: 'off', label: '不处理', hint: '原样保存，不重新编码' },
+            { value: 'auto', label: '自动去除', hint: '识别画面角落的水印并去掉' }
+          ]}
+        />
+        {o.watermark === 'auto' && !audioOnly && (
+          <div className="mt-1.5 text-xs leading-relaxed text-muted">
+            识别到水印才处理，要重新编码视频，比直接下载慢不少；成功后只保留去水印的版本。HDR、杜比视界视频不处理。
+          </div>
+        )}
       </Section>
 
       <Section title="附加内容">

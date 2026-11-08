@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
 vi.mock('electron', () => ({ app: h.app }))
 vi.mock('node:child_process', () => ({ spawn: h.spawn }))
 vi.mock('node:fs', async (o) => ({ ...(await o<typeof import('node:fs')>()), existsSync: h.existsSync }))
-const { buildMuxArgs, explainFfmpegError } = await import('./mux')
+const { buildMuxArgs, explainFfmpegError, isEncoderFailure } = await import('./mux')
 const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
 
 /** 假的 ffmpeg 进程：测试里手动 emit stderr / close / error */
@@ -158,6 +158,26 @@ describe('explainFfmpegError', () => {
       '合并失败：这种编码放不进当前封装格式，请在设置里改用 MKV'
     )
     expect(explainFfmpegError('codec not supported in container', 1)).toContain('MKV')
+  })
+
+  it('去水印时换成对应的动作，不提示改用 MKV', () => {
+    expect(explainFfmpegError('No space left on device', 1, '去水印')).toBe('去水印失败：磁盘空间不足')
+    expect(explainFfmpegError('[Parsed_delogo_0] Logo area is outside of the frame.', 234, '去水印')).toBe('去水印失败：水印位置超出了画面')
+    expect(explainFfmpegError('[hevc_videotoolbox] cannot create compression session: -12908', 187, '去水印')).toBe(
+      '去水印失败：编码器不可用'
+    )
+    expect(explainFfmpegError('Could not find tag for codec flac in stream #1', 1, '去水印')).toBe(
+      '去水印失败（ffmpeg 退出码 1）：Could not find tag for codec flac in stream #1'
+    )
+  })
+
+  it('isEncoderFailure 认出硬件编码器打不开', () => {
+    expect(isEncoderFailure('[h264_nvenc] OpenEncodeSessionEx failed: unsupported device (2)')).toBe(true)
+    expect(isEncoderFailure('No NVENC capable devices found')).toBe(true)
+    expect(isEncoderFailure("Unknown encoder 'h264_amf'")).toBe(true)
+    expect(isEncoderFailure('Error creating a MFX session: -9.')).toBe(true)
+    expect(isEncoderFailure('No space left on device')).toBe(false)
+    expect(isEncoderFailure(undefined)).toBe(false)
   })
 
   it('认不出的错误带上退出码和最后一行', () => {

@@ -44,7 +44,7 @@ describe('allowQuit', () => {
     expect(allow(e, 3)).toBe(false)
     expect(e.preventDefault).toHaveBeenCalled()
     const args = h.showDialog.mock.calls[0]
-    expect(args[0].message).toBe('还有 3 个任务没下载完，确定要退出吗？')
+    expect(args[0].message).toBe('还有 3 个任务没完成，确定要退出吗？')
     expect(args[0].buttons).toEqual(['后台运行', '退出', '取消'])
   })
 

@@ -24,6 +24,7 @@ export function summaryTags(o: EditableOptions, info?: StreamInfo | null): strin
     if (o.embedSubtitle || o.subtitle) tags.push('字幕')
     if (o.chapters) tags.push('章节')
     if (o.danmaku) tags.push('弹幕')
+    if (o.watermark === 'auto') tags.push('去水印')
   }
   if (o.nfo) tags.push('NFO')
   return tags

@@ -24,6 +24,8 @@ interface State {
   error: string | null
   /** 不算错误的提示，例如“3 个视频已失效” */
   notice: string | null
+  /** 正在打开去水印对话框的任务 */
+  watermarkTaskId: string | null
   set: (patch: Partial<State>) => void
 }
 
@@ -41,6 +43,7 @@ export const useStore = create<State>((set) => ({
   progress: null,
   error: null,
   notice: null,
+  watermarkTaskId: null,
   set: (patch) => set(patch)
 }))
 

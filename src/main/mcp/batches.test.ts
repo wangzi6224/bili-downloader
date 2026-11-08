@@ -373,6 +373,7 @@ describe('状态和报告', () => {
     expect(state([], { state: 'interrupted' })).toBe('interrupted')
     expect(state([{ status: 'waitingAuth' }, { status: 'downloading' }])).toBe('waiting_auth')
     expect(state([{ status: 'merging' }, { status: 'paused' }])).toBe('downloading')
+    expect(state([{ status: 'processing' }, { status: 'paused' }])).toBe('downloading')
     expect(state([{ status: 'error', retryAt: 1 }, { status: 'paused' }])).toBe('queued')
     expect(state([{ status: 'queued' }])).toBe('queued')
     expect(state([{ status: 'paused' }, { status: 'error' }])).toBe('paused')

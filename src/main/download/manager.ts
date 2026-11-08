@@ -4,20 +4,23 @@ import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
-import type { EnqueueRequest, MediaItem, MediaMeta, Settings, TaskInfo } from '@shared/types'
+import type { EnqueueRequest, MediaItem, MediaMeta, Settings, TaskInfo, WatermarkRegion } from '@shared/types'
+import { stripWatermarkNotes, withWatermarkNote, WM_NOTE } from '@shared/watermark'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { preferCdn } from '../net/cdn'
 import { readJsonArray, writeJson } from '../store'
-import { removeTaskOutputs } from './cleanup'
+import { autoDelogo } from '../watermark/auto'
+import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark/manual'
+import { removeQuietly, removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
 import { placeSidecars, prepareExtras } from './extras'
 import { fetchFile } from './fetchFile'
 import { uniquePath } from './filename'
 import { mux, type OutFormat } from './mux'
 
-const RUNNING = new Set(['fetching', 'downloading', 'merging', 'extras'])
+const RUNNING = new Set(['fetching', 'downloading', 'merging', 'extras', 'processing'])
 const SETTLED = new Set(['done', 'unsupported'])
 
 /** 可以暂停的：排队、运行中、等待登录、等待自动重试 */
@@ -99,6 +102,10 @@ async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
   }
 }
 
+/** 画质标签里的编码换成重新编码后的，例如“1080P 高清 · AV1”→“1080P 高清 · AVC” */
+const swapCodec = (label: string | undefined, codec: 'h264' | 'hevc'): string | undefined =>
+  label?.replace(/ · (AVC|HEVC|AV1)(?= · |$)/, ` · ${codec === 'hevc' ? 'HEVC' : 'AVC'}`)
+
 /** 多个视频合成的批次没有共同的元数据，作者、简介这些用视频自己的 */
 function videoMeta(item: MediaItem): MediaMeta | undefined {
   if (!item.owner) return undefined
@@ -121,6 +128,10 @@ export class DownloadManager extends EventEmitter {
   /** 正在合并的任务已经选定的成品路径：文件要等合并完才出现，同名的任务同时合并时不能挑到同一个名字 */
   private claimed = new Set<string>()
   private retryTimers = new Map<string, NodeJS.Timeout>()
+  /** 手动去水印期间被彻底删除的任务：等 ffmpeg 退出、不再占用文件后再删成品 */
+  private purgeAfter = new Map<string, TaskInfo>()
+  /** 应用正在退出，不再启动新任务 */
+  private stopped = false
   private authBlocked = false
   private wasActive = false
   /** 本轮（从空闲到再次空闲）完成和失败的任务数 */
@@ -138,22 +149,45 @@ export class DownloadManager extends EventEmitter {
     this.tasks = readJsonArray<TaskInfo>(stateFile)
       // 缺了 id、item 的条目没法恢复，跳过
       .filter((t) => t?.id && t.item)
-      .map((t) => ({
-        ...t,
-        options: normalizeOptions(t.options),
-        speed: 0,
-        retryAt: undefined,
-        status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
-      }))
+      .map((t) => {
+        const restored: TaskInfo = {
+          ...t,
+          options: normalizeOptions(t.options),
+          speed: 0,
+          retryAt: undefined,
+          processing: undefined,
+          status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
+        }
+        // 手动去水印做到一半退出了：原视频没动过，删掉半成品
+        if (t.processing?.manual) {
+          if (t.tmpOutput) removeQuietly(t.tmpOutput)
+          removeQuietly(join(tmpRoot, t.id))
+          return { ...restored, tmpOutput: undefined, note: withWatermarkNote(t.note, WM_NOTE.interrupted) }
+        }
+        return restored
+      })
   }
 
   list(): TaskInfo[] {
     return this.tasks
   }
 
-  /** 退出后会变成暂停的任务数：运行中、排队、等待登录 */
+  /** 退出时会被打断的任务数：运行中、排队、等待登录（之后会变成暂停），以及正在手动去水印的 */
   pendingCount(): number {
-    return this.tasks.filter((t) => RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth').length
+    return this.tasks.filter(
+      (t) => RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' || t.processing?.manual
+    ).length
+  }
+
+  /** 有任务在运行（包括手动去水印），用于防休眠 */
+  isActive(): boolean {
+    return this.running.size > 0
+  }
+
+  /** 退出应用前：不再启动新任务，中断所有在跑的，让 ffmpeg 跟着结束，免得留在后台继续转码 */
+  stopAll(): void {
+    this.stopped = true
+    for (const ac of this.running.values()) ac.abort()
   }
 
   /** 加入队列；已经在队列里（未完成）的同一条目不重复添加，放进 skipped */
@@ -258,7 +292,7 @@ export class DownloadManager extends EventEmitter {
   /** 删除已下载的分片，从头开始（坏分片导致合并必然失败时用） */
   redownload(id: string): void {
     const t = this.find(id)
-    if (!t || t.status === 'unsupported') return
+    if (!t || t.status === 'unsupported' || t.processing?.manual) return
     this.clearRetry(t)
     const ac = this.running.get(id)
     if (ac) {
@@ -272,6 +306,7 @@ export class DownloadManager extends EventEmitter {
       error: undefined,
       note: undefined,
       outputPath: undefined,
+      watermark: undefined,
       downloaded: 0,
       total: 0,
       retries: 0
@@ -301,13 +336,31 @@ export class DownloadManager extends EventEmitter {
         this.discardPartial(t)
       }
       if (deleteFiles && t.status === 'done') {
-        failed.push(...removeTaskOutputs(t, this.rootOf(t)))
+        // 正在去水印：ffmpeg 还开着原视频（Windows 上删不掉），等它结束后再删
+        if (ac && t.processing?.manual) this.purgeAfter.set(t.id, t)
+        else failed.push(...removeTaskOutputs(t, this.rootOf(t)))
         purged.push(t)
       }
     }
     this.changed()
     if (purged.length) this.emit('purged', purged)
     if (failed.length) throw new Error(`有 ${failed.length} 个文件没能删除：${failed.join('、')}`)
+  }
+
+  /**
+   * 对已完成的视频手动去水印：重新编码后替换原文件。任务一直保持“已完成”，进度放在 processing 上，
+   * 这样暂停、继续、重新下载这些针对下载的操作都不会碰到它。会占一个同时下载的名额
+   */
+  startWatermark(id: string, region: WatermarkRegion): void {
+    const t = requireVideoTask(this.find(id))
+    if (this.running.has(id)) throw new Error('这个视频正在处理，请等它结束')
+    if (![region?.x, region?.y, region?.w, region?.h].every(Number.isFinite)) throw new Error('水印区域无效')
+    void this.runPost(t, region)
+  }
+
+  /** 取消手动去水印，原视频保持不变 */
+  cancelWatermark(id: string): void {
+    if (this.find(id)?.processing?.manual) this.running.get(id)?.abort()
   }
 
   /** 清除已完成和无法下载的任务；deleteFiles 时同时永久删除已完成任务的视频和附加文件 */
@@ -330,7 +383,7 @@ export class DownloadManager extends EventEmitter {
   }
 
   schedule(): void {
-    if (!this.authBlocked) {
+    if (!this.authBlocked && !this.stopped) {
       const limit = this.settings().concurrency
       for (const t of this.tasks) {
         if (this.running.size >= limit) break
@@ -421,6 +474,72 @@ export class DownloadManager extends EventEmitter {
     }
   }
 
+  private async runPost(t: DoneVideoTask, region: WatermarkRegion): Promise<void> {
+    const ac = new AbortController()
+    this.running.set(t.id, ac)
+    this.emitActive()
+    const out = t.outputPath
+    const tmpOut = `${out}.wm.tmp`
+    const work = join(this.tmpRoot, t.id)
+    this.patch(t, { processing: { manual: true, stage: 'queue' }, tmpOutput: tmpOut })
+    // 马上落盘：ffmpeg 还没开始写半成品，之后应用崩溃了，下次启动也知道该删哪个文件
+    this.flush()
+    // 先删掉上次崩溃留下的同名半成品：没退出的旧 ffmpeg 可能还在写它，不能和这次写进同一个文件
+    removeQuietly(tmpOut)
+    try {
+      const r = await replaceVideo({
+        input: out,
+        output: tmpOut,
+        workDir: work,
+        region,
+        format: /\.mkv$/i.test(out) ? 'mkv' : 'mp4',
+        durationHint: t.item.duration,
+        signal: ac.signal,
+        onStage: (p) => this.patch(t, { processing: p })
+      })
+      if (ac.signal.aborted) throw new AbortError()
+      // 处理期间原视频被删掉或移走了：不能再在原位置把它“变”回来
+      if (!existsSync(out)) {
+        this.patch(t, { note: withWatermarkNote(t.note, WM_NOTE.moved) })
+        return
+      }
+      try {
+        renameSync(tmpOut, out)
+      } catch (e) {
+        const code = (e as { code?: string }).code
+        throw code === 'EPERM' || code === 'EBUSY' ? new Error('原视频正被其他程序占用，没能替换') : toDiskError(e, out)
+      }
+      const size = statSync(out).size
+      this.patch(t, {
+        downloaded: size,
+        total: size,
+        note: stripWatermarkNotes(t.note),
+        qualityLabel: swapCodec(t.qualityLabel, r.codec),
+        watermark: { ...t.watermark, width: r.width, height: r.height, applied: r.region }
+      })
+    } catch (e) {
+      // 用户取消、删除任务、退出应用：原视频没动过，不用提示
+      if (!ac.signal.aborted) {
+        this.patch(t, { note: withWatermarkNote(t.note, WM_NOTE.failed(e instanceof Error ? e.message : String(e))) })
+      }
+    } finally {
+      // startWatermark 不允许同一个任务同时跑两个作业，这里直接删
+      this.running.delete(t.id)
+      this.canceled.delete(t.id)
+      removeQuietly(tmpOut)
+      removeQuietly(work)
+      this.patch(t, { processing: undefined, tmpOutput: undefined })
+      this.flush()
+      const purge = this.purgeAfter.get(t.id)
+      if (purge) {
+        this.purgeAfter.delete(t.id)
+        const failed = removeTaskOutputs(purge, this.rootOf(purge))
+        if (failed.length) console.warn('删除文件失败：', failed.join('、'))
+      }
+      this.schedule()
+    }
+  }
+
   private async run(t: TaskInfo): Promise<void> {
     const ac = new AbortController()
     this.running.set(t.id, ac)
@@ -434,7 +553,7 @@ export class DownloadManager extends EventEmitter {
       if (ac.signal.aborted) throw new AbortError()
     }
     try {
-      this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0 })
+      this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0, watermark: undefined })
       const plan = await planStreams(t, this.settings().cdn)
       check()
       this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel, videoQn: plan.video?.id })
@@ -479,12 +598,38 @@ export class DownloadManager extends EventEmitter {
       this.patch(t, { status: 'extras', speed: 0 })
       const extras = await prepareExtras(t, tmp, this.settings())
 
+      // 去水印：在合并前单独处理视频流，处理好的文件也放在临时目录，暂停后继续可以直接用
+      let video = plan.video ? join(tmp, 'video.m4s') : undefined
+      let codec = plan.codec
+      let hevc = plan.video ? isHevc(plan.video) : false
+      let dolbyVision = plan.video ? isDolbyVision(plan.video) : false
+      let wmNote: string | undefined
+      if (plan.video && video && t.options.watermark === 'auto') {
+        check()
+        this.patch(t, { status: 'processing', processing: { stage: 'detect' } })
+        const r = await autoDelogo({
+          tmp,
+          source: video,
+          stream: plan.video,
+          durationHint: t.item.duration,
+          signal: ac.signal,
+          onStage: (p) => this.patch(t, { processing: p })
+        })
+        if (r.video && r.codec) {
+          video = r.video
+          hevc = r.codec === 'hevc'
+          dolbyVision = false
+          codec = r.codec === 'hevc' ? 'HEVC' : 'AVC'
+          this.patch(t, { qualityLabel: swapCodec(plan.qualityLabel, r.codec) })
+        }
+        wmNote = r.note
+        this.patch(t, { watermark: r.state, processing: undefined })
+      }
+
       check()
       this.patch(t, { status: 'merging' })
       // 按实际拿到的画质、编码重新套一次命名模板
-      const relBase = t.template
-        ? renderTemplate(t.template, { ...t.nameValues, quality: plan.quality, codec: plan.codec })
-        : t.relBase
+      const relBase = t.template ? renderTemplate(t.template, { ...t.nameValues, quality: plan.quality, codec }) : t.relBase
       const base = join(t.dir ?? this.settings().downloadDir, relBase)
       try {
         mkdirSync(dirname(base), { recursive: true })
@@ -500,13 +645,13 @@ export class DownloadManager extends EventEmitter {
       const o = t.options
       const embedded = await mux(
         {
-          video: plan.video ? join(tmp, 'video.m4s') : undefined,
+          video,
           audio: plan.hasAudio ? join(tmp, 'audio.m4s') : undefined,
           out: `${out}.tmp`,
           format,
           title: t.title,
-          hevc: plan.video ? isHevc(plan.video) : false,
-          dolbyVision: plan.video ? isDolbyVision(plan.video) : false,
+          hevc,
+          dolbyVision,
           cover: o.embedCover ? extras.cover : undefined,
           subtitles: o.embedSubtitle ? extras.subtitles : undefined,
           chapters: extras.chapters,
@@ -528,9 +673,10 @@ export class DownloadManager extends EventEmitter {
       const sideNotes = await placeSidecars(t, extras, out.slice(0, -format.length - 1), embedded)
       // 保存附加内容时被删除了：不能再标记完成、记进下载历史
       if (this.canceled.has(t.id)) throw new AbortError()
-      rmSync(tmp, { recursive: true, force: true })
+      // 成品已经好了，临时目录删不掉也不算失败
+      removeQuietly(tmp)
       const size = statSync(out).size
-      const note = [...plan.notes, ...extras.notes, ...sideNotes].join('；') || undefined
+      const note = [...plan.notes, ...extras.notes, ...sideNotes, ...(wmNote ? [wmNote] : [])].join('；') || undefined
       this.batch.done++
       this.patch(t, { status: 'done', outputPath: out, relBase, note, speed: 0, downloaded: size, total: size, retries: 0 })
       this.emit('done', t)
@@ -553,13 +699,15 @@ export class DownloadManager extends EventEmitter {
       // 同一任务被暂停又继续时，不能删掉之后那次 run 的控制器
       if (this.running.get(t.id) === ac) this.running.delete(t.id)
       if (this.canceled.delete(t.id)) {
-        rmSync(tmp, { recursive: true, force: true })
+        removeQuietly(tmp)
         removeTaskOutputs({ outputPath: produced, tmpOutput: t.tmpOutput }, this.rootOf(t))
       } else if (t.tmpOutput) {
         // 合并被暂停或出错打断，半成品没用，下次重新合并
-        rmSync(t.tmpOutput, { force: true })
+        removeQuietly(t.tmpOutput)
       }
       if (t.tmpOutput) this.patch(t, { tmpOutput: undefined })
+      // 去水印时被暂停、出错
+      if (t.processing) this.patch(t, { processing: undefined })
       this.schedule()
     }
   }

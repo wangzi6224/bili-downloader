@@ -51,6 +51,12 @@ const api: BiliApi = {
     clearFinished: (deleteFiles) => invoke('dl:clearFinished', deleteFiles),
     onUpdate: on('dl:update')
   },
+  watermark: {
+    prepare: (taskId) => invoke('wm:prepare', taskId),
+    frame: (taskId, time, region) => invoke('wm:frame', taskId, time, region),
+    start: (taskId, region) => invoke('wm:start', taskId, region),
+    cancel: (taskId) => invoke('wm:cancel', taskId)
+  },
   history: {
     downloadedKeys: () => invoke('history:downloadedKeys'),
     clearDownloads: () => invoke('history:clearDownloads'),

@@ -4,11 +4,24 @@ import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'nod
 /**
  * 成品旁边的附加文件（去掉成品主文件名后的部分）：封面、NFO、海报、弹幕、字幕。
  * 和 extras.ts 的 placeSidecars 一一对应，改那边的命名时这里一起改。
+ * 还有手动去水印时写的 .wm.tmp：正常会被清掉，应用崩溃时可能留下
  */
-const SIDECAR = /^(?:\.(?:jpg|png|nfo)|-poster\.(?:jpg|png)|\.danmaku\.(?:ass|xml)|\.[\w-]+\.srt)$/
+const SIDECAR = /^(?:\.(?:jpg|png|nfo)|-poster\.(?:jpg|png)|\.danmaku\.(?:ass|xml)|\.[\w-]+\.srt|\.(?:mp4|mkv)\.wm\.tmp)$/
 
 /** 剧集目录里多集共用的文件，最后一集删掉后随目录一起删 */
 const SHARED = new Set(['.DS_Store', 'tvshow.nfo', 'poster.jpg', 'poster.png'])
+
+/**
+ * 删临时文件或目录，删不掉只记日志，不影响任务本身。
+ * Windows 上文件还被 ffmpeg 占着（例如应用崩溃后没退出的 ffmpeg）时会删不掉，留给下次清理
+ */
+export function removeQuietly(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true })
+  } catch (e) {
+    console.warn('删除临时文件失败：', path, (e as Error).message)
+  }
+}
 
 /** p 在 root 里面（不等于 root 本身） */
 export function isInside(root: string, p: string): boolean {

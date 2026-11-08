@@ -43,6 +43,11 @@ describe('summaryTags', () => {
     expect(summaryTags({ ...none, output: 'video' })).toEqual(['视频（MP4）', '无声'])
   })
 
+  it('自动去水印：有画面时才标出', () => {
+    expect(summaryTags({ ...none, watermark: 'auto' })).toEqual(['视频（MP4）', '音频（最佳）', '去水印'])
+    expect(summaryTags({ ...none, output: 'audio', watermark: 'auto' })).toEqual(['音频（最佳）'])
+  })
+
   it('仅音频不显示视频和只对视频有效的附加内容', () => {
     const all = { ...none, cover: true, subtitle: true, chapters: true, danmaku: true, nfo: true }
     expect(summaryTags({ ...all, output: 'audio', audio: '192k' })).toEqual(['音频（192K）', '封面', 'NFO'])

@@ -41,7 +41,7 @@
 - 清晰度列表来自接口（8K / 杜比视界 / HDR / 4K / 1080P60 …），标出需要大会员的档位
 - 编码优先级可选 AVC / HEVC / AV1；音轨最高支持杜比全景声和 Hi-Res 无损 FLAC
 - 完整视频、仅音频或仅视频；封装为 MP4 或 MKV
-- 用 ffmpeg 直接复制流合并，不重新编码
+- 默认用 ffmpeg 直接复制流合并，不重新编码；只有开启去水印时才重新编码视频
 
 ### 附加内容
 
@@ -50,6 +50,7 @@
 - 弹幕：`.ass` 和 / 或 `.xml`，字号、不透明度、停留时间可调
 - 把 B站进度条上的分段写成真正的章节
 - 为 Kodi / Jellyfin 媒体库生成 NFO 元数据
+- 去水印：自动识别画面角落的水印并去掉（会重新编码视频，HDR 和杜比视界不处理），也可以在下载好的视频上手动框选
 
 ### 下载队列与网络
 
@@ -208,6 +209,7 @@ npm run build:win    # 在 Windows 上运行：在 dist/ 里生成 x64 NSIS 安�
 src/main/auth               登录：cookie 存储、应用内登录窗口、浏览器导入、过期检测
 src/main/bili               B站接口：WBI 签名、视频 / 番剧 / 课程 / 列表解析、取流、字幕、弹幕
 src/main/download           下载队列、断点续传、ffmpeg 合并、附加内容（封面、字幕、NFO…）
+src/main/watermark          去水印：识别水印位置，用 ffmpeg 的 delogo 去掉
 src/main/net                代理和 CDN 选择
 src/main/update             应用内更新：检查 update.json、下载校验、替换 .app 或 AppImage
 src/main/mcp                本地 MCP 服务

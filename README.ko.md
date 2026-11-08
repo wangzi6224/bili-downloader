@@ -41,7 +41,7 @@ bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동�
 - 화질 목록은 API에서 가져오며(8K / Dolby Vision / HDR / 4K / 1080P60 …), 프리미엄 회원(大会员) 전용 화질을 표시
 - 코덱 우선순위 AVC / HEVC / AV1, 오디오는 Dolby Atmos와 Hi-Res 무손실 FLAC까지 지원
 - 전체 동영상, 오디오만, 영상만 선택 가능, MP4 또는 MKV
-- ffmpeg로 스트림을 그대로 복사해 합치며 재인코딩하지 않음
+- 기본적으로 ffmpeg로 스트림을 그대로 복사해 합치며 재인코딩하지 않음. 워터마크 제거를 켰을 때만 영상을 재인코딩함
 
 ### 추가 콘텐츠
 
@@ -50,6 +50,7 @@ bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동�
 - 탄막(댓글): `.ass` 및/또는 `.xml`, 글꼴 크기·불투명도·표시 시간 조절 가능
 - bilibili 진행 바의 구간을 실제 챕터로 기록
 - Kodi / Jellyfin 미디어 라이브러리용 NFO 메타데이터
+- 워터마크 제거: 화면 모서리의 워터마크를 자동으로 찾아 지움(영상 재인코딩, HDR과 돌비 비전은 제외). 다운로드한 영상에서 직접 영역을 지정할 수도 있음
 
 ### 대기열과 네트워크
 
@@ -208,6 +209,7 @@ npm run build:win    # Windows에서 실행: dist/에 x64용 NSIS 설치 프로�
 src/main/auth               로그인: 쿠키 저장, 앱 내 로그인 창, 브라우저에서 가져오기, 만료 감지
 src/main/bili               bilibili API: WBI 서명, 동영상 / 애니메이션 / 강좌 / 목록 분석, 스트림, 자막, 탄막
 src/main/download           다운로드 대기열, 이어받기, ffmpeg 병합, 추가 콘텐츠(커버, 자막, NFO…)
+src/main/watermark          워터마크 감지와 제거(ffmpeg delogo)
 src/main/net                프록시와 CDN 선택
 src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app / AppImage / NSIS 업데이트 설치
 src/main/mcp                로컬 MCP 서버

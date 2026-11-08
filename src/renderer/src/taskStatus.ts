@@ -1,4 +1,4 @@
-import type { TaskInfo, TaskStatus } from '@shared/types'
+import type { ProcessingInfo, TaskInfo, TaskStatus } from '@shared/types'
 import { fmtBytes, fmtEta, fmtSpeed } from './format'
 import { ACTIVE } from './taskOrder'
 
@@ -30,11 +30,20 @@ export function filterTasks(tasks: TaskInfo[], tab: Tab, query: string): TaskInf
     .filter((t) => !q || [t.title, t.groupTitle, t.relBase, t.item.bvid ?? ''].some((s) => s.toLowerCase().includes(q)))
 }
 
-/** 单个任务的进度百分比 */
-export const taskPct = (t: TaskInfo): number => (t.total ? Math.min(100, (t.downloaded / t.total) * 100) : 0)
+/** 单个任务的进度百分比；去水印时是转码进度 */
+export const taskPct = (t: TaskInfo): number =>
+  t.processing ? Math.min(100, t.processing.pct ?? 0) : t.total ? Math.min(100, (t.downloaded / t.total) * 100) : 0
+
+/** 去水印各阶段的说明 */
+export function processingDetail(p: ProcessingInfo): string {
+  if (p.stage === 'detect') return '识别水印…'
+  if (p.stage === 'queue') return '等其他视频处理完'
+  return p.eta ? `剩 ${fmtEta(p.eta)}` : '重新编码中'
+}
 
 /** 任务行右侧状态下面那行：重试倒计时、速度和剩余时间、大小 */
 export function taskDetail(t: TaskInfo, now: number): string {
+  if (t.processing) return processingDetail(t.processing)
   if (t.status === 'error' && t.retryAt) {
     return `${Math.max(0, Math.ceil((t.retryAt - now) / 1000))} 秒后 · 第 ${(t.retries ?? 0) + 1} 次`
   }
@@ -93,7 +102,7 @@ export function groupSummary(tasks: TaskInfo[]): GroupSummary {
 export function statusCounts(tasks: TaskInfo[]): { speed: number; running: number; queued: number; done: number } {
   return {
     speed: tasks.reduce((sum, t) => sum + (t.status === 'downloading' ? t.speed : 0), 0),
-    running: tasks.filter((t) => ACTIVE.has(t.status)).length,
+    running: tasks.filter((t) => ACTIVE.has(t.status) || t.processing?.manual).length,
     queued: tasks.filter((t) => t.status === 'queued').length,
     done: tasks.filter((t) => t.status === 'done').length
   }

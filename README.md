@@ -41,7 +41,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 - The quality list comes from the API (8K / Dolby Vision / HDR / 4K / 1080P60 / …), with premium-only (大会员) tiers marked
 - Codec priority AVC / HEVC / AV1, with audio up to Dolby Atmos and Hi-Res lossless FLAC
 - Full video, audio only, or video only; MP4 or MKV
-- ffmpeg copies the streams straight into the output file, with no re-encoding
+- By default ffmpeg copies the streams straight into the output file with no re-encoding; the video is re-encoded only when watermark removal is on
 
 ### Extras
 
@@ -50,6 +50,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 - Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
 - The chapter markers on bilibili's progress bar, written as real chapters
 - NFO metadata for Kodi / Jellyfin media libraries
+- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download
 
 ### Queue and network
 
@@ -208,6 +209,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [docs/RE
 src/main/auth               Sign-in: cookie storage, in-app login window, browser import, expiry detection
 src/main/bili               bilibili APIs: WBI signing, video / anime / course / list parsing, streams, subtitles, danmaku
 src/main/download           Download queue, resumable downloads, ffmpeg muxing, extras (cover, subtitles, NFO…)
+src/main/watermark          Watermark detection and removal (ffmpeg delogo)
 src/main/net                Proxy and CDN selection
 src/main/update             In-app updates: check update.json, verify downloads, install .app / AppImage / NSIS updates
 src/main/mcp                Local MCP server

@@ -10,6 +10,7 @@ import {
   Clock,
   Coffee,
   Download,
+  Eraser,
   FolderOpen,
   Gauge,
   KeyRound,
@@ -26,6 +27,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { itemUrl } from '@shared/parseUrl'
+import { isVideoTask } from '@shared/watermark'
 import type { PowerMode, TaskInfo, TaskStatus } from '@shared/types'
 import { fmtSpeed, thumb } from '../format'
 import { api, sysText, updateSettings, useStore } from '../store'
@@ -45,6 +47,7 @@ import {
   type Tab
 } from '../taskStatus'
 import { Logo } from './Logo'
+import { WatermarkDialog } from './WatermarkDialog'
 import {
   Badge,
   Banner,
@@ -70,6 +73,7 @@ const STATUS: Record<TaskStatus, { label: string; color: string; icon: LucideIco
   downloading: { label: '下载中', color: 'text-bili', icon: ArrowDown },
   merging: { label: '合并中', color: SKY, icon: Loader2, spin: true },
   extras: { label: '下载附加内容', color: SKY, icon: Loader2, spin: true },
+  processing: { label: '去水印中', color: SKY, icon: Loader2, spin: true },
   done: { label: '已完成', color: 'text-green-600 dark:text-green-500', icon: CircleCheck },
   paused: { label: '已暂停', color: 'text-muted', icon: CirclePause },
   waitingAuth: { label: '等待重新登录', color: 'text-amber-600 dark:text-amber-400', icon: KeyRound },
@@ -117,13 +121,21 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
   const pct = taskPct(t)
   const active = ACTIVE.has(t.status)
   const retrying = t.status === 'error' && t.retryAt
-  const s = retrying ? { label: '等待重试', color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false } : STATUS[t.status]
+  // 对已完成的视频手动去水印：状态还是已完成，界面上按处理中显示
+  const manual = Boolean(t.processing?.manual)
+  const s = retrying
+    ? { label: '等待重试', color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false }
+    : manual
+      ? STATUS.processing
+      : STATUS[t.status]
   const finished = settled(t)
   const detail = taskDetail(t, now)
 
   // 常显的主操作
   let primary = null
-  if (active || t.status === 'queued') {
+  if (manual) {
+    primary = <IconButton icon={X} label="取消去水印（原视频保持不变）" onClick={() => api.watermark.cancel(t.id)} />
+  } else if (active || t.status === 'queued') {
     primary = <IconButton icon={Pause} label="暂停" onClick={() => api.download.pause(t.id)} />
   } else if (t.status === 'paused' || t.status === 'waitingAuth') {
     primary = <IconButton icon={Play} label="继续" onClick={() => api.download.resume(t.id)} />
@@ -154,10 +166,11 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={t.relBase}>
           {t.qualityLabel && <Badge>{t.qualityLabel}</Badge>}
+          {t.watermark?.applied && <Badge>已去水印</Badge>}
           {!nested && t.groupTitle !== t.title && <span className="truncate">{t.groupTitle}</span>}
         </div>
-        {(active || t.status === 'paused' || retrying) && t.total > 0 && (
-          <Progress value={pct} muted={!active} className="mt-2" />
+        {(active || t.status === 'paused' || retrying || manual) && (t.total > 0 || manual) && (
+          <Progress value={pct} muted={!active && !manual} className="mt-2" />
         )}
         {(t.error || t.note) && (
           <div
@@ -172,11 +185,13 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
         <div className={`inline-flex items-center gap-1 font-medium ${s.color}`}>
           <s.icon size={13} strokeWidth={2} className={s.spin ? 'animate-spin' : ''} />
           {s.label}
-          {t.status === 'downloading' && <span className="tabular-nums">{pct.toFixed(0)}%</span>}
+          {(t.status === 'downloading' || t.processing?.stage === 'encode') && (
+            <span className="tabular-nums">{pct.toFixed(0)}%</span>
+          )}
         </div>
         <div className="mt-0.5 truncate text-muted tabular-nums">{detail}</div>
       </div>
-      <div className="flex w-[100px] shrink-0 items-center justify-end gap-0.5">
+      <div className="flex w-[132px] shrink-0 items-center justify-end gap-0.5">
         {/* 次要操作悬停时才出现，避免满屏按钮 */}
         <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {(t.status === 'error' || t.status === 'paused') && (
@@ -188,7 +203,12 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
               }}
             />
           )}
-          {finished && <IconButton icon={X} label="从列表移除（保留文件）" onClick={() => removeTasks([t.id], false)} />}
+          {t.status === 'done' && t.outputPath && !manual && isVideoTask(t) && (
+            <IconButton icon={Eraser} label="去水印…" onClick={() => useStore.getState().set({ watermarkTaskId: t.id })} />
+          )}
+          {finished && !manual && (
+            <IconButton icon={X} label="从列表移除（保留文件）" onClick={() => removeTasks([t.id], false)} />
+          )}
           {t.status !== 'unsupported' && (
             <IconButton
               icon={Trash2}
@@ -292,7 +312,7 @@ function GroupRow({
           </div>
           <div className="mt-0.5 truncate text-muted tabular-nums">{detail}</div>
         </div>
-        <div className="flex w-[100px] shrink-0 items-center justify-end gap-0.5">
+        <div className="flex w-[132px] shrink-0 items-center justify-end gap-0.5">
           <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
             {allSettled && <IconButton icon={X} label="整组从列表移除（保留文件）" onClick={() => removeTasks(ids, false)} />}
             <IconButton
@@ -462,6 +482,7 @@ export function TaskList() {
   /** 展开着的合集，默认都折叠 */
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [clearing, setClearing] = useState(false)
+  const watermarkTaskId = useStore((s) => s.watermarkTaskId)
   const running = tasks.some((t) => ACTIVE.has(t.status))
   const canPause = tasks.some(pausable)
   const canResume = tasks.some(resumable)
@@ -538,6 +559,9 @@ export function TaskList() {
       </div>
       <StatusBar tasks={tasks} />
       {clearing && <ClearDialog onClose={() => setClearing(false)} />}
+      {watermarkTaskId && (
+        <WatermarkDialog taskId={watermarkTaskId} onClose={() => useStore.getState().set({ watermarkTaskId: null })} />
+      )}
     </div>
   )
 }

@@ -9,6 +9,12 @@ describe('normalizeOptions', () => {
     expect(normalizeOptions({ qn: 64 }, 80).qn).toBe(64)
   })
 
+  it('去水印只认 auto，其他值（包括旧数据里没有的）都当作不处理', () => {
+    expect(normalizeOptions({ watermark: 'auto' }).watermark).toBe('auto')
+    expect(normalizeOptions({ watermark: 'yes' as never }).watermark).toBe('off')
+    expect(normalizeOptions({}).watermark).toBe('off')
+  })
+
   it('旧版的 codec 换算成编码顺序，已有 codecOrder 时以它为准', () => {
     expect(normalizeOptions({ codec: 'hevc' }).codecOrder).toEqual(['hevc', 'avc', 'av1'])
     expect(normalizeOptions({ codec: 'hevc', codecOrder: ['av1', 'avc', 'hevc'] }).codecOrder).toEqual(['av1', 'avc', 'hevc'])

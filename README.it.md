@@ -41,7 +41,7 @@ Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un li
 - L'elenco delle qualità arriva dall'API (8K / Dolby Vision / HDR / 4K / 1080P60 / …), con i livelli riservati agli abbonati premium (大会员) evidenziati
 - Priorità dei codec AVC / HEVC / AV1; audio fino a Dolby Atmos e FLAC lossless Hi-Res
 - Video completo, solo audio o solo video; MP4 o MKV
-- ffmpeg copia i flussi direttamente nel file finale, senza ricodifica
+- Per impostazione predefinita ffmpeg copia i flussi direttamente nel file finale, senza ricodifica; il video viene ricodificato solo se la rimozione della filigrana è attiva
 
 ### Contenuti extra
 
@@ -50,6 +50,7 @@ Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un li
 - Danmaku (commenti a scorrimento) in `.ass` e/o `.xml`, con dimensione del carattere, opacità e durata regolabili
 - I segmenti della barra di avanzamento di bilibili, scritti come veri capitoli
 - Metadati NFO per le librerie multimediali Kodi / Jellyfin
+- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato
 
 ### Coda e rete
 
@@ -208,6 +209,7 @@ Vedi [CONTRIBUTING.md](CONTRIBUTING.md) (in inglese) per il flusso di sviluppo e
 src/main/auth               Accesso: archiviazione dei cookie, finestra di accesso, importazione dal browser, rilevamento della scadenza
 src/main/bili               API bilibili: firma WBI, analisi di video / anime / corsi / elenchi, flussi, sottotitoli, danmaku
 src/main/download           Coda dei download, ripresa, multiplexing con ffmpeg, contenuti extra (copertina, sottotitoli, NFO…)
+src/main/watermark          Rilevamento e rimozione della filigrana (delogo di ffmpeg)
 src/main/net                Proxy e scelta del CDN
 src/main/update             Aggiornamenti integrati: controllo di update.json, verifica dei download, installazione degli aggiornamenti .app / AppImage / NSIS
 src/main/mcp                Server MCP locale

@@ -112,7 +112,14 @@ const OPTION_FIELDS: Record<string, OptionField> = {
   cover: { key: 'cover', type: 'boolean', description: '封面另存为图片' },
   embed_cover: { key: 'embedCover', type: 'boolean', description: '封面写进视频 / 音频文件' },
   chapters: { key: 'chapters', type: 'boolean', description: '把进度条上的分段写成章节' },
-  nfo: { key: 'nfo', type: 'boolean', description: '生成 Kodi / Jellyfin 的 NFO 元数据' }
+  nfo: { key: 'nfo', type: 'boolean', description: '生成 Kodi / Jellyfin 的 NFO 元数据' },
+  watermark: {
+    key: 'watermark',
+    type: 'enum',
+    values: ['off', 'auto'],
+    description:
+      '去水印：auto 下载后自动识别画面角落的水印并去掉（要重新编码视频，耗时较长；没识别到、HDR、杜比视界时保留原视频）'
+  }
 }
 
 export const optionsSchema = (description: string) => ({

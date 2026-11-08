@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isInside, pruneDirs, removeTaskOutputs, sidecarFiles } from './cleanup'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isInside, pruneDirs, removeQuietly, removeTaskOutputs, sidecarFiles } from './cleanup'
 
 let root = ''
 const touch = (...names: string[]): void => {
@@ -41,6 +41,9 @@ describe('sidecarFiles', () => {
       'foo.ai-zh.srt',
       'foo.danmaku.ass',
       'foo.danmaku.xml',
+      'foo.mp4.wm.tmp',
+      'foo.mkv.wm.tmp',
+      'foo.mp4.tmp',
       'foo (1).mp4',
       'foo (1).jpg',
       'foo.bar.zh.srt',
@@ -49,7 +52,17 @@ describe('sidecarFiles', () => {
       'poster.jpg'
     )
     const names = sidecarFiles(join(root, 'foo.mp4')).map((p) => p.slice(root.length + 1)).sort()
-    expect(names).toEqual(['foo-poster.png', 'foo.ai-zh.srt', 'foo.danmaku.ass', 'foo.danmaku.xml', 'foo.jpg', 'foo.nfo', 'foo.zh-CN.srt'])
+    expect(names).toEqual([
+      'foo-poster.png',
+      'foo.ai-zh.srt',
+      'foo.danmaku.ass',
+      'foo.danmaku.xml',
+      'foo.jpg',
+      'foo.mkv.wm.tmp',
+      'foo.mp4.wm.tmp',
+      'foo.nfo',
+      'foo.zh-CN.srt'
+    ])
   })
 
   it('目录不存在时返回空', () => {
@@ -74,6 +87,30 @@ describe('pruneDirs', () => {
   it('不越过 root', () => {
     pruneDirs(root, root)
     expect(existsSync(root)).toBe(true)
+  })
+})
+
+describe('removeQuietly', () => {
+  it('删文件和整个目录，不存在时什么也不做', () => {
+    touch('a.wm.tmp', 'dir/x.part')
+    removeQuietly(join(root, 'a.wm.tmp'))
+    removeQuietly(join(root, 'dir'))
+    removeQuietly(join(root, 'nope'))
+    expect(ls()).toEqual([])
+  })
+
+  // 用 POSIX 目录权限模拟删不掉（Windows 上是文件被占用）；root 不受权限限制，跳过
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('删不掉时只记日志，不抛错', () => {
+    touch('locked/a.wm.tmp')
+    chmodSync(join(root, 'locked'), 0o555)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => removeQuietly(join(root, 'locked', 'a.wm.tmp'))).not.toThrow()
+      expect(warn).toHaveBeenCalledWith('删除临时文件失败：', join(root, 'locked', 'a.wm.tmp'), expect.any(String))
+    } finally {
+      chmodSync(join(root, 'locked'), 0o755)
+      warn.mockRestore()
+    }
   })
 })
 

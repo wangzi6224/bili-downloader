@@ -859,7 +859,8 @@ describe('设置', () => {
         cover: false,
         embed_cover: true,
         chapters: true,
-        nfo: false
+        nfo: false,
+        watermark: 'off'
       }
     })
   })

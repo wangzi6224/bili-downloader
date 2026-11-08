@@ -26,6 +26,7 @@ import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
 import { trayMenu, updateCheckReply } from './tray'
 import { Updater } from './update/updater'
+import { initOrphans } from './watermark/orphans'
 import { closeDecision, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
 
@@ -254,6 +255,8 @@ async function start(): Promise<void> {
   limiter.setLimit(settings.speedLimit)
   await applyNetwork(settings, true)
 
+  // 先结束上次崩溃时没退出的转码进程，下面清理残留文件时它们就不会再占着文件
+  initOrphans(join(app.getPath('userData'), 'ffmpeg-jobs.json'))
   const manager = new DownloadManager(
     join(app.getPath('userData'), 'tmp'),
     join(app.getPath('userData'), 'tasks.json'),
@@ -312,7 +315,7 @@ async function start(): Promise<void> {
     limiter.setLimit(s.speedLimit)
     void applyNetwork(s)
     void mcp.apply(s.mcp)
-    applyPower(manager.list().some((t) => ['fetching', 'downloading', 'merging', 'extras'].includes(t.status)), s.powerMode)
+    applyPower(manager.isActive(), s.powerMode)
     manager.schedule()
   })
   onAuthRequired(() => manager.blockForAuth())
@@ -324,7 +327,9 @@ async function start(): Promise<void> {
   app.on('before-quit', (e) => {
     if (!allowQuit(e, manager.pendingCount())) return
     quitting = true
+    // 先记下当前状态再中断：下次启动时据此把任务恢复成暂停，手动去水印的写上提示
     manager.flush()
+    manager.stopAll()
     mcpTools.batches.flush()
     login.dispose()
     subs.stop()

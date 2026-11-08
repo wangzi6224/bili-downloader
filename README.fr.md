@@ -41,7 +41,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 - Liste des qualités fournie par l'API (8K / Dolby Vision / HDR / 4K / 1080P60 / …), avec les niveaux réservés aux abonnés premium (大会员) signalés
 - Priorité des codecs AVC / HEVC / AV1 ; audio jusqu'au Dolby Atmos et au FLAC sans perte Hi-Res
 - Vidéo complète, audio seul ou vidéo seule ; MP4 ou MKV
-- ffmpeg copie directement les flux dans le fichier final, sans réencodage
+- Par défaut, ffmpeg copie directement les flux dans le fichier final, sans réencodage ; la vidéo n'est réencodée que si la suppression du filigrane est activée
 
 ### Extras
 
@@ -50,6 +50,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 - Danmaku (commentaires défilants) en `.ass` et/ou `.xml`, avec taille de police, opacité et durée réglables
 - Les segments de la barre de progression de bilibili, écrits comme de vrais chapitres
 - Métadonnées NFO pour les médiathèques Kodi / Jellyfin
+- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée
 
 ### File d'attente et réseau
 
@@ -208,6 +209,7 @@ Voir [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais) pour le flux de développem
 src/main/auth               Connexion : stockage des cookies, fenêtre de connexion, import depuis le navigateur, détection d'expiration
 src/main/bili               API bilibili : signature WBI, analyse des vidéos / animés / cours / listes, flux, sous-titres, danmaku
 src/main/download           File de téléchargement, reprise, multiplexage ffmpeg, extras (couverture, sous-titres, NFO…)
+src/main/watermark          Détection et suppression du filigrane (delogo de ffmpeg)
 src/main/net                Proxy et choix du CDN
 src/main/update             Mises à jour intégrées : vérification de update.json, contrôle des téléchargements, installation des mises à jour .app / AppImage / NSIS
 src/main/mcp                Serveur MCP local

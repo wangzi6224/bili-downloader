@@ -171,6 +171,57 @@ export interface DownloadOptions {
   chapters: boolean
   /** Kodi / Jellyfin 元数据 */
   nfo: boolean
+  /** 去水印：auto 下载后自动识别画面角落的水印并去掉（要重新编码视频） */
+  watermark: WatermarkMode
+}
+
+export type WatermarkMode = 'off' | 'auto'
+
+/** 水印区域：视频显示方向（已按旋转转正）下原分辨率的像素坐标 */
+export interface WatermarkRegion {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface WatermarkState {
+  /** 视频显示尺寸，界面换算坐标用 */
+  width: number
+  height: number
+  /** 自动识别到的位置 */
+  detected?: WatermarkRegion
+  /** 当前文件里已经去掉的位置 */
+  applied?: WatermarkRegion
+}
+
+/** 去水印的进度；manual 表示对已完成任务手动发起（此时 status 仍为 done） */
+export interface ProcessingInfo {
+  manual?: boolean
+  stage: 'detect' | 'queue' | 'encode'
+  /** 0-100 */
+  pct?: number
+  /** 剩余秒数 */
+  eta?: number
+}
+
+/** 去水印对话框打开时需要的信息 */
+export interface WatermarkPrep {
+  width: number
+  height: number
+  /** 秒 */
+  duration: number
+  /** 预览帧所在的时间（秒） */
+  time: number
+  /** data:image/jpeg;base64,... */
+  image: string
+  /** 建议的位置：识别到的，或者右上角的默认框 */
+  region: WatermarkRegion
+  /** region 是不是识别出来的 */
+  detected: boolean
+  applied?: WatermarkRegion
+  /** 不能处理的原因（HDR、杜比视界…），有值时界面禁用“开始处理” */
+  blocker?: string
 }
 
 export interface EnqueueRequest {
@@ -196,6 +247,8 @@ export type TaskStatus =
   | 'downloading'
   | 'merging'
   | 'extras'
+  /** 自动去水印：识别、排队等转码、转码 */
+  | 'processing'
   | 'done'
   | 'paused'
   | 'waitingAuth'
@@ -239,6 +292,10 @@ export interface TaskInfo {
   retryAt?: number
   /** 通过 MCP 批量下载加入时的批次 id */
   batchId?: string
+  /** 去水印的识别和处理结果 */
+  watermark?: WatermarkState
+  /** 正在去水印时的阶段和进度 */
+  processing?: ProcessingInfo
   createdAt: number
 }
 
@@ -417,6 +474,15 @@ export interface BiliApi {
     /** 清除已完成和无法下载的任务；deleteFiles 时同时永久删除已完成任务的视频和附加文件 */
     clearFinished(deleteFiles: boolean): Promise<void>
     onUpdate(cb: (tasks: TaskInfo[]) => void): () => void
+  }
+  watermark: {
+    /** 打开去水印对话框：抽一帧画面并给出建议位置 */
+    prepare(taskId: string): Promise<WatermarkPrep>
+    /** 换一帧；带 region 时返回去掉水印后的效果 */
+    frame(taskId: string, time: number, region?: WatermarkRegion): Promise<string>
+    /** 开始处理，进度通过任务列表更新 */
+    start(taskId: string, region: WatermarkRegion): Promise<void>
+    cancel(taskId: string): Promise<void>
   }
   history: {
     /** 已下载过的条目 key */

@@ -8,7 +8,8 @@ import type {
   PagedSource,
   ParseResult,
   Settings,
-  Subscription
+  Subscription,
+  WatermarkRegion
 } from '@shared/types'
 import { checkAuth, ensureLoggedIn, getAuthState, logout, requireLogin } from './auth/authGuard'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
@@ -36,6 +37,7 @@ import {
   removeParse
 } from './history'
 import { quitConfirmed } from './quitGuard'
+import { prepareManual, previewFrame, requireVideoTask } from './watermark/manual'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
 
@@ -159,6 +161,13 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   handle('dl:retry', (id: string) => manager.resume(id))
   handle('dl:redownload', (id: string) => manager.redownload(id))
   handle('dl:clearFinished', (deleteFiles: boolean) => manager.clearFinished(deleteFiles))
+
+  // 去水印只处理任务自己的成品文件，不接受界面传来的路径
+  const videoTask = (id: string) => requireVideoTask(manager.list().find((t) => t.id === id))
+  handle('wm:prepare', (id: string) => prepareManual(videoTask(id)))
+  handle('wm:frame', (id: string, time: number, region?: WatermarkRegion) => previewFrame(videoTask(id), time, region))
+  handle('wm:start', (id: string, region: WatermarkRegion) => manager.startWatermark(id, region))
+  handle('wm:cancel', (id: string) => manager.cancelWatermark(id))
 
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch: Partial<Settings>) => updateSettings(patch))

@@ -60,7 +60,11 @@ const h = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   getMainWindow: vi.fn(),
   hideMainWindow: vi.fn(),
-  send: vi.fn()
+  send: vi.fn(),
+  // ./watermark/manual
+  requireVideoTask: vi.fn(),
+  prepareManual: vi.fn(),
+  previewFrame: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -105,6 +109,11 @@ vi.mock('./history', () => ({
 vi.mock('./quitGuard', () => ({ quitConfirmed: h.quitConfirmed }))
 vi.mock('./settings', () => ({ getSettings: h.getSettings, updateSettings: h.updateSettings }))
 vi.mock('./windows', () => ({ getMainWindow: h.getMainWindow, hideMainWindow: h.hideMainWindow, send: h.send }))
+vi.mock('./watermark/manual', () => ({
+  requireVideoTask: h.requireVideoTask,
+  prepareManual: h.prepareManual,
+  previewFrame: h.previewFrame
+}))
 
 const manager = {
   list: vi.fn(),
@@ -116,7 +125,9 @@ const manager = {
   resumeAll: vi.fn(),
   remove: vi.fn(),
   redownload: vi.fn(),
-  clearFinished: vi.fn()
+  clearFinished: vi.fn(),
+  startWatermark: vi.fn(),
+  cancelWatermark: vi.fn()
 }
 const subs = { list: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), check: vi.fn() }
 const mcp = { status: vi.fn() }
@@ -208,7 +219,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(57)
+    expect(h.handlers.size).toBe(61)
   })
 })
 
@@ -534,6 +545,8 @@ describe('直接转发的频道', () => {
     { channel: 'dl:retry', args: ['t1'], fn: manager.resume },
     { channel: 'dl:redownload', args: ['t1'], fn: manager.redownload },
     { channel: 'dl:clearFinished', args: [true], fn: manager.clearFinished },
+    { channel: 'wm:start', args: ['t1', { x: 1, y: 2, w: 30, h: 10 }], fn: manager.startWatermark },
+    { channel: 'wm:cancel', args: ['t1'], fn: manager.cancelWatermark },
     { channel: 'settings:get', args: [], fn: h.getSettings },
     { channel: 'settings:set', args: [{ concurrency: 3 }], fn: h.updateSettings },
     { channel: 'subs:list', args: [], fn: subs.list },
@@ -568,5 +581,35 @@ describe('直接转发的频道', () => {
     fn.mockReturnValue(out)
     expect(await data(channel, ...args)).toBe(out)
     expect(fn.mock.calls).toEqual([called])
+  })
+})
+
+describe('去水印', () => {
+  const task = { id: 't1', status: 'done', outputPath: '/dl/a.mp4' }
+  const region = { x: 1, y: 2, w: 30, h: 10 }
+
+  beforeEach(() => {
+    manager.list.mockReturnValue([{ id: 't0' }, task])
+    h.requireVideoTask.mockImplementation((t) => t)
+  })
+
+  it('wm:prepare 只处理列表里的任务，交给 prepareManual', async () => {
+    h.prepareManual.mockResolvedValue({ image: 'data:' })
+    expect(await data('wm:prepare', 't1')).toEqual({ image: 'data:' })
+    expect(h.requireVideoTask).toHaveBeenCalledWith(task)
+    expect(h.prepareManual).toHaveBeenCalledWith(task)
+  })
+
+  it('wm:frame 透传时间和区域，任务不存在时报错', async () => {
+    h.previewFrame.mockResolvedValue('data:img')
+    expect(await data('wm:frame', 't1', 12.5, region)).toBe('data:img')
+    expect(h.previewFrame).toHaveBeenCalledWith(task, 12.5, region)
+
+    h.requireVideoTask.mockImplementation((t) => {
+      if (!t) throw new Error('任务不存在')
+      return t
+    })
+    expect(await invoke('wm:frame', 'nope', 1)).toEqual({ ok: false, error: '任务不存在' })
+    expect(h.requireVideoTask).toHaveBeenLastCalledWith(undefined)
   })
 })

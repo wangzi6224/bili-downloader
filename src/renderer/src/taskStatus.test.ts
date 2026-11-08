@@ -33,7 +33,19 @@ const task = (id: string, status: TaskStatus, extra: Partial<TaskInfo> = {}): Ta
     ...extra
   }) as TaskInfo
 
-const ALL: TaskStatus[] = ['queued', 'fetching', 'downloading', 'merging', 'extras', 'done', 'paused', 'waitingAuth', 'error', 'unsupported']
+const ALL: TaskStatus[] = [
+  'queued',
+  'fetching',
+  'downloading',
+  'merging',
+  'extras',
+  'processing',
+  'done',
+  'paused',
+  'waitingAuth',
+  'error',
+  'unsupported'
+]
 /** 哪些状态满足条件 */
 const which = (fn: (t: TaskInfo) => boolean, extra: Partial<TaskInfo> = {}): TaskStatus[] => ALL.filter((s) => fn(task(s, s, extra)))
 
@@ -41,7 +53,7 @@ const MB = 1024 * 1024
 
 describe('任务状态判断', () => {
   it('pausable：运行中、排队、等待登录，以及等待自动重试的', () => {
-    expect(which(pausable)).toEqual(['queued', 'fetching', 'downloading', 'merging', 'extras', 'waitingAuth'])
+    expect(which(pausable)).toEqual(['queued', 'fetching', 'downloading', 'merging', 'extras', 'processing', 'waitingAuth'])
     expect(pausable(task('r', 'error', { retryAt: 1 }))).toBe(true)
   })
 
@@ -71,7 +83,7 @@ describe('TABS', () => {
   })
 
   it('进行中：运行中、排队、暂停、等待登录，以及等待重试的', () => {
-    expect(which(match('active'))).toEqual(['queued', 'fetching', 'downloading', 'merging', 'extras', 'paused', 'waitingAuth'])
+    expect(which(match('active'))).toEqual(['queued', 'fetching', 'downloading', 'merging', 'extras', 'processing', 'paused', 'waitingAuth'])
     expect(match('active')(task('r', 'error', { retryAt: 1 }))).toBe(true)
   })
 
@@ -118,6 +130,12 @@ describe('taskPct', () => {
     expect(taskPct(task('a', 'downloading', { downloaded: 25, total: 100 }))).toBe(25)
     expect(taskPct(task('a', 'downloading', { downloaded: 120, total: 100 }))).toBe(100)
   })
+
+  it('去水印时是转码进度，不管下载了多少', () => {
+    expect(taskPct(task('a', 'processing', { downloaded: 100, total: 100, processing: { stage: 'encode', pct: 42 } }))).toBe(42)
+    expect(taskPct(task('a', 'processing', { downloaded: 100, total: 100, processing: { stage: 'detect' } }))).toBe(0)
+    expect(taskPct(task('a', 'done', { total: 100, processing: { manual: true, stage: 'encode', pct: 120 } }))).toBe(100)
+  })
 })
 
 describe('taskDetail', () => {
@@ -145,6 +163,13 @@ describe('taskDetail', () => {
   it('暂停等其它状态有大小时显示已下载 / 总大小', () => {
     expect(taskDetail(task('a', 'paused', { downloaded: MB, total: 2 * MB }), now)).toBe('1.0 MB / 2.0 MB')
     expect(taskDetail(task('a', 'error', { downloaded: 0, total: 1024 }), now)).toBe('0 B / 1 KB')
+  })
+
+  it('去水印：识别、排队、剩余时间', () => {
+    expect(taskDetail(task('a', 'processing', { processing: { stage: 'detect' } }), now)).toBe('识别水印…')
+    expect(taskDetail(task('a', 'processing', { processing: { stage: 'queue' } }), now)).toBe('等其他视频处理完')
+    expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'encode', pct: 10, eta: 90 } }), now)).toBe('剩 1 分 30 秒')
+    expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'encode', pct: 0 } }), now)).toBe('重新编码中')
   })
 
   it('排队中或不知道大小时为空', () => {
@@ -231,9 +256,11 @@ describe('statusCounts', () => {
       task('c', 'queued'),
       task('d', 'queued'),
       task('e', 'done'),
-      task('f', 'paused')
+      task('f', 'paused'),
+      // 手动去水印的已完成任务也算进行中
+      task('g', 'done', { processing: { manual: true, stage: 'encode' } })
     ])
-    expect(counts).toEqual({ speed: 1000, running: 2, queued: 2, done: 1 })
+    expect(counts).toEqual({ speed: 1000, running: 3, queued: 2, done: 2 })
   })
 
   it('没有任务时都是 0', () => {
@@ -277,7 +304,15 @@ describe('clearCounts', () => {
 
 describe('unfinishedCount', () => {
   it('进行中、排队、等待登录的算未完成；暂停、失败、等待重试的不算', () => {
-    expect(which((t) => unfinishedCount([t]) === 1)).toEqual(['queued', 'fetching', 'downloading', 'merging', 'extras', 'waitingAuth'])
+    expect(which((t) => unfinishedCount([t]) === 1)).toEqual([
+      'queued',
+      'fetching',
+      'downloading',
+      'merging',
+      'extras',
+      'processing',
+      'waitingAuth'
+    ])
     expect(unfinishedCount([task('a', 'error', { retryAt: 1 }), task('b', 'queued'), task('c', 'downloading')])).toBe(2)
   })
 })

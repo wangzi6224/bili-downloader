@@ -15,6 +15,7 @@ export function mcpStatus(t: TaskInfo): McpStatus {
     case 'downloading':
     case 'merging':
     case 'extras':
+    case 'processing':
       return 'running'
     case 'error':
       return t.retryAt ? 'retrying' : 'failed'

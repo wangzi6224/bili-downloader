@@ -22,19 +22,39 @@ export function ffmpegPath(): string {
   return cached
 }
 
-/** 把 ffmpeg 的报错翻译成用户能看懂的原因 */
-export function explainFfmpegError(stderr: string, code: number | null): string {
+/** 硬件编码器打不开时 ffmpeg 输出的特征（VideoToolbox、NVENC、QSV、AMF） */
+const ENCODER_FAILURE = [
+  'cannot create compression session',
+  'error while opening encoder',
+  'openencodesessionex failed',
+  'no capable devices',
+  'no nvenc capable devices',
+  'unknown encoder',
+  'mfx session',
+  'amfrt64.dll',
+  'amf failed'
+]
+
+export const isEncoderFailure = (stderr: string | undefined): boolean => {
+  const s = (stderr ?? '').toLowerCase()
+  return ENCODER_FAILURE.some((k) => s.includes(k))
+}
+
+/** 把 ffmpeg 的报错翻译成用户能看懂的原因；action 是正在做的事（合并、去水印） */
+export function explainFfmpegError(stderr: string, code: number | null, action = '合并'): string {
   const s = stderr.toLowerCase()
-  if (s.includes('no space left')) return '合并失败：磁盘空间不足'
-  if (s.includes('permission denied') || s.includes('operation not permitted')) return '合并失败：没有写入目标目录的权限'
+  if (s.includes('no space left')) return `${action}失败：磁盘空间不足`
+  if (s.includes('permission denied') || s.includes('operation not permitted')) return `${action}失败：没有写入目标目录的权限`
+  if (s.includes('logo area is outside')) return `${action}失败：水印位置超出了画面`
+  if (isEncoderFailure(stderr)) return `${action}失败：编码器不可用`
   if (s.includes('invalid data found') || s.includes('moov atom not found') || s.includes('error while decoding')) {
-    return '合并失败：下载的文件已损坏，请点“重新下载”'
+    return `${action}失败：下载的文件已损坏，请点“重新下载”`
   }
-  if (s.includes('could not find tag for codec') || s.includes('not supported in container')) {
+  if (action === '合并' && (s.includes('could not find tag for codec') || s.includes('not supported in container'))) {
     return '合并失败：这种编码放不进当前封装格式，请在设置里改用 MKV'
   }
   const last = stderr.trim().split('\n').pop() ?? ''
-  return `合并失败（ffmpeg 退出码 ${code}）：${last}`
+  return `${action}失败（ffmpeg 退出码 ${code}）：${last}`
 }
 
 /** 合并很吃磁盘 IO，同一时间只运行一个 ffmpeg，其余排队 */
@@ -63,7 +83,7 @@ function spawnFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
       if (signal?.aborted) reject(new AbortError())
       else if (code === 0) resolve()
       else if (sig === 'SIGKILL') reject(new FfmpegError('合并超时，ffmpeg 没有响应'))
-      else reject(new FfmpegError(explainFfmpegError(stderr, code)))
+      else reject(new FfmpegError(explainFfmpegError(stderr, code), stderr))
     })
   })
 }

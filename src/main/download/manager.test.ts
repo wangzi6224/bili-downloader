@@ -14,6 +14,13 @@ vi.mock('../bili/audio', () => ({ getAudioStream: vi.fn() }))
 vi.mock('./fetchFile', () => ({ fetchFile: vi.fn() }))
 vi.mock('./mux', () => ({ mux: vi.fn() }))
 vi.mock('./extras', () => ({ prepareExtras: vi.fn(), placeSidecars: vi.fn() }))
+vi.mock('../watermark/auto', () => ({ autoDelogo: vi.fn() }))
+vi.mock('../watermark/manual', async (o) => ({ ...(await o<typeof import('../watermark/manual')>()), replaceVideo: vi.fn() }))
+// 透传，只为了能模拟改名时文件被占用
+vi.mock('node:fs', async (o) => {
+  const fs = await o<typeof import('node:fs')>()
+  return { ...fs, renameSync: vi.fn(fs.renameSync), rmSync: vi.fn(fs.rmSync) }
+})
 
 const { getPlayInfo } = await import('../bili/playurl')
 const { getAudioStream } = await import('../bili/audio')
@@ -23,6 +30,9 @@ const { prepareExtras, placeSidecars } = await import('./extras')
 const { AuthExpiredError, UnsupportedError } = await import('../bili/http')
 const { AbortError, DownloadError, FfmpegError } = await import('./errors')
 const { DownloadManager } = await import('./manager')
+const { autoDelogo } = await import('../watermark/auto')
+const { replaceVideo } = await import('../watermark/manual')
+const { renameSync, rmSync: rmSyncMock } = await import('node:fs')
 
 // fake timers 也会接管 setImmediate，先留一份真的用来等 promise 链跑完
 const realSetImmediate = setImmediate
@@ -1014,5 +1024,475 @@ describe('暂停后立刻继续（回归）', () => {
     await settle()
     expect(getPlayInfo).toHaveBeenCalledTimes(3)
     expect(t.status).toBe('done')
+  })
+})
+
+describe('自动去水印', () => {
+  const R = { x: 1700, y: 30, w: 200, h: 50 }
+  const wmOptions = (over: Partial<DownloadOptions> = {}): DownloadOptions => normalizeOptions({ watermark: 'auto', ...over })
+
+  beforeEach(() => {
+    vi.mocked(autoDelogo).mockReset()
+  })
+
+  it('选项关闭时不处理', async () => {
+    const m = make()
+    m.enqueue(req([item(1)]))
+    await settle()
+    expect(statuses(m)).toEqual(['done'])
+    expect(autoDelogo).not.toHaveBeenCalled()
+    expect(m.list()[0].watermark).toBeUndefined()
+  })
+
+  it('成功：附加内容之后去水印，合并用处理好的视频和实际编码，文件名和画质标签跟着变', async () => {
+    settings.naming.single = '{title} [{codec}]'
+    const seen: unknown[] = []
+    let m!: InstanceType<typeof DownloadManager>
+    vi.mocked(autoDelogo).mockImplementation(async (i) => {
+      const t = m.list()[0]
+      i.onStage({ stage: 'encode', pct: 40, eta: 9 })
+      seen.push({ status: t.status, processing: { ...t.processing } })
+      const video = join(i.tmp, 'video.wm.mp4')
+      writeFileSync(video, 'clean')
+      return { video, codec: 'hevc', state: { width: 1920, height: 1080, detected: R, applied: R } }
+    })
+    m = make()
+    m.enqueue(req([item(1)], { options: wmOptions() }))
+    await settle()
+    const t = m.list()[0]
+    expect(seen).toEqual([{ status: 'processing', processing: { stage: 'encode', pct: 40, eta: 9 } }])
+    expect(vi.mocked(autoDelogo).mock.calls[0][0]).toMatchObject({
+      tmp: tmpOf(t.id),
+      source: tmpOf(t.id, 'video.m4s'),
+      stream: { id: 80 },
+      durationHint: 10
+    })
+    expect(vi.mocked(mux).mock.calls[0][0]).toMatchObject({
+      video: tmpOf(t.id, 'video.wm.mp4'),
+      hevc: true,
+      dolbyVision: false
+    })
+    expect(t).toMatchObject({
+      status: 'done',
+      relBase: '视频1 [HEVC]',
+      qualityLabel: '1080P 高清 · HEVC',
+      watermark: { applied: R },
+      processing: undefined,
+      note: undefined
+    })
+  })
+
+  it('AV1 源转成 H.264：标签和合并参数都按 AVC', async () => {
+    vi.mocked(getPlayInfo).mockResolvedValue(play(avc({ codecid: 13, codecs: 'av01.0.08M.08' })))
+    vi.mocked(autoDelogo).mockImplementation(async (i) => {
+      const video = join(i.tmp, 'video.wm.mp4')
+      writeFileSync(video, 'clean')
+      return { video, codec: 'h264', state: { width: 1920, height: 1080, detected: R, applied: R } }
+    })
+    const m = make()
+    m.enqueue(req([item(1)], { options: wmOptions({ codecOrder: ['av1', 'avc', 'hevc'] }) }))
+    await settle()
+    expect(vi.mocked(mux).mock.calls[0][0]).toMatchObject({ hevc: false, dolbyVision: false })
+    expect(m.list()[0].qualityLabel).toBe('1080P 高清 · AVC')
+  })
+
+  it('没识别到或处理失败：写进提示，用原视频合并', async () => {
+    vi.mocked(autoDelogo).mockResolvedValue({ note: '去水印：没有识别到水印', state: { width: 1920, height: 1080 } })
+    const m = make()
+    m.enqueue(req([item(1)], { options: wmOptions() }))
+    await settle()
+    const t = m.list()[0]
+    expect(vi.mocked(mux).mock.calls[0][0]).toMatchObject({ video: tmpOf(t.id, 'video.m4s'), hevc: false })
+    expect(t).toMatchObject({
+      status: 'done',
+      qualityLabel: '1080P 高清 · AVC',
+      note: '去水印：没有识别到水印',
+      watermark: { width: 1920, height: 1080 }
+    })
+  })
+
+  it('只下音频时不处理', async () => {
+    const m = make()
+    m.enqueue(req([item(1)], { options: wmOptions({ output: 'audio' }) }))
+    await settle()
+    expect(statuses(m)).toEqual(['done'])
+    expect(autoDelogo).not.toHaveBeenCalled()
+  })
+
+  it('处理中暂停：变成暂停、清掉进度、保留分片；处理中删除：清掉临时目录', async () => {
+    vi.mocked(autoDelogo).mockImplementation((i) => {
+      i.onStage({ stage: 'queue' })
+      return untilAbort(i.signal)
+    })
+    const m = make()
+    m.enqueue(req([item(1), item(2)], { options: wmOptions() }))
+    await settle()
+    const [a, b] = m.list()
+    expect(statuses(m)).toEqual(['processing', 'processing'])
+    expect(m.pendingCount()).toBe(2)
+
+    m.pause(a.id)
+    await settle()
+    expect(a).toMatchObject({ status: 'paused', processing: undefined })
+    expect(readdirSync(tmpOf(a.id)).sort()).toEqual(['audio.m4s', 'video.m4s'])
+
+    m.remove([b.id], true)
+    await settle()
+    expect(existsSync(tmpOf(b.id))).toBe(false)
+    expect(mux).not.toHaveBeenCalled()
+  })
+
+  it('重启后处理中的任务恢复为暂停', () => {
+    seed([task({ id: 'a', status: 'processing', processing: { stage: 'encode', pct: 30 } })])
+    expect(make().list()[0]).toMatchObject({ status: 'paused', processing: undefined })
+  })
+})
+
+describe('手动去水印', () => {
+  const R = { x: 1700, y: 30, w: 200, h: 50 }
+  let out = ''
+
+  /** 一个已完成、文件还在的视频任务 */
+  const seedDone = (over: Partial<TaskInfo> = {}): void => {
+    mkdirSync(dl, { recursive: true })
+    out = join(dl, '视频1.mp4')
+    writeFileSync(out, 'orig')
+    seed([task({ status: 'done', outputPath: out, dir: dl, total: 4, downloaded: 4, qualityLabel: '1080P 高清 · AV1', ...over })])
+  }
+
+  beforeEach(() => {
+    vi.mocked(replaceVideo).mockReset()
+    vi.mocked(renameSync).mockClear()
+  })
+
+  it('不能处理的任务、无效的区域、正在处理的直接报错', () => {
+    seedDone()
+    const m = make()
+    expect(() => m.startWatermark('nope', R)).toThrow('任务不存在')
+    expect(() => m.startWatermark('t1', { ...R, w: Number.NaN })).toThrow('水印区域无效')
+
+    seed([task({ status: 'paused' })])
+    expect(() => make().startWatermark('t1', R)).toThrow('只能处理已经下载完成的视频')
+    seed([task({ status: 'done', outputPath: out, options: normalizeOptions({ output: 'audio' }) })])
+    expect(() => make().startWatermark('t1', R)).toThrow('这个任务只有音频，没有画面')
+    seed([task({ status: 'done', outputPath: join(dl, '没有.mp4') })])
+    expect(() => make().startWatermark('t1', R)).toThrow('找不到视频文件')
+
+    vi.mocked(replaceVideo).mockImplementation((o) => untilAbort(o.signal))
+    m.startWatermark('t1', R)
+    expect(() => m.startWatermark('t1', R)).toThrow('这个视频正在处理')
+  })
+
+  it('成功：状态保持已完成，替换原文件，更新大小、标签和提示，不发 done', async () => {
+    seedDone({ note: '该清晰度没有 AVC；去水印：没有识别到水印' })
+    const gate = deferred<void>()
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      o.onStage({ manual: true, stage: 'encode', pct: 50 })
+      await gate.promise
+      writeFileSync(o.output, 'clean video')
+      return { codec: 'h264', width: 1920, height: 1080, region: R }
+    })
+    const m = make()
+    const done = vi.fn()
+    const active = vi.fn()
+    m.on('done', done)
+    m.on('active', active)
+    m.startWatermark('t1', R)
+    await settle()
+    const t = m.list()[0]
+    expect(t).toMatchObject({ status: 'done', processing: { manual: true, stage: 'encode', pct: 50 }, tmpOutput: `${out}.wm.tmp` })
+    expect(vi.mocked(replaceVideo).mock.calls[0][0]).toMatchObject({
+      input: out,
+      output: `${out}.wm.tmp`,
+      workDir: tmpOf('t1'),
+      region: R,
+      format: 'mp4',
+      durationHint: 10
+    })
+    expect(m.isActive()).toBe(true)
+    expect(m.pendingCount()).toBe(1)
+
+    // 下载相关的操作碰不到它
+    m.pauseAll()
+    m.redownload('t1')
+    expect(t.status).toBe('done')
+
+    gate.resolve()
+    await settle()
+    expect(readFileSync(out, 'utf8')).toBe('clean video')
+    expect(t).toMatchObject({
+      status: 'done',
+      total: 11,
+      downloaded: 11,
+      qualityLabel: '1080P 高清 · AVC',
+      note: '该清晰度没有 AVC',
+      watermark: { width: 1920, height: 1080, applied: R },
+      processing: undefined,
+      tmpOutput: undefined
+    })
+    expect(done).not.toHaveBeenCalled()
+    expect(active.mock.calls).toEqual([[true], [false]])
+    expect(m.isActive()).toBe(false)
+  })
+
+  it('MKV 按 mkv 处理', async () => {
+    seedDone()
+    const mkv = join(dl, '视频1.MKV')
+    writeFileSync(mkv, 'orig')
+    seed([task({ status: 'done', outputPath: mkv })])
+    vi.mocked(replaceVideo).mockRejectedValue(new Error('x'))
+    make().startWatermark('t1', R)
+    await settle()
+    expect(vi.mocked(replaceVideo).mock.calls[0][0].format).toBe('mkv')
+  })
+
+  it('失败：原视频不变，写提示，删掉半成品和工作目录', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      writeFileSync(o.output, 'half')
+      mkdirSync(o.workDir, { recursive: true })
+      throw new FfmpegError('去水印失败：磁盘空间不足')
+    })
+    const m = make()
+    m.startWatermark('t1', R)
+    await settle()
+    const t = m.list()[0]
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+    expect(existsSync(`${out}.wm.tmp`)).toBe(false)
+    expect(existsSync(tmpOf('t1'))).toBe(false)
+    expect(t).toMatchObject({ status: 'done', note: '去水印失败：磁盘空间不足，已保留原视频', processing: undefined })
+
+    // 不是 Error 的异常也转成文字
+    vi.mocked(replaceVideo).mockRejectedValue('坏了')
+    m.startWatermark('t1', R)
+    await settle()
+    expect(t.note).toBe('去水印失败：坏了，已保留原视频')
+  })
+
+  it('原视频被占用、目录不能写时提示原因', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      writeFileSync(o.output, 'clean')
+      return { codec: 'h264', width: 1920, height: 1080, region: R }
+    })
+    const m = make()
+    const t = m.list()[0]
+    // 开始时会同步写一次任务列表（也用 renameSync），之后才轮到替换原视频
+    m.startWatermark('t1', R)
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    })
+    await settle()
+    expect(t.note).toBe('去水印失败：原视频正被其他程序占用，没能替换，已保留原视频')
+
+    m.startWatermark('t1', R)
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error('nospace'), { code: 'ENOSPC' })
+    })
+    await settle()
+    expect(t.note).toBe('去水印失败：磁盘空间不足，已保留原视频')
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+  })
+
+  it('一开始就落盘：处理中崩溃，下次启动能清掉半成品', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      writeFileSync(o.output, 'half')
+      return untilAbort(o.signal)
+    })
+    const m = make()
+    m.startWatermark('t1', R)
+    // 还没到 1 秒的节流落盘，就已经写进去了
+    const saved = JSON.parse(readFileSync(stateFile(), 'utf8'))[0]
+    expect(saved).toMatchObject({ status: 'done', tmpOutput: `${out}.wm.tmp`, processing: { manual: true } })
+    await settle()
+    // 模拟崩溃：不等作业结束，直接按落盘的状态重新启动
+    const restored = make().list()[0]
+    expect(existsSync(`${out}.wm.tmp`)).toBe(false)
+    expect(restored).toMatchObject({ status: 'done', processing: undefined, tmpOutput: undefined })
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+    m.cancelWatermark('t1')
+    await settle()
+  })
+
+  it('处理期间原视频被删掉：不在原位置写回处理结果，结束后也落盘', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      writeFileSync(o.output, 'clean')
+      rmSync(o.input)
+      return { codec: 'h264', width: 1920, height: 1080, region: R }
+    })
+    const m = make()
+    m.startWatermark('t1', R)
+    await settle()
+    expect(existsSync(out)).toBe(false)
+    expect(existsSync(`${out}.wm.tmp`)).toBe(false)
+    expect(m.list()[0].note).toBe('去水印没有完成：处理期间原视频被移动或删除了')
+    const saved = JSON.parse(readFileSync(stateFile(), 'utf8'))[0]
+    expect(saved.processing).toBeUndefined()
+    expect(saved.tmpOutput).toBeUndefined()
+  })
+
+  it('半成品删不掉（Windows 上被崩溃留下的 ffmpeg 占着）：作业照样结束，不会卡在处理中', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation(async () => {
+      throw new FfmpegError('去水印失败：磁盘空间不足')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const busy = (p: unknown): void => {
+      if (String(p).endsWith('.wm.tmp')) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    }
+    vi.mocked(rmSyncMock).mockImplementation(busy)
+    try {
+      const m = make()
+      m.startWatermark('t1', R)
+      await settle()
+      expect(m.isActive()).toBe(false)
+      expect(m.list()[0]).toMatchObject({ status: 'done', processing: undefined, tmpOutput: undefined })
+      // 重启时删不掉也照常启动
+      seed([task({ status: 'done', outputPath: out, tmpOutput: `${out}.wm.tmp`, processing: { manual: true, stage: 'encode' } })])
+      expect(make().list()[0]).toMatchObject({ status: 'done', processing: undefined })
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      vi.mocked(rmSyncMock).mockReset()
+      const real = await vi.importActual<typeof import('node:fs')>('node:fs')
+      vi.mocked(rmSyncMock).mockImplementation(real.rmSync)
+      warn.mockRestore()
+    }
+  })
+
+  it('开始前先删掉上次崩溃留下的同名半成品', async () => {
+    seedDone()
+    writeFileSync(`${out}.wm.tmp`, 'stale')
+    let seen: boolean | undefined
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      seen = existsSync(o.output)
+      throw new Error('x')
+    })
+    make().startWatermark('t1', R)
+    await settle()
+    expect(seen).toBe(false)
+  })
+
+  it('取消：原视频不变，不写提示；只对手动作业生效', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation((o) => {
+      writeFileSync(o.output, 'half')
+      return untilAbort(o.signal)
+    })
+    const m = make()
+    m.cancelWatermark('t1')
+    m.cancelWatermark('nope')
+    m.startWatermark('t1', R)
+    await settle()
+    m.cancelWatermark('t1')
+    await settle()
+    const t = m.list()[0]
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+    expect(existsSync(`${out}.wm.tmp`)).toBe(false)
+    expect(t).toMatchObject({ status: 'done', processing: undefined })
+    expect(t.note).toBeUndefined()
+  })
+
+  it('replaceVideo 完成时恰好被中止：不替换', async () => {
+    seedDone()
+    let m!: InstanceType<typeof DownloadManager>
+    vi.mocked(replaceVideo).mockImplementation(async (o) => {
+      writeFileSync(o.output, 'clean')
+      m.cancelWatermark('t1')
+      return { codec: 'h264', width: 1920, height: 1080, region: R }
+    })
+    m = make()
+    m.startWatermark('t1', R)
+    await settle()
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+    expect(m.list()[0].note).toBeUndefined()
+  })
+
+  it('处理中彻底删除：purged 立即发出，成品等作业结束后再删', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation((o) => untilAbort(o.signal))
+    const m = make()
+    const t = m.list()[0]
+    const purged = vi.fn()
+    m.on('purged', purged)
+    m.startWatermark('t1', R)
+    await settle()
+    m.remove(['t1'], true)
+    expect(purged).toHaveBeenCalledWith([t])
+    expect(m.list()).toEqual([])
+    await settle()
+    expect(existsSync(out)).toBe(false)
+  })
+
+  it('处理中只从列表移除：保留原视频', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation((o) => untilAbort(o.signal))
+    const m = make()
+    m.startWatermark('t1', R)
+    await settle()
+    m.remove(['t1'], false)
+    await settle()
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+  })
+
+  it('作业结束时删不掉成品只记日志', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation((o) => untilAbort(o.signal))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const m = make()
+    m.startWatermark('t1', R)
+    await settle()
+    // 成品的位置换成目录，删不掉
+    rmSync(out)
+    mkdirSync(out)
+    m.remove(['t1'], true)
+    await settle()
+    expect(warn).toHaveBeenCalledWith('删除文件失败：', out)
+    warn.mockRestore()
+  })
+
+  it('stopAll 中断所有任务，之后不再启动新任务', async () => {
+    seedDone()
+    vi.mocked(replaceVideo).mockImplementation((o) => untilAbort(o.signal))
+    vi.mocked(getPlayInfo).mockImplementation(() => new Promise(() => {}))
+    settings.concurrency = 1
+    const m = make()
+    m.startWatermark('t1', R)
+    await settle()
+    m.enqueue(req([item(2)]))
+    m.stopAll()
+    await settle()
+    expect(m.isActive()).toBe(false)
+    expect(m.list()[0].processing).toBeUndefined()
+    expect(m.list()[1].status).toBe('queued')
+    expect(getPlayInfo).not.toHaveBeenCalled()
+  })
+
+  it('重启后发现上次没做完：删掉半成品和工作目录，状态保持已完成并提示', () => {
+    seedDone()
+    writeFileSync(`${out}.wm.tmp`, 'half')
+    mkdirSync(tmpOf('t1'), { recursive: true })
+    seed([
+      task({
+        status: 'done',
+        outputPath: out,
+        note: '该清晰度没有 AVC',
+        tmpOutput: `${out}.wm.tmp`,
+        processing: { manual: true, stage: 'encode', pct: 20 }
+      }),
+      task({ id: 't2', status: 'done', processing: { manual: true, stage: 'queue' } })
+    ])
+    const [a, b] = make().list()
+    expect(a).toMatchObject({
+      status: 'done',
+      processing: undefined,
+      tmpOutput: undefined,
+      note: '该清晰度没有 AVC；去水印没有完成（应用中途退出了），已保留原视频'
+    })
+    expect(b.note).toBe('去水印没有完成（应用中途退出了），已保留原视频')
+    expect(existsSync(`${out}.wm.tmp`)).toBe(false)
+    expect(existsSync(tmpOf('t1'))).toBe(false)
+    expect(readFileSync(out, 'utf8')).toBe('orig')
   })
 })

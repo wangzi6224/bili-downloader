@@ -6,8 +6,14 @@ export class DownloadError extends Error {}
 /** 磁盘类错误：空间不足、无权限、目录不可用，重试没有意义 */
 export class DiskError extends Error {}
 
-/** ffmpeg 合并失败 */
-export class FfmpegError extends Error {}
+/** ffmpeg 合并、转码失败；stderr 是 ffmpeg 原始输出的末尾，用来判断要不要换编码器重试 */
+export class FfmpegError extends Error {
+  stderr?: string
+  constructor(message: string, stderr?: string) {
+    super(message)
+    this.stderr = stderr
+  }
+}
 
 export class AbortError extends Error {
   constructor() {

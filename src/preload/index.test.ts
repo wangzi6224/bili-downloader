@@ -44,6 +44,7 @@ vi.mock('../main/history', () => ({
 vi.mock('../main/quitGuard', () => ({ quitConfirmed: vi.fn() }))
 vi.mock('../main/settings', () => ({ getSettings: vi.fn(), updateSettings: vi.fn() }))
 vi.mock('../main/windows', () => ({ getMainWindow: vi.fn(), hideMainWindow: vi.fn(), send: vi.fn() }))
+vi.mock('../main/watermark/manual', () => ({ requireVideoTask: vi.fn(), prepareManual: vi.fn(), previewFrame: vi.fn() }))
 
 await import('./index')
 // 用例之间 mock 的调用记录会被清空，这里在加载完立刻记下
@@ -102,7 +103,12 @@ describe('preload', () => {
     { channel: 'dl:remove', call: () => api.download.remove(['a', 'b'], true), args: [['a', 'b'], true] },
     { channel: 'subs:update', call: () => api.subs.update('s1', { enabled: false }), args: ['s1', { enabled: false }] },
     { channel: 'app:close', call: () => api.app.close('quit', false), args: ['quit', false] },
-    { channel: 'parseMore', call: () => api.parseMore(SOURCE, 2), args: [SOURCE, 2] }
+    { channel: 'parseMore', call: () => api.parseMore(SOURCE, 2), args: [SOURCE, 2] },
+    {
+      channel: 'wm:frame',
+      call: () => api.watermark.frame('t1', 3.5, { x: 1, y: 2, w: 30, h: 10 }),
+      args: ['t1', 3.5, { x: 1, y: 2, w: 30, h: 10 }]
+    }
   ])('$channel 多个参数原样透传', async ({ channel, call, args }) => {
     await call()
     expect(h.invoke.mock.calls).toEqual([[channel, ...args]])
@@ -144,7 +150,7 @@ describe('preload', () => {
     registerIpc({ manager: {}, subs: {}, mcp: {}, updater: {}, enqueue: vi.fn() } as unknown as IpcDeps)
 
     expect([...invoked].sort()).toEqual([...h.registered].sort())
-    expect(invoked.size).toBe(57)
+    expect(invoked.size).toBe(61)
     // 每个 api 函数各用一个频道，主进程也没有重复注册
     expect(invokers).toBe(invoked.size)
     expect(new Set(h.registered).size).toBe(h.registered.length)
