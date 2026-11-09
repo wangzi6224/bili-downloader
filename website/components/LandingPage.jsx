@@ -58,7 +58,7 @@ export default function LandingPage({ locale }) {
             <Link className="language-toggle" href={english ? '/' : '/en/'} lang={english ? 'zh-CN' : 'en'}>
               {english ? '中文' : 'EN'}
             </Link>
-            <a className="header-cta" href={RELEASES} rel="noreferrer" target="_blank">
+            <a className="header-cta" href={RELEASES} aria-label={copy.navCta} rel="noreferrer" target="_blank">
               <span>{copy.navCta}</span><ArrowIcon />
             </a>
           </div>
@@ -88,18 +88,14 @@ export default function LandingPage({ locale }) {
               </div>
             </div>
 
-            <div className="hero-graphic" aria-label={english ? 'Interactive illustration of a link branching into download choices' : '一条链接展开成不同下载选项的交互示意图'}>
-              <div className="graphic-orbit orbit-one" aria-hidden="true" />
-              <div className="graphic-orbit orbit-two" aria-hidden="true" />
-              <div className="graphic-index" aria-hidden="true"><span>FIG. 01</span><span>LOCAL ARCHIVE SYSTEM</span></div>
+            <div className="hero-graphic">
               <BranchExplorer locale={locale} />
-              <span className="graphic-corner corner-tl" aria-hidden="true" />
-              <span className="graphic-corner corner-br" aria-hidden="true" />
             </div>
           </div>
-          <div className="hero-bottomline shell" aria-hidden="true">
-            <span>BV → COLLECTION → LOCAL FILE</span>
-            <span>01—05 <i /></span>
+          <div className="hero-flow shell">
+            <span>{english ? 'SELECT SOURCE' : '选择来源'}</span><i aria-hidden="true" />
+            <span>{english ? 'ADD EXTRAS' : '挑选附加内容'}</span><i aria-hidden="true" />
+            <span>{english ? 'SAVE LOCALLY' : '保存到本地'}</span>
           </div>
         </section>
 
@@ -112,13 +108,10 @@ export default function LandingPage({ locale }) {
             <div className="source-main">
               <h2 id="source-title">{copy.sectionOneTitle}</h2>
               <p className="section-lede">{copy.sectionOneBody}</p>
-              <div className="source-ribbons" aria-label={english ? 'Supported link types' : '支持解析的链接类型'}>
-                <span><b>BV / av</b>{english ? 'Video' : '视频'}</span>
-                <span><b>ep / ss / md</b>{english ? 'Anime & film' : '番剧 / 影视'}</span>
-                <span><b>fav / series</b>{english ? 'Lists' : '收藏 / 合集'}</span>
-                <span><b>au / am</b>{english ? 'Audio' : '音频'}</span>
-                <span><b>UP</b>{english ? 'Creator' : '投稿'}</span>
-                <span><b>rank</b>{english ? 'Rankings' : '排行榜'}</span>
+              <div className="source-input-note">
+                <span className="source-input-mark" aria-hidden="true">↳</span>
+                <div><strong>{copy.sourceAccepts}</strong><span>{copy.sourceLocal}</span></div>
+                <span className="source-input-arrow" aria-hidden="true">↗</span>
               </div>
               <div className="source-footnote">
                 <span className="footnote-index">01—08</span>
@@ -140,7 +133,7 @@ export default function LandingPage({ locale }) {
             </div>
 
             <div className="screenshots-grid">
-              <figure className="screenshot-card screenshot-card-wide">
+              <figure id="queue-screenshot" className="screenshot-card screenshot-card-wide">
                 <div className="screenshot-topline"><span>01 / DOWNLOAD QUEUE</span><span className="screen-live"><i /> DESKTOP APP</span></div>
                 <div className="screenshot-image screenshot-queue">
                   <Image src={ASSET_ROOT + 'queue.png'} alt={copy.screenshotQueueAlt} width={1600} height={1047} sizes="(max-width: 760px) 100vw, 58vw" unoptimized />
@@ -175,7 +168,7 @@ export default function LandingPage({ locale }) {
               <SectionMarker>{copy.sectionThree}</SectionMarker>
               <h2 id="queue-title">{copy.sectionThreeTitle}</h2>
               <p className="section-lede">{copy.sectionThreeBody}</p>
-              <div className="queue-speed" aria-hidden="true"><span className="speed-label">QUEUE CONTROL</span><span className="speed-wave"><i /><i /><i /><i /><i /><i /><i /><i /><i /></span><span className="speed-state">READY TO RESUME</span></div>
+              <a className="queue-proof-link" href="#queue-screenshot">{copy.queueProof}<ExternalMark /></a>
             </div>
             <div className="queue-feature-list">
               <article className="queue-feature">
@@ -205,7 +198,7 @@ export default function LandingPage({ locale }) {
               <p className="section-lede">{copy.sectionFourBody}</p>
             </div>
             <div className="mcp-panel">
-              <div className="mcp-panel-top"><span><i /> {copy.mcpLabel}</span><span className="mcp-lock" aria-hidden="true">⌑</span></div>
+              <div className="mcp-panel-top"><span>{copy.mcpLabel}</span><span className="mcp-mode">LOCAL ONLY</span></div>
               <div className="mcp-panel-body">
                 <span className="mcp-prompt">bili-downloader <i>~</i></span>
                 <span className="mcp-command"><b>01</b><code>{copy.mcpCallOne}</code><small>{english ? 'Find videos' : '搜索视频'}</small></span>
@@ -219,13 +212,18 @@ export default function LandingPage({ locale }) {
 
         <section className="watermark-section" aria-labelledby="watermark-title">
           <div className="watermark-grid shell">
-            <div className="watermark-art" aria-hidden="true">
-              <div className="frame-cross cross-one" />
-              <div className="frame-cross cross-two" />
-              <div className="watermark-frame"><span className="frame-corner frame-a" /><span className="frame-corner frame-b" /><span className="frame-corner frame-c" /><span className="frame-corner frame-d" /><i>W</i></div>
-              <div className="watermark-orbit orbit-a" /><div className="watermark-orbit orbit-b" />
-              <span className="art-coordinate coordinate-one">X 0.94 / Y 0.08</span>
-              <span className="art-coordinate coordinate-two">LOCAL FILE / FRAME 028</span>
+            <div className="watermark-art" role="img" aria-label={copy.watermarkIllustration}>
+              <div className="watermark-preview" aria-hidden="true">
+                <div className="preview-scene">
+                  <span className="scene-sun" />
+                  <span className="scene-ridge scene-ridge-back" />
+                  <span className="scene-ridge scene-ridge-front" />
+                  <span className="creator-mark">UP · 示例标记</span>
+                  <span className="watermark-selection"><i /><i /><i /><i /><b>{english ? 'CORNER MARK' : '角落标记'}</b></span>
+                </div>
+                <div className="preview-controls"><span><i />{english ? 'AUTO DETECT' : '自动识别'}</span><span>{english ? 'MANUAL SELECT' : '手动框选'}</span></div>
+              </div>
+              <span className="watermark-visual-note">{copy.watermarkIllustration}</span>
             </div>
             <div className="watermark-copy">
               <p className="eyebrow eyebrow-light"><span className="eyebrow-dot" />{copy.watermarkEyebrow}</p>
@@ -261,7 +259,6 @@ export default function LandingPage({ locale }) {
         </section>
 
         <section className="final-section" aria-labelledby="final-title">
-          <div className="final-tree" aria-hidden="true"><span /><span /><span /><span /><span /><span /><span /></div>
           <div className="shell final-content">
             <p className="eyebrow"><span className="eyebrow-dot" />{copy.finalEyebrow}</p>
             <h2 id="final-title">{copy.finalTitle}</h2>
