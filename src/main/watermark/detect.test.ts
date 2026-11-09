@@ -446,7 +446,8 @@ describe('认出 B站水印（昵称 + bilibili 标志）', () => {
     detectWatermark(f, BW, BH)
     const t0 = performance.now()
     detectWatermark(f, BW, BH)
-    // 平时约 40ms；覆盖率插桩、并行跑测试时会慢几倍，这里只防止数量级的退化
-    expect(performance.now() - t0).toBeLessThan(1000)
+    // 平时约 40ms；覆盖率插桩、并行跑测试时会慢几倍，这里只防止数量级的退化。
+    // Windows runner 慢得多（测试多了以后实测到过 1.4 秒），和 vitest.config.mts 里的超时一样放宽
+    expect(performance.now() - t0).toBeLessThan(process.platform === 'win32' ? 3000 : 1000)
   })
 })
