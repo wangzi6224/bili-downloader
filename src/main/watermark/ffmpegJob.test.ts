@@ -10,6 +10,7 @@ vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => '/app' 
 class FakeProc extends EventEmitter {
   stdout = new EventEmitter()
   stderr = new EventEmitter()
+  stdin = Object.assign(new EventEmitter(), { end: vi.fn() })
   kill = vi.fn(() => true)
 }
 let procs: FakeProc[] = []
@@ -142,6 +143,59 @@ describe('ffmpegCapture', () => {
     ac.abort()
     vi.advanceTimersByTime(5000)
     expect(procs[0].kill).not.toHaveBeenCalled()
+  })
+})
+
+describe('ffmpegCapture 的输入', () => {
+  it('给了 stdin 就整块写进去并关上；写入出错不抛（以退出码为准）', async () => {
+    const { ffmpegCapture } = await load()
+    const data = new Uint8Array([1, 2, 3])
+    const p = ffmpegCapture(['-i', 'pipe:0'], { stdin: data })
+    expect(procs[0].stdin.end).toHaveBeenCalledWith(data)
+    procs[0].stdin.emit('error', new Error('EPIPE'))
+    procs[0].emit('close', 0, null)
+    await expect(p).resolves.toMatchObject({ code: 0 })
+    const q = ffmpegCapture(['-i', 'a.mp4'])
+    expect(procs[1].stdin.end).not.toHaveBeenCalled()
+    procs[1].emit('close', 0, null)
+    await q
+  })
+})
+
+describe('heavyTurn', () => {
+  it('同一时间只有一个重活，归还后下一个才开始；和转码共用一个队列', async () => {
+    const { heavyTurn, runTranscode } = await load()
+    const release1 = await heavyTurn()
+    const second = heavyTurn()
+    const transcode = runTranscode(['-i', 'a.mp4', 'b.mp4'])
+    let got = false
+    void second.then(() => (got = true))
+    await flush()
+    expect(got).toBe(false)
+    expect(procs.length).toBe(0)
+    release1()
+    const release2 = await second
+    await flush()
+    expect(procs.length).toBe(0)
+    release2()
+    await flush()
+    expect(procs.length).toBe(1)
+    procs[0].emit('close', 0, null)
+    await transcode
+  })
+
+  it('排队中被中止：立刻结束，名额让给后面的；已经中止的直接拒绝', async () => {
+    const { heavyTurn, AbortError } = await load()
+    const release = await heavyTurn()
+    const ac = new AbortController()
+    const waiting = heavyTurn(ac.signal)
+    const after = heavyTurn()
+    ac.abort()
+    await expect(waiting).rejects.toBeInstanceOf(AbortError)
+    release()
+    const r = await after
+    r()
+    await expect(heavyTurn(ac.signal)).rejects.toBeInstanceOf(AbortError)
   })
 })
 

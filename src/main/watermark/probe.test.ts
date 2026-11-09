@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ capture: vi.fn() }))
 vi.mock('./ffmpegJob', () => ({ ffmpegCapture: h.capture }))
-const { parseProbe, probeMedia } = await import('./probe')
+const { parseColor, parseProbe, probeMedia } = await import('./probe')
 const { FfmpegError } = await import('../download/errors')
 
 // 以下夹具是随包 ffmpeg 的真实输出：9.0.2 是 darwin-arm64（martin-riedl），6.1.1 是 darwin-x64（evermeet）
@@ -315,5 +315,27 @@ describe('probeMedia', () => {
   it('读不出信息', async () => {
     h.capture.mockResolvedValue({ code: 1, stdout: Buffer.alloc(0), stderr: 'Invalid data found when processing input' })
     await expect(probeMedia('a.txt')).rejects.toThrow(/^无法读取视频信息$/)
+  })
+})
+
+describe('parseColor', () => {
+  it('三项相同只写一次；不同时按 色彩空间/原色/传递函数；扫描方式、unknown 不算', () => {
+    expect(parseColor('yuv420p(tv, bt709, progressive)')).toEqual({ range: 'tv', space: 'bt709', primaries: 'bt709', transfer: 'bt709' })
+    expect(parseColor('yuv420p10le(tv, bt2020nc/bt2020/smpte2084, progressive)')).toEqual({
+      range: 'tv',
+      space: 'bt2020nc',
+      primaries: 'bt2020',
+      transfer: 'smpte2084'
+    })
+    expect(parseColor('yuvj420p(pc, bt470bg/unknown/unknown)')).toEqual({ range: 'pc', space: 'bt470bg', primaries: undefined, transfer: undefined })
+    expect(parseColor('yuv420p(progressive)')).toBeUndefined()
+    expect(parseColor('yuv420p(top first)')).toBeUndefined()
+    expect(parseColor('yuv420p')).toBeUndefined()
+    expect(parseColor(undefined)).toBeUndefined()
+  })
+
+  it('解析视频流时带上色彩信息', () => {
+    const p = parseProbe('Input #0, mov,mp4:\n  Duration: 00:00:01.00, start: 0, bitrate: 1 kb/s\n  Stream #0:0: Video: h264 (High), yuv420p(tv, bt709, progressive), 640x360, 30 fps\n')
+    expect(p?.video?.color).toEqual({ range: 'tv', space: 'bt709', primaries: 'bt709', transfer: 'bt709' })
   })
 })

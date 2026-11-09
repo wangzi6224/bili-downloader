@@ -5,7 +5,7 @@ import { markBroken, pickEncoder, softwareEncoder, type Encoder } from './encode
 import { runTranscode } from './ffmpegJob'
 
 /** 换编码器也没用的错误：磁盘满、没权限、区域超出画面、源文件坏了 */
-const HOPELESS = /no space left|permission denied|operation not permitted|logo area is outside|invalid data found|moov atom not found/i
+export const HOPELESS = /no space left|permission denied|operation not permitted|logo area is outside|invalid data found|moov atom not found/i
 
 export interface EncodeJob {
   srcCodec?: string

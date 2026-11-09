@@ -16,6 +16,9 @@ vi.mock('./mux', () => ({ mux: vi.fn() }))
 vi.mock('./extras', () => ({ prepareExtras: vi.fn(), placeSidecars: vi.fn() }))
 vi.mock('../watermark/auto', () => ({ autoDelogo: vi.fn() }))
 vi.mock('../watermark/manual', async (o) => ({ ...(await o<typeof import('../watermark/manual')>()), replaceVideo: vi.fn() }))
+const ai = vi.hoisted(() => ({ ready: vi.fn(() => true), refine: vi.fn() }))
+vi.mock('../watermark/ai', () => ({ aiModel: () => ({ ready: ai.ready }), spawnHost: () => ({}) }))
+vi.mock('../watermark/ai/refine', () => ({ refineVideo: ai.refine }))
 // 透传，只为了能模拟改名时文件被占用
 vi.mock('node:fs', async (o) => {
   const fs = await o<typeof import('node:fs')>()
@@ -1233,6 +1236,26 @@ describe('手动去水印', () => {
     expect(done).not.toHaveBeenCalled()
     expect(active.mock.calls).toEqual([[true], [false]])
     expect(m.isActive()).toBe(false)
+  })
+
+  it('AI 精修：没下载模型时报错；下载了就交给 refineVideo，带上模型和启动推理进程的方法，其余和快速一样', async () => {
+    seedDone()
+    ai.ready.mockReturnValueOnce(false)
+    expect(() => make().startWatermark('t1', R, 'ai')).toThrow('请先下载 AI 模型')
+
+    ai.refine.mockReset().mockImplementation(async (o: { output: string; onStage: (p: unknown) => void }) => {
+      o.onStage({ manual: true, stage: 'refine', pct: 40, backend: 'GPU' })
+      writeFileSync(o.output, 'ai video')
+      return { codec: 'hevc', width: 1920, height: 1080, region: R }
+    })
+    const m = make()
+    m.startWatermark('t1', R, 'ai')
+    await settle()
+    expect(replaceVideo).not.toHaveBeenCalled()
+    expect(ai.refine.mock.calls[0][0]).toMatchObject({ input: out, output: `${out}.wm.tmp`, region: R, format: 'mp4', model: { ready: ai.ready } })
+    expect(typeof ai.refine.mock.calls[0][0].spawn).toBe('function')
+    expect(readFileSync(out, 'utf8')).toBe('ai video')
+    expect(m.list()[0]).toMatchObject({ qualityLabel: '1080P 高清 · HEVC', watermark: { applied: R }, processing: undefined })
   })
 
   it('MKV 按 mkv 处理', async () => {

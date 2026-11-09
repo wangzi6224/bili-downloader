@@ -7,6 +7,11 @@ directories:
 files:
   - out/**
   - package.json
+# AI 去水印的推理引擎：原生二进制不能放在 asar 里加载；afterPack 再删掉其他系统的二进制
+asarUnpack:
+  - node_modules/onnxruntime-node/bin/**
+  - node_modules/onnxruntime-node-legacy/bin/**
+afterPack: scripts/afterPack.cjs
 # 每个系统和架构只带自己的 ffmpeg（${platform} 是打包机的系统）
 extraResources:
   - from: resources/ffmpeg/${platform}-${arch}

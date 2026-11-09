@@ -56,7 +56,11 @@ jobs:
           node-version: 24
           cache: npm
 
+      # onnxruntime-node 在 Linux x64 上安装时会另外下载几百 MB 的 CUDA 库，用不到；
+      # package.json 的 allowScripts 已经拒绝了它的安装脚本，这里再兜个底（旧版 npm 不认 allowScripts）
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       # ffmpeg 来自第三方站点，按系统和下载脚本缓存：脚本里的版本或校验值变了才重新下载
       - uses: actions/cache@v6

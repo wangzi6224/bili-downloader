@@ -50,7 +50,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 - Danmaku (commentaires défilants) en `.ass` et/ou `.xml`, avec taille de police, opacité et durée réglables
 - Les segments de la barre de progression de bilibili, écrits comme de vrais chapitres
 - Métadonnées NFO pour les médiathèques Kodi / Jellyfin
-- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée
+- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée ; sur une vidéo déjà téléchargée, le mode « Retouche IA » repeint image par image ce qui se trouve sous le filigrane avec un modèle d'IA — bien plus net que le mode rapide par défaut — et affiche une durée estimée avant de commencer (accéléré par la carte graphique si possible ; le modèle d'environ 200 Mo est téléchargé à la première utilisation)
 
 ### File d'attente et réseau
 
@@ -209,7 +209,7 @@ Voir [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais) pour le flux de développem
 src/main/auth               Connexion : stockage des cookies, fenêtre de connexion, import depuis le navigateur, détection d'expiration
 src/main/bili               API bilibili : signature WBI, analyse des vidéos / animés / cours / listes, flux, sous-titres, danmaku
 src/main/download           File de téléchargement, reprise, multiplexage ffmpeg, extras (couverture, sous-titres, NFO…)
-src/main/watermark          Détection et suppression du filigrane (delogo de ffmpeg)
+src/main/watermark          Détection et suppression du filigrane (delogo de ffmpeg) ; ai/ : retouche IA (modèle LaMa sur onnxruntime)
 src/main/net                Proxy et choix du CDN
 src/main/update             Mises à jour intégrées : vérification de update.json, contrôle des téléchargements, installation des mises à jour .app / AppImage / NSIS
 src/main/mcp                Serveur MCP local
@@ -235,3 +235,5 @@ Les issues et pull requests sont les bienvenues. Merci de lire d'abord [CONTRIBU
 [MIT](LICENSE) © wangzi6224
 
 L'application intègre des binaires FFmpeg statiques issus de [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg s'exécute comme un programme distinct sous sa propre licence et n'est pas couvert par la licence MIT ci-dessus. Le texte de sa licence est fourni dans l'application, dans `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Windows et Linux) ; voir aussi [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+
+La retouche IA exécute le modèle de restauration [LaMa](https://github.com/advimman/lama) (Apache-2.0 ; export ONNX de [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)) avec [onnxruntime](https://github.com/microsoft/onnxruntime) (MIT, inclus dans l'application). Le modèle n'est pas fourni avec l'installateur : il est téléchargé à la première utilisation de la retouche IA.

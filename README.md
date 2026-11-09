@@ -50,7 +50,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 - Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
 - The chapter markers on bilibili's progress bar, written as real chapters
 - NFO metadata for Kodi / Jellyfin media libraries
-- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download
+- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download; on a finished download you can also pick “AI refine”, which repaints what is under the watermark frame by frame with an AI model — much cleaner than the default fast mode — and shows an estimated time before it starts (GPU-accelerated when available; the ~200 MB model is downloaded on first use)
 
 ### Queue and network
 
@@ -209,7 +209,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [docs/RE
 src/main/auth               Sign-in: cookie storage, in-app login window, browser import, expiry detection
 src/main/bili               bilibili APIs: WBI signing, video / anime / course / list parsing, streams, subtitles, danmaku
 src/main/download           Download queue, resumable downloads, ffmpeg muxing, extras (cover, subtitles, NFO…)
-src/main/watermark          Watermark detection and removal (ffmpeg delogo)
+src/main/watermark          Watermark detection and removal (ffmpeg delogo); ai/ is AI refine (LaMa model on onnxruntime)
 src/main/net                Proxy and CDN selection
 src/main/update             In-app updates: check update.json, verify downloads, install .app / AppImage / NSIS updates
 src/main/mcp                Local MCP server
@@ -235,3 +235,5 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 [MIT](LICENSE) © wangzi6224
 
 The app bundles static FFmpeg binaries from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg runs as a separate program under its own license and is not covered by the MIT license above. Its license text ships inside the app at `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Windows and Linux); see also [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+
+AI refine runs the [LaMa](https://github.com/advimman/lama) inpainting model (Apache-2.0; ONNX export from [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)) with [onnxruntime](https://github.com/microsoft/onnxruntime) (MIT, bundled with the app). The model is not shipped in the installer; it is downloaded the first time you use AI refine.

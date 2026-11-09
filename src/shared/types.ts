@@ -195,14 +195,52 @@ export interface WatermarkState {
   applied?: WatermarkRegion
 }
 
-/** 去水印的进度；manual 表示对已完成任务手动发起（此时 status 仍为 done） */
+/**
+ * 去水印的进度；manual 表示对已完成任务手动发起（此时 status 仍为 done）。
+ * AI 精修的阶段：analyze（抽帧找笔画、加载模型）→ refine（逐帧修补并编码）
+ */
 export interface ProcessingInfo {
   manual?: boolean
-  stage: 'detect' | 'queue' | 'encode'
+  stage: 'detect' | 'queue' | 'encode' | 'analyze' | 'refine'
   /** 0-100 */
   pct?: number
   /** 剩余秒数 */
   eta?: number
+  /** AI 精修用的推理方式，例如“GPU”“CPU × 6” */
+  backend?: string
+}
+
+/** 手动去水印的方式：fast 用 delogo（快，略糊）；ai 用 LaMa 模型逐帧修补（慢，清楚） */
+export type WatermarkMethod = 'fast' | 'ai'
+
+/** AI 精修模型的状态：第一次使用时下载 */
+export interface AiModelStatus {
+  state: 'missing' | 'downloading' | 'ready' | 'error'
+  /** 模型大小（字节） */
+  size: number
+  /** 已下载的字节数 */
+  done?: number
+  /** 正在从哪里下载，例如 ModelScope */
+  source?: string
+  /** 下载完在校验 */
+  verifying?: boolean
+  message?: string
+  /** 模型和缓存一共占用的磁盘空间（字节） */
+  disk?: number
+}
+
+/** AI 精修开始前的估算 */
+export interface AiEstimate {
+  /** 预计耗时 [乐观, 保守]，秒 */
+  seconds: [number, number]
+  backend: 'webgpu' | 'coreml' | 'cpu'
+  /** 显示用，例如“GPU”“CPU × 6” */
+  label: string
+  frames: number
+  /** 画面静止、能沿用上一帧结果的比例 */
+  reuse: number
+  /** 没认出水印的笔画，整个方框都会重画 */
+  fallback: boolean
 }
 
 /** 去水印对话框打开时需要的信息 */
@@ -480,9 +518,21 @@ export interface BiliApi {
     prepare(taskId: string): Promise<WatermarkPrep>
     /** 换一帧；带 region 时返回去掉水印后的效果 */
     frame(taskId: string, time: number, region?: WatermarkRegion): Promise<string>
-    /** 开始处理，进度通过任务列表更新 */
-    start(taskId: string, region: WatermarkRegion): Promise<void>
+    /** 开始处理，进度通过任务列表更新；method 默认 fast */
+    start(taskId: string, region: WatermarkRegion, method?: WatermarkMethod): Promise<void>
     cancel(taskId: string): Promise<void>
+    /** AI 精修模型的状态，以及下载、取消、删除 */
+    aiStatus(): Promise<AiModelStatus>
+    aiDownload(): Promise<void>
+    aiCancelDownload(): Promise<void>
+    aiRemove(): Promise<void>
+    onAiStatus(cb: (s: AiModelStatus) => void): () => void
+    /** 估算 AI 精修的耗时（要先下载模型；第一次会加载模型、试跑几秒） */
+    aiEstimate(taskId: string, region: WatermarkRegion): Promise<AiEstimate>
+    /** AI 精修后这一帧的样子 */
+    aiPreview(taskId: string, time: number, region: WatermarkRegion): Promise<string>
+    /** 对话框关掉时释放为预览开的推理进程 */
+    aiRelease(taskId: string): Promise<void>
   }
   history: {
     /** 已下载过的条目 key */

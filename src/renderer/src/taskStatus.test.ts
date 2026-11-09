@@ -170,6 +170,10 @@ describe('taskDetail', () => {
     expect(taskDetail(task('a', 'processing', { processing: { stage: 'queue' } }), now)).toBe('等其他视频处理完')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'encode', pct: 10, eta: 90 } }), now)).toBe('剩 1 分 30 秒')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'encode', pct: 0 } }), now)).toBe('重新编码中')
+    expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'analyze' } }), now)).toBe('AI 精修：分析画面、加载模型…')
+    expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'refine', pct: 5, eta: 90, backend: 'GPU' } }), now)).toBe('AI · 剩 1 分 30 秒')
+    expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'refine', pct: 0, backend: 'CPU × 6' } }), now)).toBe('AI 精修中（CPU × 6）')
+    expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'refine', pct: 0 } }), now)).toBe('AI 精修中')
   })
 
   it('排队中或不知道大小时为空', () => {

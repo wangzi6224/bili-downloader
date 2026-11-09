@@ -38,6 +38,9 @@ export const taskPct = (t: TaskInfo): number =>
 export function processingDetail(p: ProcessingInfo): string {
   if (p.stage === 'detect') return '识别水印…'
   if (p.stage === 'queue') return '等其他视频处理完'
+  if (p.stage === 'analyze') return 'AI 精修：分析画面、加载模型…'
+  // 这一栏很窄：有剩余时间时只写“AI · 剩 …”，用的什么硬件在开始时显示
+  if (p.stage === 'refine') return p.eta ? `AI · 剩 ${fmtEta(p.eta)}` : p.backend ? `AI 精修中（${p.backend}）` : 'AI 精修中'
   return p.eta ? `剩 ${fmtEta(p.eta)}` : '重新编码中'
 }
 

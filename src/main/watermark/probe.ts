@@ -15,6 +15,15 @@ export interface ProbeVideo {
   fps?: number
   hdr: boolean
   dolbyVision: boolean
+  /** 像素格式后面括号里的色彩信息，例如 (tv, bt709, progressive)；不知道的项为 undefined */
+  color?: ProbeColor
+}
+
+export interface ProbeColor {
+  range?: 'tv' | 'pc'
+  space?: string
+  primaries?: string
+  transfer?: string
 }
 
 export interface ProbeCover {
@@ -70,6 +79,30 @@ function splitTop(s: string): string[] {
 const meta = (block: string, key: string): string | undefined =>
   new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`, 'im').exec(block)?.[1]
 
+/** 不是色彩信息的括号项：扫描方式、场序 */
+const NOT_COLOR = /^(?:progressive|interlaced|top first|bottom first|top coded first \(swapped\)|bottom coded first \(swapped\))$/
+
+/**
+ * 解析像素格式括号里的色彩信息：(tv, bt709, progressive) 三项相同时只写一次，
+ * 不同时写成 色彩空间/原色/传递函数，例如 bt2020nc/bt2020/smpte2084
+ */
+export function parseColor(pixPart: string | undefined): ProbeColor | undefined {
+  const inner = pixPart && /\((.*)\)/.exec(pixPart)?.[1]
+  if (!inner) return undefined
+  const c: ProbeColor = {}
+  for (const tok of inner.split(',').map((s) => s.trim())) {
+    if (tok === 'tv' || tok === 'pc') c.range = tok
+    else if (tok && !NOT_COLOR.test(tok) && !c.space) {
+      const [space, primaries = space, transfer = primaries] = tok.split('/')
+      const known = (v: string): string | undefined => (v && v !== 'unknown' && v !== 'reserved' ? v : undefined)
+      c.space = known(space)
+      c.primaries = known(primaries)
+      c.transfer = known(transfer)
+    }
+  }
+  return c.range || c.space || c.primaries || c.transfer ? c : undefined
+}
+
 /** 宽高要从切好的段里找，直接在整行里匹配会把 0x31637661 这样的 fourcc 当成尺寸 */
 const DIMS = /^(\d{2,5})x(\d{2,5})(?:\s|$)/
 
@@ -98,7 +131,8 @@ function parseVideo(index: number, desc: string, block: string): ProbeVideo | un
     fps: fps ? Number(fps) : undefined,
     // 10/12 bit 或 PQ、HLG 传递函数：delogo 只能处理 8 bit，处理后 HDR 就没了
     hdr: /(?:10|12)(?:le|be)$|^p010/.test(pixFmt ?? '') || /smpte2084|arib-std-b67/.test(pixPart ?? ''),
-    dolbyVision: /DOVI configuration|Dolby Vision/i.test(block) || /\b(?:dvh1|dvhe|dav1|dva1|dvav)\b/.test(desc)
+    dolbyVision: /DOVI configuration|Dolby Vision/i.test(block) || /\b(?:dvh1|dvhe|dav1|dva1|dvav)\b/.test(desc),
+    color: parseColor(pixPart)
   }
 }
 

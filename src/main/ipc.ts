@@ -9,6 +9,7 @@ import type {
   ParseResult,
   Settings,
   Subscription,
+  WatermarkMethod,
   WatermarkRegion
 } from '@shared/types'
 import { checkAuth, ensureLoggedIn, getAuthState, logout, requireLogin } from './auth/authGuard'
@@ -37,6 +38,7 @@ import {
   removeParse
 } from './history'
 import { quitConfirmed } from './quitGuard'
+import { aiModel, aiSessions } from './watermark/ai'
 import { prepareManual, previewFrame, requireVideoTask } from './watermark/manual'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
@@ -166,8 +168,32 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   const videoTask = (id: string) => requireVideoTask(manager.list().find((t) => t.id === id))
   handle('wm:prepare', (id: string) => prepareManual(videoTask(id)))
   handle('wm:frame', (id: string, time: number, region?: WatermarkRegion) => previewFrame(videoTask(id), time, region))
-  handle('wm:start', (id: string, region: WatermarkRegion) => manager.startWatermark(id, region))
+  handle('wm:start', (id: string, region: WatermarkRegion, method?: WatermarkMethod) => {
+    // 正式开始前先放掉预览占着的推理进程（显存、内存）
+    if (method === 'ai') aiSessions().release(id)
+    return manager.startWatermark(id, region, method === 'ai' ? 'ai' : 'fast')
+  })
   handle('wm:cancel', (id: string) => manager.cancelWatermark(id))
+  handle('wm:ai:status', () => aiModel().status())
+  handle('wm:ai:download', () => {
+    const s = getSettings()
+    void aiModel().download({ threads: s.threads })
+  })
+  handle('wm:ai:cancel', () => aiModel().cancel())
+  handle('wm:ai:remove', () => {
+    aiSessions().closeAll()
+    return aiModel().remove()
+  })
+  handle('wm:ai:estimate', (id: string, region: WatermarkRegion) => {
+    const t = videoTask(id)
+    return aiSessions().estimate(id, t.outputPath, region)
+  })
+  handle('wm:ai:preview', (id: string, time: number, region: WatermarkRegion) => {
+    const t = videoTask(id)
+    return aiSessions().preview(id, t.outputPath, time, region)
+  })
+  handle('wm:ai:release', (id: string) => aiSessions().release(id))
+  aiModel().on('status', (s) => send('wm:ai:status', s))
 
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch: Partial<Settings>) => updateSettings(patch))

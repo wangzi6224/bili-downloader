@@ -4,13 +4,15 @@ import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
-import type { EnqueueRequest, MediaItem, MediaMeta, Settings, TaskInfo, WatermarkRegion } from '@shared/types'
+import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
 import { stripWatermarkNotes, withWatermarkNote, WM_NOTE } from '@shared/watermark'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
 import { preferCdn } from '../net/cdn'
 import { readJsonArray, writeJson } from '../store'
+import { aiModel, spawnHost } from '../watermark/ai'
+import { refineVideo } from '../watermark/ai/refine'
 import { autoDelogo } from '../watermark/auto'
 import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark/manual'
 import { removeQuietly, removeTaskOutputs } from './cleanup'
@@ -351,11 +353,12 @@ export class DownloadManager extends EventEmitter {
    * 对已完成的视频手动去水印：重新编码后替换原文件。任务一直保持“已完成”，进度放在 processing 上，
    * 这样暂停、继续、重新下载这些针对下载的操作都不会碰到它。会占一个同时下载的名额
    */
-  startWatermark(id: string, region: WatermarkRegion): void {
+  startWatermark(id: string, region: WatermarkRegion, method: WatermarkMethod = 'fast'): void {
     const t = requireVideoTask(this.find(id))
     if (this.running.has(id)) throw new Error('这个视频正在处理，请等它结束')
     if (![region?.x, region?.y, region?.w, region?.h].every(Number.isFinite)) throw new Error('水印区域无效')
-    void this.runPost(t, region)
+    if (method === 'ai' && !aiModel().ready()) throw new Error('请先下载 AI 模型')
+    void this.runPost(t, region, method)
   }
 
   /** 取消手动去水印，原视频保持不变 */
@@ -474,7 +477,7 @@ export class DownloadManager extends EventEmitter {
     }
   }
 
-  private async runPost(t: DoneVideoTask, region: WatermarkRegion): Promise<void> {
+  private async runPost(t: DoneVideoTask, region: WatermarkRegion, method: WatermarkMethod): Promise<void> {
     const ac = new AbortController()
     this.running.set(t.id, ac)
     this.emitActive()
@@ -487,16 +490,17 @@ export class DownloadManager extends EventEmitter {
     // 先删掉上次崩溃留下的同名半成品：没退出的旧 ffmpeg 可能还在写它，不能和这次写进同一个文件
     removeQuietly(tmpOut)
     try {
-      const r = await replaceVideo({
+      const job = {
         input: out,
         output: tmpOut,
         workDir: work,
         region,
-        format: /\.mkv$/i.test(out) ? 'mkv' : 'mp4',
+        format: /\.mkv$/i.test(out) ? ('mkv' as const) : ('mp4' as const),
         durationHint: t.item.duration,
         signal: ac.signal,
-        onStage: (p) => this.patch(t, { processing: p })
-      })
+        onStage: (p: ProcessingInfo) => this.patch(t, { processing: p })
+      }
+      const r = method === 'ai' ? await refineVideo({ ...job, model: aiModel(), spawn: spawnHost }) : await replaceVideo(job)
       if (ac.signal.aborted) throw new AbortError()
       // 处理期间原视频被删掉或移走了：不能再在原位置把它“变”回来
       if (!existsSync(out)) {

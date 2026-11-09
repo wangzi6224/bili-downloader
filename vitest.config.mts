@@ -20,6 +20,8 @@ export default defineConfig({
         'src/test/**',
         // 入口只做组装，可测的逻辑已经拆到 windowState.ts
         'src/main/index.ts',
+        // 推理子进程的入口只做接线，逻辑在 hostCore.ts
+        'src/main/watermark/ai/hostEntry.ts',
         // 纯展示的 JSX，逻辑在 src/renderer/src/*.ts 里测
         'src/renderer/src/main.tsx',
         'src/renderer/src/App.tsx',

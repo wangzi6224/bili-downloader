@@ -88,12 +88,17 @@ export function awakeTimer(ms: number, onExpire: () => void, now: () => number =
  */
 export function ffmpegCapture(
   args: string[],
-  o: { signal?: AbortSignal; timeoutMs?: number; maxBytes?: number; loglevel?: string } = {}
+  o: { signal?: AbortSignal; timeoutMs?: number; maxBytes?: number; loglevel?: string; stdin?: Uint8Array } = {}
 ): Promise<CaptureResult> {
   const { signal, timeoutMs = 60_000, maxBytes = 64 * 1024 * 1024, loglevel = 'error' } = o
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new AbortError())
     const proc = spawn(ffmpegPath(), ['-hide_banner', '-loglevel', loglevel, '-nostdin', ...args])
+    // 输入从 pipe:0 读（比如原始帧转 JPEG）；ffmpeg 提前退出时写入会报 EPIPE，以退出码为准
+    if (o.stdin) {
+      proc.stdin.on('error', () => {})
+      proc.stdin.end(o.stdin)
+    }
     const chunks: Buffer[] = []
     let size = 0
     let stderr = ''
@@ -252,15 +257,15 @@ function spawnTranscode(args: string[], o: TranscodeOptions): Promise<void> {
   })
 }
 
-/** 转码很吃 CPU / GPU（NVENC 还有同时会话数上限），同一时间只跑一个；和合并的队列分开，不挡住别的任务合并 */
+/**
+ * 转码和 AI 精修很吃 CPU / GPU（NVENC 还有同时会话数上限），同一时间只跑一个；和合并的队列分开，不挡住别的任务合并
+ */
 let queue: Promise<unknown> = Promise.resolve()
 
 /**
- * 排队转码。排队期间被中止立刻结束，轮到时也不再启动进程；
- * onStart 在真正启动 ffmpeg 时调用，调用方据此把“排队中”换成“转码中”
+ * 排队等名额，轮到时返回归还名额的函数（用完必须调用）。排队期间被中止立刻结束，名额直接让给后面的
  */
-export function runTranscode(args: string[], o: TranscodeOptions = {}): Promise<void> {
-  const { signal } = o
+export function heavyTurn(signal?: AbortSignal): Promise<() => void> {
   if (signal?.aborted) return Promise.reject(new AbortError())
   const turn = queue
   let release!: () => void
@@ -275,7 +280,20 @@ export function runTranscode(args: string[], o: TranscodeOptions = {}): Promise<
     void turn.then(() => {
       signal?.removeEventListener('abort', onAbort)
       if (signal?.aborted) return release()
-      spawnTranscode(args, o).then(resolve, reject).finally(release)
+      resolve(release)
     })
   })
+}
+
+/**
+ * 排队转码。排队期间被中止立刻结束，轮到时也不再启动进程；
+ * onStart 在真正启动 ffmpeg 时调用，调用方据此把“排队中”换成“转码中”
+ */
+export async function runTranscode(args: string[], o: TranscodeOptions = {}): Promise<void> {
+  const release = await heavyTurn(o.signal)
+  try {
+    await spawnTranscode(args, o)
+  } finally {
+    release()
+  }
 }

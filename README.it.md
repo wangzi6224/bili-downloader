@@ -50,7 +50,7 @@ Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un li
 - Danmaku (commenti a scorrimento) in `.ass` e/o `.xml`, con dimensione del carattere, opacità e durata regolabili
 - I segmenti della barra di avanzamento di bilibili, scritti come veri capitoli
 - Metadati NFO per le librerie multimediali Kodi / Jellyfin
-- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato
+- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato; su un video già scaricato si può scegliere il «Ritocco IA», che ricostruisce fotogramma per fotogramma ciò che sta sotto la filigrana con un modello di IA — molto più pulito della modalità rapida predefinita — e mostra una stima del tempo prima di iniziare (con accelerazione GPU quando disponibile; il modello di circa 200 MB viene scaricato al primo utilizzo)
 
 ### Coda e rete
 
@@ -209,7 +209,7 @@ Vedi [CONTRIBUTING.md](CONTRIBUTING.md) (in inglese) per il flusso di sviluppo e
 src/main/auth               Accesso: archiviazione dei cookie, finestra di accesso, importazione dal browser, rilevamento della scadenza
 src/main/bili               API bilibili: firma WBI, analisi di video / anime / corsi / elenchi, flussi, sottotitoli, danmaku
 src/main/download           Coda dei download, ripresa, multiplexing con ffmpeg, contenuti extra (copertina, sottotitoli, NFO…)
-src/main/watermark          Rilevamento e rimozione della filigrana (delogo di ffmpeg)
+src/main/watermark          Rilevamento e rimozione della filigrana (delogo di ffmpeg); ai/ è il ritocco IA (modello LaMa su onnxruntime)
 src/main/net                Proxy e scelta del CDN
 src/main/update             Aggiornamenti integrati: controllo di update.json, verifica dei download, installazione degli aggiornamenti .app / AppImage / NSIS
 src/main/mcp                Server MCP locale
@@ -235,3 +235,5 @@ Issue e pull request sono benvenute. Leggi prima [CONTRIBUTING.md](CONTRIBUTING.
 [MIT](LICENSE) © wangzi6224
 
 L'app include binari FFmpeg statici provenienti da [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) (`b6.1.1`). FFmpeg viene eseguito come programma separato con la propria licenza e non è coperto dalla licenza MIT indicata sopra. Il testo della sua licenza è incluso nell'app in `Contents/Resources/ffmpeg/LICENSE` (macOS) / `resources/ffmpeg/LICENSE` (Windows e Linux); vedi anche [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html).
+
+Il ritocco IA esegue il modello di inpainting [LaMa](https://github.com/advimman/lama) (Apache-2.0; esportazione ONNX di [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)) con [onnxruntime](https://github.com/microsoft/onnxruntime) (MIT, incluso nell'app). Il modello non è incluso nell'installer: viene scaricato al primo utilizzo del ritocco IA.

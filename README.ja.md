@@ -50,7 +50,7 @@ bilibili のリンクを貼り付けるだけで、動画・複数パート動�
 - 弾幕（コメント）：`.ass` および／または `.xml`、フォントサイズ・不透明度・表示時間を調整可能
 - bilibili のシークバーのセクションを本物のチャプターとして書き込み
 - Kodi / Jellyfin メディアライブラリ用の NFO メタデータ
-- ウォーターマーク除去：画面の隅にあるウォーターマークを自動で検出して消します（映像を再エンコード。HDR とドルビービジョンは対象外）。ダウンロード済みの動画で範囲を手動で指定することもできます
+- ウォーターマーク除去：画面の隅にあるウォーターマークを自動で検出して消します（映像を再エンコード。HDR とドルビービジョンは対象外）。ダウンロード済みの動画で範囲を手動で指定することもできます。ダウンロード済みの動画では「AI 補正」を選ぶと、AI モデルがウォーターマークの下の映像をフレームごとに描き直し、既定の高速モードよりずっときれいに仕上がります。開始前に所要時間の目安を表示します（GPU があれば GPU で高速化。約 200 MB のモデルは初回使用時にダウンロード）
 
 ### キューとネットワーク
 
@@ -209,7 +209,7 @@ npm run build:win    # Windows 上で実行：dist/ に x64 の NSIS インス�
 src/main/auth               ログイン：Cookie の保存、アプリ内ログインウィンドウ、ブラウザからのインポート、期限切れの検出
 src/main/bili               bilibili API：WBI 署名、動画 / アニメ / 講座 / リストの解析、ストリーム取得、字幕、弾幕
 src/main/download           ダウンロードキュー、レジューム、ffmpeg による結合、追加コンテンツ（カバー、字幕、NFO…）
-src/main/watermark          ウォーターマークの検出と除去（ffmpeg の delogo）
+src/main/watermark          ウォーターマークの検出と除去（ffmpeg の delogo）。ai/ は AI 補正（onnxruntime 上の LaMa モデル）
 src/main/net                プロキシと CDN の選択
 src/main/update             アプリ内アップデート：update.json の確認、ダウンロードの検証、.app / AppImage / NSIS 向けアップデートのインストール
 src/main/mcp                ローカル MCP サーバー
@@ -235,3 +235,5 @@ Issue やプルリクエストを歓迎します。事前に [CONTRIBUTING.md](C
 [MIT](LICENSE) © wangzi6224
 
 アプリには [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)（`b6.1.1`）の静的ビルドの FFmpeg が同梱されています。FFmpeg は独自のライセンスに従う独立したプログラムとして動作し、上記の MIT ライセンスの対象外です。ライセンス本文はアプリ内の `Contents/Resources/ffmpeg/LICENSE`（macOS）/ `resources/ffmpeg/LICENSE`（Windows と Linux） に含まれています。[FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html) も参照してください。
+
+AI 補正では [onnxruntime](https://github.com/microsoft/onnxruntime)（MIT ライセンス、アプリに同梱）で [LaMa](https://github.com/advimman/lama) 修復モデル（Apache-2.0 ライセンス、[Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX) の ONNX 版）を動かします。モデルはインストーラーに含まれず、初めて AI 補正を使うときにダウンロードされます。

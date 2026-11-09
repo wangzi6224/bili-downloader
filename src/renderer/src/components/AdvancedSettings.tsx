@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Copy, Eye, EyeOff, FileDown, FileUp, Gauge, KeyRound, Terminal, Wifi } from 'lucide-react'
-import type { ProxyMode } from '@shared/types'
+import { Copy, Download, Eye, EyeOff, FileDown, FileUp, Gauge, KeyRound, Terminal, Trash2, Wifi, X } from 'lucide-react'
+import type { AiModelStatus, ProxyMode } from '@shared/types'
+import { modelSettingsText } from '../aiRefine'
 import { api, updateSettings, useStore } from '../store'
 import { mcpClientConfig, pingLabel, sortPings } from '../viewLogic'
 import { Badge, Button, Group, IconButton, Input, Row, Select, Switch } from './ui'
@@ -16,9 +17,12 @@ export function AdvancedSettings() {
   const [mcpStatus, setMcpStatus] = useState<{ running: boolean; error?: string } | null>(null)
   const [showToken, setShowToken] = useState(false)
   const [message, setMessage] = useState('')
+  const [aiModel, setAiModel] = useState<AiModelStatus | null>(null)
 
   useEffect(() => {
     void api.net.cdnHosts().then(setHosts)
+    void api.watermark.aiStatus().then(setAiModel)
+    return api.watermark.onAiStatus(setAiModel)
   }, [])
   // 设置变化后主进程会重新应用代理和 MCP，稍等再读状态
   useEffect(() => {
@@ -166,6 +170,24 @@ export function AdvancedSettings() {
           >
             Claude Code 命令
           </Button>
+        </Row>
+      </Group>
+
+      <Group title="AI 去水印">
+        <Row label="AI 模型" hint={aiModel ? modelSettingsText(aiModel) : '…'}>
+          {aiModel?.state === 'downloading' ? (
+            <Button icon={X} disabled={aiModel.verifying} onClick={() => void api.watermark.aiCancelDownload()}>
+              取消下载
+            </Button>
+          ) : aiModel?.state === 'ready' || (aiModel?.disk ?? 0) > 0 ? (
+            <Button icon={Trash2} onClick={() => void api.watermark.aiRemove()}>
+              删除
+            </Button>
+          ) : (
+            <Button icon={Download} disabled={!aiModel} onClick={() => void api.watermark.aiDownload()}>
+              下载
+            </Button>
+          )}
         </Row>
       </Group>
 

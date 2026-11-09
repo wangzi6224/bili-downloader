@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
-import { Eraser, Eye, EyeOff, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
+import { Download, Eraser, Eye, EyeOff, Loader2, RefreshCw, RotateCcw, Sparkles, X } from 'lucide-react'
 import { cornerName } from '@shared/watermark'
-import type { WatermarkPrep, WatermarkRegion } from '@shared/types'
+import type { AiEstimate, AiModelStatus, WatermarkMethod, WatermarkPrep, WatermarkRegion } from '@shared/types'
+import { estimateHints, estimateText, modelPct, modelText } from '../aiRefine'
 import { fmtDuration } from '../format'
 import { api, useStore } from '../store'
 import { dragRect, handleStyle, HANDLES, nextFrameTime, nudge, toView, type Handle } from '../watermarkBox'
-import { Banner, Button, Modal, ModalFooter, ModalHeader, STROKE } from './ui'
+import { Banner, Button, Modal, ModalFooter, ModalHeader, Progress, Segmented, STROKE } from './ui'
+
+/** 框停止变化这么久之后再估算 AI 精修的耗时（估算要重新分析画面） */
+const ESTIMATE_DELAY = 800
+
+const METHODS: { value: WatermarkMethod; label: string; hint: string; icon?: typeof Sparkles }[] = [
+  { value: 'fast', label: '快速', hint: '用周围的画面填补，几分钟内完成，水印处会有些糊' },
+  { value: 'ai', label: 'AI 精修', icon: Sparkles, hint: '用 AI 模型逐帧补出水印下面的画面，清楚得多，但慢' }
+]
 
 interface Drag {
   handle: Handle
@@ -28,6 +37,46 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
   const [viewW, setViewW] = useState(0)
   const imgRef = useRef<HTMLImageElement>(null)
   const drag = useRef<Drag | null>(null)
+  const [method, setMethod] = useState<WatermarkMethod>('fast')
+  const [model, setModel] = useState<AiModelStatus | null>(null)
+  const [estimate, setEstimate] = useState<AiEstimate | null>(null)
+  const [estimating, setEstimating] = useState(false)
+  const [estimateError, setEstimateError] = useState<string | null>(null)
+  const ai = method === 'ai'
+  const modelReady = model?.state === 'ready'
+
+  // 模型状态（下载进度由主进程推送）；关闭对话框时释放为预览开的推理进程
+  useEffect(() => {
+    let alive = true
+    void api.watermark.aiStatus().then((s) => alive && setModel(s))
+    const off = api.watermark.onAiStatus(setModel)
+    return () => {
+      alive = false
+      off()
+      void api.watermark.aiRelease(taskId)
+    }
+  }, [taskId])
+
+  // AI 精修：框停下来后估算耗时；框又变了就作废旧的结果
+  useEffect(() => {
+    if (!ai || !modelReady || !region || prep?.blocker) return
+    let alive = true
+    setEstimate(null)
+    setEstimateError(null)
+    const timer = setTimeout(() => {
+      setEstimating(true)
+      api.watermark
+        .aiEstimate(taskId, region)
+        .then((e) => alive && setEstimate(e))
+        .catch((e: Error) => alive && setEstimateError(e.message))
+        .finally(() => alive && setEstimating(false))
+    }, ESTIMATE_DELAY)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+      setEstimating(false)
+    }
+  }, [ai, modelReady, region, taskId, prep?.blocker])
 
   useEffect(() => {
     let alive = true
@@ -84,12 +133,19 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
 
   const togglePreview = (): Promise<void> | void => {
     if (preview) return setPreview(null)
-    return run(async () => setPreview(await api.watermark.frame(taskId, time, region!)))
+    return run(async () =>
+      setPreview(ai ? await api.watermark.aiPreview(taskId, time, region!) : await api.watermark.frame(taskId, time, region!))
+    )
+  }
+
+  const switchMethod = (m: WatermarkMethod): void => {
+    setMethod(m)
+    setPreview(null)
   }
 
   const start = (): Promise<void> =>
     run(async () => {
-      await api.watermark.start(taskId, region!)
+      await api.watermark.start(taskId, region!, method)
       onClose()
     })
 
@@ -112,14 +168,14 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
   const view = region && scale ? toView(region, scale) : null
 
   return (
-    <Modal onClose={onClose} className="max-w-3xl">
+    <Modal onClose={onClose} className="flex max-h-full max-w-3xl flex-col">
       <ModalHeader
         icon={Eraser}
         title="去水印"
         subtitle="拖动方框盖住水印，拖四角和四边调整大小。处理时会重新编码视频，完成后替换原文件。"
         onClose={onClose}
       />
-      <div className="flex flex-col gap-3 px-6 pt-4">
+      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 pt-4">
         {title && <div className="truncate text-[13px] text-muted">{title}</div>}
         {error && <Banner tone="error">{error}</Banner>}
         {prep?.blocker && <Banner tone="warn">{prep.blocker}</Banner>}
@@ -142,7 +198,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
                 src={preview ?? image}
                 alt="视频画面"
                 draggable={false}
-                className="block max-h-[52vh] max-w-full"
+                className="block max-h-[46vh] max-w-full"
                 onLoad={(e) => setViewW(e.currentTarget.clientWidth)}
               />
               {view && !preview && (
@@ -207,14 +263,62 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
               · {region.w}×{region.h}
             </span>
           )}
+          <Segmented size="sm" value={method} options={METHODS} onChange={switchMethod} disabled={busy} />
         </div>
+
+        {ai && model && !modelReady && (
+          <Banner
+            tone={model.state === 'error' ? 'error' : 'info'}
+            icon={model.state === 'downloading' ? Loader2 : Download}
+            spin={model.state === 'downloading'}
+            actions={
+              model.state === 'downloading' ? (
+                <Button size="sm" variant="ghost" icon={X} disabled={model.verifying} onClick={() => void api.watermark.aiCancelDownload()}>
+                  取消
+                </Button>
+              ) : (
+                <Button size="sm" icon={Download} onClick={() => void api.watermark.aiDownload()}>
+                  {model.state === 'error' ? '重试' : '下载模型'}
+                </Button>
+              )
+            }
+          >
+            <div>{modelText(model)}</div>
+            {model.state === 'downloading' && <Progress value={modelPct(model)} className="mt-1.5" />}
+          </Banner>
+        )}
+        {ai && modelReady && !prep?.blocker && (
+          <>
+            {estimating && (
+              <Banner icon={Loader2} spin>
+                正在估算耗时（第一次要加载模型、试跑几帧，十几秒）…
+              </Banner>
+            )}
+            {estimateError && <Banner tone="error">{estimateError}</Banner>}
+            {estimate && (
+              <Banner icon={Sparkles}>
+                <div>{estimateText(estimate)}</div>
+                {estimateHints(estimate).map((h) => (
+                  <div key={h} className="text-xs opacity-80">
+                    {h}
+                  </div>
+                ))}
+              </Banner>
+            )}
+          </>
+        )}
       </div>
       <ModalFooter>
         <Button variant="ghost" onClick={onClose}>
           取消
         </Button>
-        <Button variant="primary" icon={Eraser} disabled={!region || busy || Boolean(prep?.blocker)} onClick={start}>
-          开始处理
+        <Button
+          variant="primary"
+          icon={ai ? Sparkles : Eraser}
+          disabled={!region || busy || Boolean(prep?.blocker) || (ai && !modelReady)}
+          onClick={start}
+        >
+          {ai ? '开始 AI 精修' : '开始处理'}
         </Button>
       </ModalFooter>
     </Modal>

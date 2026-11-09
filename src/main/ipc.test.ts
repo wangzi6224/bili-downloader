@@ -64,7 +64,17 @@ const h = vi.hoisted(() => ({
   // ./watermark/manual
   requireVideoTask: vi.fn(),
   prepareManual: vi.fn(),
-  previewFrame: vi.fn()
+  previewFrame: vi.fn(),
+  // ./watermark/ai
+  aiStatus: vi.fn(),
+  aiDownload: vi.fn(),
+  aiCancel: vi.fn(),
+  aiRemove: vi.fn(),
+  aiOn: vi.fn(),
+  aiEstimate: vi.fn(),
+  aiPreview: vi.fn(),
+  aiRelease: vi.fn(),
+  aiCloseAll: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -109,6 +119,10 @@ vi.mock('./history', () => ({
 vi.mock('./quitGuard', () => ({ quitConfirmed: h.quitConfirmed }))
 vi.mock('./settings', () => ({ getSettings: h.getSettings, updateSettings: h.updateSettings }))
 vi.mock('./windows', () => ({ getMainWindow: h.getMainWindow, hideMainWindow: h.hideMainWindow, send: h.send }))
+vi.mock('./watermark/ai', () => ({
+  aiModel: () => ({ status: h.aiStatus, download: h.aiDownload, cancel: h.aiCancel, remove: h.aiRemove, on: h.aiOn }),
+  aiSessions: () => ({ estimate: h.aiEstimate, preview: h.aiPreview, release: h.aiRelease, closeAll: h.aiCloseAll })
+}))
 vi.mock('./watermark/manual', () => ({
   requireVideoTask: h.requireVideoTask,
   prepareManual: h.prepareManual,
@@ -219,7 +233,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(61)
+    expect(h.handlers.size).toBe(68)
   })
 })
 
@@ -545,7 +559,7 @@ describe('直接转发的频道', () => {
     { channel: 'dl:retry', args: ['t1'], fn: manager.resume },
     { channel: 'dl:redownload', args: ['t1'], fn: manager.redownload },
     { channel: 'dl:clearFinished', args: [true], fn: manager.clearFinished },
-    { channel: 'wm:start', args: ['t1', { x: 1, y: 2, w: 30, h: 10 }], fn: manager.startWatermark },
+    { channel: 'wm:start', args: ['t1', { x: 1, y: 2, w: 30, h: 10 }], fn: manager.startWatermark, called: ['t1', { x: 1, y: 2, w: 30, h: 10 }, 'fast'] },
     { channel: 'wm:cancel', args: ['t1'], fn: manager.cancelWatermark },
     { channel: 'settings:get', args: [], fn: h.getSettings },
     { channel: 'settings:set', args: [{ concurrency: 3 }], fn: h.updateSettings },
@@ -611,5 +625,44 @@ describe('去水印', () => {
     })
     expect(await invoke('wm:frame', 'nope', 1)).toEqual({ ok: false, error: '任务不存在' })
     expect(h.requireVideoTask).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('wm:start 用 AI 精修时先放掉预览占着的推理进程；不认识的方式按快速', async () => {
+    await data('wm:start', 't1', region, 'ai')
+    expect(h.aiRelease).toHaveBeenCalledWith('t1')
+    expect(manager.startWatermark).toHaveBeenLastCalledWith('t1', region, 'ai')
+    await data('wm:start', 't1', region, 'magic')
+    expect(manager.startWatermark).toHaveBeenLastCalledWith('t1', region, 'fast')
+    expect(h.aiRelease).toHaveBeenCalledTimes(1)
+  })
+
+  it('AI 模型：状态、按设置的线程数下载、取消、删除前关掉预览会话；状态变化推送给界面', async () => {
+    h.aiStatus.mockReturnValue({ state: 'missing', size: 1 })
+    expect(await data('wm:ai:status')).toEqual({ state: 'missing', size: 1 })
+    h.getSettings.mockReturnValue({ threads: 6 })
+    h.aiDownload.mockResolvedValue(undefined)
+    await data('wm:ai:download')
+    expect(h.aiDownload).toHaveBeenCalledWith({ threads: 6 })
+    await data('wm:ai:cancel')
+    expect(h.aiCancel).toHaveBeenCalled()
+    h.aiRemove.mockResolvedValue(undefined)
+    await data('wm:ai:remove')
+    expect(h.aiCloseAll).toHaveBeenCalled()
+    expect(h.aiRemove).toHaveBeenCalled()
+    const [event, listener] = h.aiOn.mock.calls[0]
+    expect(event).toBe('status')
+    listener({ state: 'ready', size: 1 })
+    expect(h.send).toHaveBeenCalledWith('wm:ai:status', { state: 'ready', size: 1 })
+  })
+
+  it('AI 估算、预览只处理列表里的任务，用它的成品文件；关闭对话框时释放', async () => {
+    h.aiEstimate.mockResolvedValue({ seconds: [1, 2] })
+    expect(await data('wm:ai:estimate', 't1', region)).toEqual({ seconds: [1, 2] })
+    expect(h.aiEstimate).toHaveBeenCalledWith('t1', '/dl/a.mp4', region)
+    h.aiPreview.mockResolvedValue('data:ai')
+    expect(await data('wm:ai:preview', 't1', 3, region)).toBe('data:ai')
+    expect(h.aiPreview).toHaveBeenCalledWith('t1', '/dl/a.mp4', 3, region)
+    await data('wm:ai:release', 't1')
+    expect(h.aiRelease).toHaveBeenCalledWith('t1')
   })
 })

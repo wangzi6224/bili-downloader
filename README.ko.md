@@ -50,7 +50,7 @@ bilibili 링크를 붙여 넣기만 하면 동영상, 여러 파트로 된 동�
 - 탄막(댓글): `.ass` 및/또는 `.xml`, 글꼴 크기·불투명도·표시 시간 조절 가능
 - bilibili 진행 바의 구간을 실제 챕터로 기록
 - Kodi / Jellyfin 미디어 라이브러리용 NFO 메타데이터
-- 워터마크 제거: 화면 모서리의 워터마크를 자동으로 찾아 지움(영상 재인코딩, HDR과 돌비 비전은 제외). 다운로드한 영상에서 직접 영역을 지정할 수도 있음
+- 워터마크 제거: 화면 모서리의 워터마크를 자동으로 찾아 지움(영상 재인코딩, HDR과 돌비 비전은 제외). 다운로드한 영상에서 직접 영역을 지정할 수도 있음. 다운로드한 영상에서는 'AI 보정'을 고르면 AI 모델이 워터마크 아래 화면을 프레임마다 다시 그려, 기본 빠른 모드보다 훨씬 깔끔함. 시작 전에 예상 소요 시간을 보여 줌(GPU가 있으면 GPU 가속, 약 200MB 모델은 처음 쓸 때 다운로드)
 
 ### 대기열과 네트워크
 
@@ -209,7 +209,7 @@ npm run build:win    # Windows에서 실행: dist/에 x64용 NSIS 설치 프로�
 src/main/auth               로그인: 쿠키 저장, 앱 내 로그인 창, 브라우저에서 가져오기, 만료 감지
 src/main/bili               bilibili API: WBI 서명, 동영상 / 애니메이션 / 강좌 / 목록 분석, 스트림, 자막, 탄막
 src/main/download           다운로드 대기열, 이어받기, ffmpeg 병합, 추가 콘텐츠(커버, 자막, NFO…)
-src/main/watermark          워터마크 감지와 제거(ffmpeg delogo)
+src/main/watermark          워터마크 감지와 제거(ffmpeg delogo), ai/는 AI 보정(onnxruntime 위의 LaMa 모델)
 src/main/net                프록시와 CDN 선택
 src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app / AppImage / NSIS 업데이트 설치
 src/main/mcp                로컬 MCP 서버
@@ -235,3 +235,5 @@ scripts                     ffmpeg 다운로드, 아이콘 생성, 릴리스 게
 [MIT](LICENSE) © wangzi6224
 
 앱에는 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)(`b6.1.1`)의 정적 빌드 FFmpeg가 포함되어 있습니다. FFmpeg는 자체 라이선스를 따르는 별도의 프로그램으로 실행되며, 위의 MIT 라이선스 적용 대상이 아닙니다. 라이선스 전문은 앱 안의 `Contents/Resources/ffmpeg/LICENSE`(macOS) / `resources/ffmpeg/LICENSE`(Windows 및 Linux)에 들어 있으며, [FFmpeg License and Legal Considerations](https://ffmpeg.org/legal.html)도 참고하세요.
+
+AI 보정은 [onnxruntime](https://github.com/microsoft/onnxruntime)(MIT 라이선스, 앱에 포함)으로 [LaMa](https://github.com/advimman/lama) 인페인팅 모델(Apache-2.0 라이선스, [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)의 ONNX 버전)을 실행합니다. 모델은 설치 파일에 들어 있지 않으며 AI 보정을 처음 쓸 때 다운로드됩니다.

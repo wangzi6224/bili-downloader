@@ -7,7 +7,13 @@ const shared = { '@shared': resolve('src/shared') }
 
 export default defineConfig({
   main: {
-    resolve: { alias: shared }
+    resolve: { alias: shared },
+    build: {
+      rollupOptions: {
+        // AI 去水印的推理子进程单独一个入口：由 utilityProcess 启动，和主进程不在一个进程里
+        input: { index: resolve('src/main/index.ts'), refineHost: resolve('src/main/watermark/ai/hostEntry.ts') }
+      }
+    }
   },
   preload: {
     resolve: { alias: shared }

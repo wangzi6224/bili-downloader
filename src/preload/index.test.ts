@@ -26,6 +26,7 @@ vi.mock('../main/auth/browserImport', () => ({ importFromBrowser: vi.fn(), listB
 vi.mock('../main/auth/cookieImport', () => ({ importCookieText: vi.fn() }))
 vi.mock('../main/auth/loginWindow', () => ({ openLoginWindow: vi.fn() }))
 vi.mock('../main/auth/session', () => ({ biliSession: vi.fn() }))
+vi.mock('../main/watermark/ai', () => ({ aiModel: () => ({ on: vi.fn() }), aiSessions: () => ({}) }))
 vi.mock('../main/bili/audio', () => ({ AUDIO_STREAM_INFO: {} }))
 vi.mock('../main/bili/lists', () => ({ expandLazy: vi.fn(), loadPage: vi.fn(), myFavFolders: vi.fn() }))
 vi.mock('../main/bili/playurl', () => ({ getPlayInfo: vi.fn(), streamInfoFromPlay: vi.fn() }))
@@ -150,7 +151,7 @@ describe('preload', () => {
     registerIpc({ manager: {}, subs: {}, mcp: {}, updater: {}, enqueue: vi.fn() } as unknown as IpcDeps)
 
     expect([...invoked].sort()).toEqual([...h.registered].sort())
-    expect(invoked.size).toBe(61)
+    expect(invoked.size).toBe(68)
     // 每个 api 函数各用一个频道，主进程也没有重复注册
     expect(invokers).toBe(invoked.size)
     expect(new Set(h.registered).size).toBe(h.registered.length)
@@ -164,7 +165,8 @@ describe('preload', () => {
       'settings:changed',
       'subs:update',
       'update:prompt',
-      'update:state'
+      'update:state',
+      'wm:ai:status'
     ])
   })
 })

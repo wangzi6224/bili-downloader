@@ -50,7 +50,7 @@
 - 弹幕：`.ass` 和 / 或 `.xml`，字号、不透明度、停留时间可调
 - 把 B站进度条上的分段写成真正的章节
 - 为 Kodi / Jellyfin 媒体库生成 NFO 元数据
-- 去水印：自动识别画面角落的水印并去掉（会重新编码视频，HDR 和杜比视界不处理），也可以在下载好的视频上手动框选
+- 去水印：自动识别画面角落的水印并去掉（会重新编码视频，HDR 和杜比视界不处理），也可以在下载好的视频上手动框选；手动处理时可以选“AI 精修”，用 AI 模型逐帧补出水印下面的画面，比默认的快速方式清楚得多，开始前会给出预计耗时（有显卡时用显卡加速，模型约 200 MB，第一次使用时下载）
 
 ### 下载队列与网络
 
@@ -209,7 +209,7 @@ npm run build:win    # 在 Windows 上运行：在 dist/ 里生成 x64 NSIS 安�
 src/main/auth               登录：cookie 存储、应用内登录窗口、浏览器导入、过期检测
 src/main/bili               B站接口：WBI 签名、视频 / 番剧 / 课程 / 列表解析、取流、字幕、弹幕
 src/main/download           下载队列、断点续传、ffmpeg 合并、附加内容（封面、字幕、NFO…）
-src/main/watermark          去水印：识别水印位置，用 ffmpeg 的 delogo 去掉
+src/main/watermark          去水印：识别水印位置，用 ffmpeg 的 delogo 去掉；ai/ 是 AI 精修（LaMa 模型、onnxruntime）
 src/main/net                代理和 CDN 选择
 src/main/update             应用内更新：检查 update.json、下载校验、替换 .app 或 AppImage
 src/main/mcp                本地 MCP 服务
@@ -235,3 +235,5 @@ scripts                     下载 ffmpeg、生成图标、发布新版本
 [MIT](LICENSE) © wangzi6224
 
 应用内置了来自 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)（`b6.1.1`）的静态 FFmpeg。FFmpeg 作为独立程序运行，遵循它自己的许可证，不在上面的 MIT 许可范围内。它的许可证文本随应用附带，位于 `Contents/Resources/ffmpeg/LICENSE`（macOS）/ `resources/ffmpeg/LICENSE`（Windows 和 Linux），另见 [FFmpeg 许可与法律说明](https://ffmpeg.org/legal.html)。
+
+AI 精修用 [onnxruntime](https://github.com/microsoft/onnxruntime)（MIT 许可，随应用附带）运行 [LaMa](https://github.com/advimman/lama) 修补模型（Apache-2.0 许可，ONNX 版本取自 [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)）。模型不随安装包分发，第一次使用 AI 精修时下载。

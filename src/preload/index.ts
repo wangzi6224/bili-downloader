@@ -54,8 +54,16 @@ const api: BiliApi = {
   watermark: {
     prepare: (taskId) => invoke('wm:prepare', taskId),
     frame: (taskId, time, region) => invoke('wm:frame', taskId, time, region),
-    start: (taskId, region) => invoke('wm:start', taskId, region),
-    cancel: (taskId) => invoke('wm:cancel', taskId)
+    start: (taskId, region, mode) => invoke('wm:start', taskId, region, mode),
+    cancel: (taskId) => invoke('wm:cancel', taskId),
+    aiStatus: () => invoke('wm:ai:status'),
+    aiDownload: () => invoke('wm:ai:download'),
+    aiCancelDownload: () => invoke('wm:ai:cancel'),
+    aiRemove: () => invoke('wm:ai:remove'),
+    onAiStatus: on('wm:ai:status'),
+    aiEstimate: (taskId, region) => invoke('wm:ai:estimate', taskId, region),
+    aiPreview: (taskId, time, region) => invoke('wm:ai:preview', taskId, time, region),
+    aiRelease: (taskId) => invoke('wm:ai:release', taskId)
   },
   history: {
     downloadedKeys: () => invoke('history:downloadedKeys'),
