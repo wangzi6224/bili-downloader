@@ -1,17 +1,23 @@
-name: Deploy website to GitHub Pages
+name: Build and publish website to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'website/**'
-      - '.github/workflows/deploy-pages.yml'
   pull_request:
     branches: [main]
     paths:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
+    inputs:
+      confirm_website_changes:
+        description: Confirm website files have changed since the previous website deployment
+        required: true
+        type: boolean
+        default: false
+      confirm_separate_release:
+        description: Confirm no desktop app package release is running and this is a separate website deployment
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,7 +63,7 @@ jobs:
           path: website/out
 
   deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_website_changes && inputs.confirm_separate_release
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

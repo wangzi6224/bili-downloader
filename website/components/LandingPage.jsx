@@ -1,6 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import BranchExplorer from './BranchExplorer';
+import HeroEffects from './HeroEffects';
+import PlatformMark from './PlatformMark';
+import PlatformDownloadLink from './PlatformDownloadLink';
+import SiteIcon from './SiteIcon';
 import { siteCopy } from '../lib/site-content';
 
 const REPOSITORY = 'https://github.com/wangzi6224/bili-downloader';
@@ -9,22 +13,10 @@ const README_ZH = REPOSITORY + '/blob/main/README.zh-CN.md';
 const README_EN = REPOSITORY + '/blob/main/README.md';
 const ASSET_ROOT = '/bili-downloader/media/';
 
-function ArrowIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-      <path d="M4 10h11M10 4.5l5.5 5.5-5.5 5.5" />
-    </svg>
-  );
-}
-
-function ExternalMark() {
-  return <span className="external-mark" aria-hidden="true">↗</span>;
-}
-
 function Brand({ locale }) {
   return (
     <Link className="brand" href={locale === 'zh' ? '/' : '/en/'} aria-label={locale === 'zh' ? 'B站下载器首页' : 'Bili Downloader home'}>
-      <Image src={ASSET_ROOT + 'app-icon.png'} alt="" width={42} height={42} priority unoptimized />
+      <Image src={ASSET_ROOT + 'app-icon.png'} alt="" width={48} height={48} priority unoptimized />
       <span className="brand-text">
         <strong>{locale === 'zh' ? 'B站下载器' : 'Bili Downloader'}</strong>
         <small>{locale === 'zh' ? 'DESKTOP · LOCAL' : 'DESKTOP · LOCAL'}</small>
@@ -34,7 +26,7 @@ function Brand({ locale }) {
 }
 
 function SectionMarker({ children }) {
-  return <p className="section-marker"><span className="marker-line" />{children}</p>;
+  return <p className="section-marker">{children}</p>;
 }
 
 export default function LandingPage({ locale }) {
@@ -52,14 +44,16 @@ export default function LandingPage({ locale }) {
             <a href="#features">{copy.navFeatures}</a>
             <a href="#workflow">{copy.navWorkflow}</a>
             <a href="#platforms">{copy.navPlatforms}</a>
-            <a href={REPOSITORY} rel="noreferrer" target="_blank">{copy.navSource}<ExternalMark /></a>
           </nav>
           <div className="header-actions">
             <Link className="language-toggle" href={english ? '/' : '/en/'} lang={english ? 'zh-CN' : 'en'}>
               {english ? '中文' : 'EN'}
             </Link>
+            <a className="github-mark-link" href={REPOSITORY} aria-label={english ? 'GitHub repository' : 'GitHub 源代码'} title="GitHub" rel="noreferrer" target="_blank">
+              <SiteIcon name="github" size={22} />
+            </a>
             <a className="header-cta" href={RELEASES} aria-label={copy.navCta} rel="noreferrer" target="_blank">
-              <span>{copy.navCta}</span><ArrowIcon />
+              <span>{copy.navCta}</span>
             </a>
           </div>
         </div>
@@ -67,57 +61,61 @@ export default function LandingPage({ locale }) {
 
       <main id="main">
         <section className="hero-section" aria-labelledby="hero-title">
-          <div className="hero-grid shell">
-            <div className="hero-copy">
-              <p className="eyebrow"><span className="eyebrow-dot" />{copy.eyebrow}</p>
-              <h1 id="hero-title">
-                {copy.heroLineOne}<br />
-                <span>{copy.heroLineTwo}</span>
-              </h1>
-              <p className="hero-intro">{copy.heroBody}</p>
-              <div className="hero-actions">
-                <a className="button button-primary" href={RELEASES} rel="noreferrer" target="_blank">
-                  <span className="download-icon" aria-hidden="true">↓</span>{copy.ctaDownload}<ArrowIcon />
-                </a>
-                <a className="button button-secondary" href="#features">{copy.ctaExplore}<span aria-hidden="true">⌄</span></a>
+          <HeroEffects>
+            <div className="hero-grid shell">
+              <div className="hero-copy">
+                <h1 id="hero-title">
+                  {copy.heroLineOne}<br />
+                  <span>{copy.heroLineTwo}</span>
+                </h1>
+                <p className="hero-intro">{copy.heroBody}</p>
+                <div className="hero-actions">
+                  <div className="hero-platform-actions" role="group" aria-label={copy.platformDownloadGroup}>
+                    <PlatformDownloadLink platform="mac" href={RELEASES} ariaLabel={copy.platformDownloadMac} appleSiliconLabel={copy.platformMacAppleSilicon} intelLabel={copy.platformMacIntel}>
+                      <span className="hero-platform-mark"><PlatformMark platform="mac" /></span><span>{copy.platformMac}</span><SiteIcon name="download" size={18} />
+                    </PlatformDownloadLink>
+                    <PlatformDownloadLink platform="windows" href={RELEASES} ariaLabel={copy.platformDownloadWindows}>
+                      <span className="hero-platform-mark"><PlatformMark platform="windows" /></span><span>{copy.platformWindows}</span><SiteIcon name="download" size={18} />
+                    </PlatformDownloadLink>
+                    <PlatformDownloadLink platform="linux" href={RELEASES} ariaLabel={copy.platformDownloadLinux}>
+                      <span className="hero-platform-mark"><PlatformMark platform="linux" /></span><span>{copy.platformLinux}</span><SiteIcon name="download" size={18} />
+                    </PlatformDownloadLink>
+                  </div>
+                  <a className="hero-more" href="#features">{copy.ctaExplore}</a>
+                </div>
+                <div className="hero-meta">
+                  <span className="platform-line"><SiteIcon name="monitor" size={18} />{copy.supported}</span>
+                  <span className="hero-meta-divider" />
+                  <span className="local-label"><span className="local-dot" />{copy.localBadge}</span>
+                </div>
               </div>
-              <div className="hero-meta">
-                <span className="platform-line">{copy.supported}</span>
-                <span className="hero-meta-divider" />
-                <span className="local-label"><span className="local-dot" />{copy.localBadge}</span>
-              </div>
-            </div>
 
-            <div className="hero-graphic">
-              <BranchExplorer locale={locale} />
+              <figure id="queue-screenshot" className="hero-product">
+                <Image src={ASSET_ROOT + 'queue.png'} alt={copy.heroImageAlt} width={1600} height={1047} sizes="(max-width: 900px) 100vw, 56vw" priority unoptimized />
+                <figcaption>{copy.heroImageCaption}</figcaption>
+              </figure>
             </div>
-          </div>
-          <div className="hero-flow shell">
-            <span>{english ? 'SELECT SOURCE' : '选择来源'}</span><i aria-hidden="true" />
-            <span>{english ? 'ADD EXTRAS' : '挑选附加内容'}</span><i aria-hidden="true" />
-            <span>{english ? 'SAVE LOCALLY' : '保存到本地'}</span>
-          </div>
+          </HeroEffects>
         </section>
 
         <section className="source-section section-pad" id="features" aria-labelledby="source-title">
           <div className="shell source-layout">
-            <div className="section-aside">
-              <SectionMarker>{copy.sectionOne}</SectionMarker>
-              <p className="aside-note">{english ? 'ONE ROOT / MANY BRANCHES' : '一条根 / 多种枝'}</p>
-            </div>
             <div className="source-main">
+              <SectionMarker>{copy.sectionOne}</SectionMarker>
               <h2 id="source-title">{copy.sectionOneTitle}</h2>
               <p className="section-lede">{copy.sectionOneBody}</p>
               <div className="source-input-note">
-                <span className="source-input-mark" aria-hidden="true">↳</span>
+                <span className="source-input-mark"><SiteIcon name="link" size={23} strokeWidth={2} /></span>
                 <div><strong>{copy.sourceAccepts}</strong><span>{copy.sourceLocal}</span></div>
-                <span className="source-input-arrow" aria-hidden="true">↗</span>
               </div>
-              <div className="source-footnote">
-                <span className="footnote-index">01—08</span>
-                <span>{english ? 'Short links and share text are accepted too.' : '也支持短链接和带标题的分享文案。'}</span>
-                <span className="footnote-arrow" aria-hidden="true">↘</span>
-              </div>
+            </div>
+          </div>
+          <div className="shell source-demo">
+            <div className="source-demo-heading">
+              <h3>{english ? 'Choose what to keep.' : '选择要保存的内容。'}</h3>
+            </div>
+            <div className="hero-graphic">
+              <BranchExplorer locale={locale} />
             </div>
           </div>
         </section>
@@ -133,19 +131,11 @@ export default function LandingPage({ locale }) {
             </div>
 
             <div className="screenshots-grid">
-              <figure id="queue-screenshot" className="screenshot-card screenshot-card-wide">
-                <div className="screenshot-topline"><span>01 / DOWNLOAD QUEUE</span><span className="screen-live"><i /> DESKTOP APP</span></div>
-                <div className="screenshot-image screenshot-queue">
-                  <Image src={ASSET_ROOT + 'queue.png'} alt={copy.screenshotQueueAlt} width={1600} height={1047} sizes="(max-width: 760px) 100vw, 58vw" unoptimized />
-                </div>
-                <figcaption><span>{copy.queueCaption}</span><b>QUEUE / 01</b></figcaption>
-              </figure>
               <figure className="screenshot-card screenshot-card-select">
-                <div className="screenshot-topline"><span>02 / ITEM SELECTION</span><span>QUALITY + EXTRAS</span></div>
                 <div className="screenshot-image screenshot-select">
                   <Image src={ASSET_ROOT + 'select.png'} alt={copy.screenshotSelectAlt} width={1600} height={1047} sizes="(max-width: 760px) 100vw, 42vw" unoptimized />
                 </div>
-                <figcaption><span>{copy.selectCaption}</span><b>OPTIONS / 02</b></figcaption>
+                <figcaption><span>{copy.selectCaption}</span></figcaption>
               </figure>
             </div>
 
@@ -157,7 +147,7 @@ export default function LandingPage({ locale }) {
               <div className="quality-stamps" aria-label={english ? 'Example quality levels' : '画质示例'}>
                 <span>8K</span><span>DOLBY VISION</span><span>HDR</span><span>4K</span><span>1080P60</span>
               </div>
-              <div className="quality-formats"><b>AVC</b><b>HEVC</b><b>AV1</b><i />MP4 / MKV</div>
+              <div className="quality-formats">AVC · HEVC · AV1 · MP4 / MKV</div>
             </div>
           </div>
         </section>
@@ -168,23 +158,23 @@ export default function LandingPage({ locale }) {
               <SectionMarker>{copy.sectionThree}</SectionMarker>
               <h2 id="queue-title">{copy.sectionThreeTitle}</h2>
               <p className="section-lede">{copy.sectionThreeBody}</p>
-              <a className="queue-proof-link" href="#queue-screenshot">{copy.queueProof}<ExternalMark /></a>
+              <a className="queue-proof-link" href="#queue-screenshot">{copy.queueProof}</a>
             </div>
             <div className="queue-feature-list">
               <article className="queue-feature">
                 <span className="feature-index">01</span>
                 <div><h3>{copy.featureConcurrency}</h3><p>{copy.featureConcurrencyBody}</p></div>
-                <span className="feature-symbol" aria-hidden="true">↗</span>
+                <span className="feature-symbol"><SiteIcon name="workflow" size={27} /></span>
               </article>
               <article className="queue-feature">
                 <span className="feature-index">02</span>
                 <div><h3>{copy.featureResume}</h3><p>{copy.featureResumeBody}</p></div>
-                <span className="feature-symbol feature-symbol-pink" aria-hidden="true">Ⅱ</span>
+                <span className="feature-symbol feature-symbol-pink"><SiteIcon name="pause" size={26} /></span>
               </article>
               <article className="queue-feature">
                 <span className="feature-index">03</span>
                 <div><h3>{copy.featureSubscriptions}</h3><p>{copy.featureSubscriptionsBody}</p></div>
-                <span className="feature-symbol" aria-hidden="true">⌁</span>
+                <span className="feature-symbol feature-symbol-mint"><SiteIcon name="rss" size={27} /></span>
               </article>
             </div>
           </div>
@@ -201,10 +191,10 @@ export default function LandingPage({ locale }) {
               <div className="mcp-panel-top"><span>{copy.mcpLabel}</span><span className="mcp-mode">LOCAL ONLY</span></div>
               <div className="mcp-panel-body">
                 <span className="mcp-prompt">bili-downloader <i>~</i></span>
-                <span className="mcp-command"><b>01</b><code>{copy.mcpCallOne}</code><small>{english ? 'Find videos' : '搜索视频'}</small></span>
-                <span className="mcp-command"><b>02</b><code>{copy.mcpCallTwo}</code><small>{english ? 'Expand a link' : '展开链接'}</small></span>
-                <span className="mcp-command"><b>03</b><code>{copy.mcpCallThree}</code><small>{english ? 'Queue a batch' : '加入批次'}</small></span>
-                <div className="mcp-return"><span>↳</span>{english ? 'Runs on your machine' : '在你的电脑上运行'}</div>
+                <span className="mcp-command"><span className="mcp-command-icon"><SiteIcon name="search" size={20} /></span><code>{copy.mcpCallOne}</code><small>{english ? 'Find videos' : '搜索视频'}</small></span>
+                <span className="mcp-command"><span className="mcp-command-icon"><SiteIcon name="link" size={20} /></span><code>{copy.mcpCallTwo}</code><small>{english ? 'Expand a link' : '展开链接'}</small></span>
+                <span className="mcp-command"><span className="mcp-command-icon"><SiteIcon name="download" size={20} /></span><code>{copy.mcpCallThree}</code><small>{english ? 'Queue a batch' : '加入批次'}</small></span>
+                <div className="mcp-return"><SiteIcon name="monitor" size={18} />{english ? 'Runs on your machine' : '在你的电脑上运行'}</div>
               </div>
             </div>
           </div>
@@ -223,7 +213,6 @@ export default function LandingPage({ locale }) {
                 </div>
                 <div className="preview-controls"><span><i />{english ? 'AUTO DETECT' : '自动识别'}</span><span>{english ? 'MANUAL SELECT' : '手动框选'}</span></div>
               </div>
-              <span className="watermark-visual-note">{copy.watermarkIllustration}</span>
             </div>
             <div className="watermark-copy">
               <p className="eyebrow eyebrow-light"><span className="eyebrow-dot" />{copy.watermarkEyebrow}</p>
@@ -244,17 +233,17 @@ export default function LandingPage({ locale }) {
               <p className="section-lede">{copy.platformsBody}</p>
             </div>
             <div className="platform-ledger">
-              <a className="platform-row" href={RELEASES} rel="noreferrer" target="_blank">
-                <span className="platform-number">01</span><span className="platform-name">{copy.platformMac}</span><span className="platform-detail">{copy.platformMacDetail}</span><span className="platform-action">{copy.releaseButton}<ExternalMark /></span>
-              </a>
-              <a className="platform-row" href={RELEASES} rel="noreferrer" target="_blank">
-                <span className="platform-number">02</span><span className="platform-name">{copy.platformWindows}</span><span className="platform-detail">{copy.platformWindowsDetail}</span><span className="platform-action">{copy.releaseButton}<ExternalMark /></span>
-              </a>
-              <a className="platform-row" href={RELEASES} rel="noreferrer" target="_blank">
-                <span className="platform-number">03</span><span className="platform-name">{copy.platformLinux}</span><span className="platform-detail">{copy.platformLinuxDetail}</span><span className="platform-action">{copy.releaseButton}<ExternalMark /></span>
-              </a>
+              <div className="platform-row">
+                <span className="platform-icon platform-icon-mac"><PlatformMark platform="mac" /></span><span className="platform-name">{copy.platformMac}</span><span className="platform-detail">{copy.platformMacDetail}</span>
+              </div>
+              <div className="platform-row">
+                <span className="platform-icon platform-icon-windows"><PlatformMark platform="windows" /></span><span className="platform-name">{copy.platformWindows}</span><span className="platform-detail">{copy.platformWindowsDetail}</span>
+              </div>
+              <div className="platform-row">
+                <span className="platform-icon platform-icon-linux"><PlatformMark platform="linux" /></span><span className="platform-name">{copy.platformLinux}</span><span className="platform-detail">{copy.platformLinuxDetail}</span>
+              </div>
             </div>
-            <div className="platform-links"><a href={readme} rel="noreferrer" target="_blank">{copy.readmeLink}<ExternalMark /></a><a href={REPOSITORY} rel="noreferrer" target="_blank">{copy.githubLink}<ExternalMark /></a></div>
+            <div className="platform-links"><a href={readme} rel="noreferrer" target="_blank">{copy.readmeLink}</a></div>
           </div>
         </section>
 
@@ -263,7 +252,6 @@ export default function LandingPage({ locale }) {
             <p className="eyebrow"><span className="eyebrow-dot" />{copy.finalEyebrow}</p>
             <h2 id="final-title">{copy.finalTitle}</h2>
             <p>{copy.finalBody}</p>
-            <a className="button button-primary" href={RELEASES} rel="noreferrer" target="_blank">{copy.finalCta}<ArrowIcon /></a>
           </div>
         </section>
       </main>
@@ -271,8 +259,8 @@ export default function LandingPage({ locale }) {
       <footer className="site-footer">
         <div className="shell footer-grid">
           <div className="footer-brand"><Brand locale={locale} /><p>{copy.footerMade}</p></div>
-          <div className="footer-notes"><p>{copy.footerDisclaimer}</p><p>{copy.footerInterface}</p><a href={REPOSITORY} rel="noreferrer" target="_blank">wangzi6224 / bili-downloader <ExternalMark /></a></div>
-          <div className="footer-bottom"><span>© 2026 BILI DOWNLOADER</span><Link href={english ? '/' : '/en/'} lang={english ? 'zh-CN' : 'en'}>{english ? '简体中文' : 'English'} ↗</Link><span>MADE FOR LOCAL USE</span></div>
+          <div className="footer-notes"><p>{copy.footerDisclaimer}</p><p>{copy.footerInterface}</p><a href={REPOSITORY} rel="noreferrer" target="_blank">wangzi6224 / bili-downloader</a></div>
+          <div className="footer-bottom"><span>© 2026 BILI DOWNLOADER</span><Link href={english ? '/' : '/en/'} lang={english ? 'zh-CN' : 'en'}>{english ? '简体中文' : 'English'}</Link><span>MADE FOR LOCAL USE</span></div>
         </div>
       </footer>
     </>

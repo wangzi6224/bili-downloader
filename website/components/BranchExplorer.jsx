@@ -1,7 +1,28 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import SiteIcon from './SiteIcon';
 import { branches, siteCopy } from '../lib/site-content';
+
+const branchIcons = {
+  video: 'video',
+  parts: 'listVideo',
+  collections: 'layers',
+  anime: 'clapperboard',
+  favorites: 'bookmark',
+  creator: 'user',
+  course: 'book',
+  audio: 'audio',
+};
+
+const extraIcons = {
+  quality: 'sliders',
+  container: 'file',
+  subtitle: 'captions',
+  danmaku: 'message',
+  chapter: 'listVideo',
+  metadata: 'image',
+};
 
 const leaves = {
   zh: [
@@ -100,6 +121,7 @@ export default function BranchExplorer({ locale }) {
   useEffect(() => {
     let cancelled = false;
     let app;
+    let appInitialized = false;
 
     async function createCanvas() {
       try {
@@ -120,6 +142,7 @@ export default function BranchExplorer({ locale }) {
           preference: 'webgl',
           resolution: Math.min(window.devicePixelRatio || 1, 2),
         });
+        appInitialized = true;
 
         if (cancelled || !canvasHostRef.current) {
           app.destroy({ removeView: true }, { children: true });
@@ -143,7 +166,7 @@ export default function BranchExplorer({ locale }) {
     return () => {
       cancelled = true;
       pixiRef.current = null;
-      if (app) app.destroy({ removeView: true }, { children: true });
+      if (appInitialized) app?.destroy({ removeView: true }, { children: true });
     };
   }, []);
 
@@ -166,7 +189,7 @@ export default function BranchExplorer({ locale }) {
       const parentRect = explorerRef.current.getBoundingClientRect();
       const rootRect = rootRef.current?.getBoundingClientRect();
       const activeButton = explorerRef.current.querySelector(`[data-branch-id="${activeId}"]`);
-      const activeNode = activeButton?.querySelector('.branch-node');
+      const activeNode = activeButton?.querySelector('.branch-icon-tile');
       const branchPoint = centerOf(activeNode || activeButton, parentRect);
       const resultRect = resultRef.current?.getBoundingClientRect();
       const leafHeading = leafAreaRef.current?.querySelector('.leaf-heading-stem');
@@ -205,24 +228,7 @@ export default function BranchExplorer({ locale }) {
 
       track.clear();
       linePoints(track, mainPoints);
-      track.stroke({ color: 0xff5b9b, alpha: 0.3, width: 1.6, cap: 'round', join: 'round' });
-
-      const chips = selectedLeaves
-        .map((id) => explorerRef.current.querySelector(`[data-leaf-id="${id}"]`))
-        .filter(Boolean);
-      chips.forEach((chip) => {
-        const leafPoint = centerOf(chip, parentRect);
-        const branch = cubicPoints(
-          hub,
-          { x: hub.x + 18, y: hub.y + 8 },
-          { x: leafPoint.x - (leafPoint.x - hub.x) * 0.25, y: leafPoint.y },
-          leafPoint,
-          12,
-        );
-        linePoints(track, branch);
-        track.stroke({ color: 0x8de7ca, alpha: 0.42, width: 1.1, cap: 'round', join: 'round' });
-        track.circle(leafPoint.x, leafPoint.y, 2.1).fill({ color: 0x8de7ca, alpha: 0.8 });
-      });
+      track.stroke({ color: 0xff5b9b, alpha: 0.16, width: 1.1, cap: 'round', join: 'round' });
 
       particle.clear();
       const firstPoint = mainPoints[0];
@@ -256,7 +262,7 @@ export default function BranchExplorer({ locale }) {
           app.render();
         } });
         motionTimeline.to(progress, { value: 1, duration: 0.95, ease: 'power2.inOut' });
-        const activeButton = explorerRef.current.querySelector(`[data-branch-id="${activeId}"]`);
+        const activeButton = explorer.querySelector(`[data-branch-id="${activeId}"]`);
         const resultNode = resultRef.current;
         if (activeButton) {
           motionTimeline.fromTo(activeButton, { scale: 0.985 }, { scale: 1, duration: 0.2, ease: 'power2.out', clearProps: 'scale' }, 0.48);
@@ -283,7 +289,7 @@ export default function BranchExplorer({ locale }) {
       motionTimeline?.kill();
       context?.revert();
     };
-  }, [activeId, selectedLeaves, pixiReady, reduceMotion]);
+  }, [activeId, pixiReady, reduceMotion]);
 
   const toggleLeaf = (id) => {
     setSelectedLeaves((current) => current.includes(id)
@@ -302,21 +308,21 @@ export default function BranchExplorer({ locale }) {
       </div>
 
       <div className="root-node" ref={rootRef}>
-        <span className="root-node-mark" aria-hidden="true">↳</span>
+        <span className="root-node-mark"><SiteIcon name="link" size={23} /></span>
         <span className="root-node-copy">
-          <span className="root-node-label">{locale === 'zh' ? '链接根节点' : 'LINK ROOT'}</span>
+          <span className="root-node-label">{locale === 'zh' ? '链接' : 'LINK'}</span>
           <code>www.bilibili.com/video/BV…</code>
         </span>
-        <span className="root-node-index">↳</span>
+        <span className="root-node-index">URL</span>
       </div>
 
       <div className="branch-area">
         <p className="node-section-label">
-          <span>{locale === 'zh' ? '展开可选内容' : 'EXPAND THE SOURCE'}</span>
-          <span>08 {locale === 'zh' ? '种入口' : 'TYPES'}</span>
+          <span>{locale === 'zh' ? '内容类型' : 'CONTENT TYPES'}</span>
+          <span>08</span>
         </p>
         <ul className="branch-list" aria-label={locale === 'zh' ? 'B站内容类型分支' : 'Bilibili content branches'}>
-          {branches.map((branch, index) => {
+          {branches.map((branch) => {
             const text = branch[locale];
             const selected = branch.id === activeId;
             return (
@@ -328,11 +334,8 @@ export default function BranchExplorer({ locale }) {
                   onClick={() => setActiveId(branch.id)}
                   type="button"
                 >
-                  <span className="branch-node" aria-hidden="true" />
-                  <span className="branch-number">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="branch-icon-tile"><SiteIcon name={branchIcons[branch.id]} size={18} /></span>
                   <span className="branch-name">{text.name}</span>
-                  <span className="branch-token">{branch.token[locale]}</span>
-                  <span className="branch-chevron" aria-hidden="true">↗</span>
                 </button>
               </li>
             );
@@ -343,11 +346,11 @@ export default function BranchExplorer({ locale }) {
       <div className="leaf-area" ref={leafAreaRef}>
         <div className="leaf-heading">
           <span className="leaf-heading-stem" aria-hidden="true" />
-          <span>{locale === 'zh' ? '沿途可选 · 附加内容' : 'OPTIONAL LEAVES · EXTRAS'}</span>
+          <span>{locale === 'zh' ? '附加项' : 'EXTRAS'}</span>
           <span className="leaf-count">{selectedLeaves.length} / 6</span>
         </div>
         <ul className="leaf-list" aria-label={locale === 'zh' ? '可选附加内容' : 'Optional extras'}>
-          {localizedLeaves.map((leaf, index) => {
+          {localizedLeaves.map((leaf) => {
             const selected = selectedLeaves.includes(leaf.id);
             return (
               <li key={leaf.id}>
@@ -358,9 +361,9 @@ export default function BranchExplorer({ locale }) {
                   onClick={() => toggleLeaf(leaf.id)}
                   type="button"
                 >
-                  <span className="leaf-index">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="leaf-icon"><SiteIcon name={extraIcons[leaf.id]} size={16} /></span>
                   <span>{leaf.label}</span>
-                  <span className="leaf-check" aria-hidden="true">{selected ? '✓' : '+'}</span>
+                  <span className="leaf-check"><SiteIcon name={selected ? 'check' : 'plus'} size={13} strokeWidth={2.2} /></span>
                 </button>
               </li>
             );
@@ -369,23 +372,16 @@ export default function BranchExplorer({ locale }) {
       </div>
 
       <div className="result-node" ref={resultRef} aria-live="polite" aria-atomic="true">
-        <div className="result-icon" aria-hidden="true">
-          <svg viewBox="0 0 32 32" fill="none">
-            <path d="M5.5 9.5h8l2.2 2.4h10.8v12.6H5.5V9.5Z" />
-            <path d="M5.5 12h21v12.5h-21z" />
-            <path d="M12 18.2h8M16 15.8v4.8" />
-          </svg>
-        </div>
+        <div className="result-icon"><SiteIcon name="folder" size={28} strokeWidth={1.8} /></div>
         <div className="result-copy">
           <span className="result-label">{locale === 'zh' ? '落到本地' : 'LANDS LOCALLY'}</span>
           <strong>{detail.name}</strong>
           <p>{detail.detail}</p>
-          <span className="result-extras"><b>{copy.extrasSelected}</b>{pathLabel}</span>
+          <span className="result-extras">{pathLabel}</span>
           <code>{detail.path}</code>
         </div>
-        <span className="result-arrow" aria-hidden="true">↓</span>
       </div>
-      <p className="path-note">{locale === 'zh' ? '示例路径 · 命名模板可自定义；此演示不会解析或下载' : 'Example path · templates are customizable; this demo does not parse or download'}</p>
+      <p className="path-note">{locale === 'zh' ? '示例路径 · 命名可自定义' : 'Example path · customizable'}</p>
     </div>
   );
 }
