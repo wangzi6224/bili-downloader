@@ -50,7 +50,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 - Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
 - The chapter markers on bilibili's progress bar, written as real chapters
 - NFO metadata for Kodi / Jellyfin media libraries
-- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download; on a finished download you can also pick “AI refine”, which repaints what is under the watermark frame by frame with an AI model — much cleaner than the default fast mode — and shows an estimated time before it starts (GPU-accelerated when available; the ~200 MB model is downloaded on first use)
+- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download; both the download options and the manual tool offer “AI refine”, which repaints what is under the watermark frame by frame with an AI model — much cleaner than the default fast mode — and shows an estimated time before it starts (GPU-accelerated when available; the ~200 MB model is downloaded on first use)
 
 ### Queue and network
 

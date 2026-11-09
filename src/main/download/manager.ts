@@ -13,7 +13,7 @@ import { preferCdn } from '../net/cdn'
 import { readJsonArray, writeJson } from '../store'
 import { aiModel, spawnHost } from '../watermark/ai'
 import { refineVideo } from '../watermark/ai/refine'
-import { autoDelogo } from '../watermark/auto'
+import { autoRemove } from '../watermark/auto'
 import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark/manual'
 import { removeQuietly, removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
@@ -608,14 +608,19 @@ export class DownloadManager extends EventEmitter {
       let hevc = plan.video ? isHevc(plan.video) : false
       let dolbyVision = plan.video ? isDolbyVision(plan.video) : false
       let wmNote: string | undefined
-      if (plan.video && video && t.options.watermark === 'auto') {
+      // 旧任务的选项里可能没有 watermark，只认这两种
+      const wm = t.options.watermark
+      if (plan.video && video && (wm === 'auto' || wm === 'ai')) {
         check()
         this.patch(t, { status: 'processing', processing: { stage: 'detect' } })
-        const r = await autoDelogo({
+        const method = wm === 'ai' ? 'ai' : 'fast'
+        const r = await autoRemove({
           tmp,
           source: video,
           stream: plan.video,
           durationHint: t.item.duration,
+          method,
+          ai: method === 'ai' ? { model: aiModel(), spawn: spawnHost, threads: this.settings().threads } : undefined,
           signal: ac.signal,
           onStage: (p) => this.patch(t, { processing: p })
         })

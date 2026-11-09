@@ -393,6 +393,15 @@ describe('refineVideo', () => {
     expect(encArgs).toContain('h264_videotoolbox')
   })
 
+  it('下载流程里自动处理：进度不带手动标记，用传进来的码率', async () => {
+    setupSpawn(() => decoder([frameOf(1)]), () => encoder())
+    const stages: ProcessingInfo[] = []
+    await refineVideo(base({ manual: false, kbps: 4321, onStage: (p) => stages.push(p) }))
+    expect(stages.every((p) => p.manual === undefined)).toBe(true)
+    const encArgs = h.spawn.mock.calls.find((c) => (c[1] as string[]).includes('pipe:0'))![1] as string[]
+    expect(encArgs).toContain('4321k')
+  })
+
   it('硬件编码器跑起来失败：换软件编码整个重来', async () => {
     let n = 0
     setupSpawn(() => decoder([frameOf(1)]), () => encoder(n++ === 0 ? 1 : 0, n === 1 ? 'Error while opening encoder' : ''))

@@ -14,7 +14,7 @@ vi.mock('../bili/audio', () => ({ getAudioStream: vi.fn() }))
 vi.mock('./fetchFile', () => ({ fetchFile: vi.fn() }))
 vi.mock('./mux', () => ({ mux: vi.fn() }))
 vi.mock('./extras', () => ({ prepareExtras: vi.fn(), placeSidecars: vi.fn() }))
-vi.mock('../watermark/auto', () => ({ autoDelogo: vi.fn() }))
+vi.mock('../watermark/auto', () => ({ autoRemove: vi.fn() }))
 vi.mock('../watermark/manual', async (o) => ({ ...(await o<typeof import('../watermark/manual')>()), replaceVideo: vi.fn() }))
 const ai = vi.hoisted(() => ({ ready: vi.fn(() => true), refine: vi.fn() }))
 vi.mock('../watermark/ai', () => ({ aiModel: () => ({ ready: ai.ready }), spawnHost: () => ({}) }))
@@ -33,7 +33,7 @@ const { prepareExtras, placeSidecars } = await import('./extras')
 const { AuthExpiredError, UnsupportedError } = await import('../bili/http')
 const { AbortError, DownloadError, FfmpegError } = await import('./errors')
 const { DownloadManager } = await import('./manager')
-const { autoDelogo } = await import('../watermark/auto')
+const { autoRemove } = await import('../watermark/auto')
 const { replaceVideo } = await import('../watermark/manual')
 const { renameSync, rmSync: rmSyncMock } = await import('node:fs')
 
@@ -1035,7 +1035,16 @@ describe('自动去水印', () => {
   const wmOptions = (over: Partial<DownloadOptions> = {}): DownloadOptions => normalizeOptions({ watermark: 'auto', ...over })
 
   beforeEach(() => {
-    vi.mocked(autoDelogo).mockReset()
+    vi.mocked(autoRemove).mockReset()
+  })
+
+  it('选了 AI 精修：方式传 ai，带上模型、启动推理进程的方法和设置里的线程数', async () => {
+    vi.mocked(autoRemove).mockResolvedValue({ note: '去水印：没有识别到水印' })
+    const m = make()
+    m.enqueue(req([item(1)], { options: wmOptions({ watermark: 'ai' }) }))
+    await settle()
+    expect(vi.mocked(autoRemove).mock.calls[0][0]).toMatchObject({ method: 'ai', ai: { model: { ready: ai.ready }, threads: settings.threads } })
+    expect(typeof vi.mocked(autoRemove).mock.calls[0][0].ai!.spawn).toBe('function')
   })
 
   it('选项关闭时不处理', async () => {
@@ -1043,7 +1052,7 @@ describe('自动去水印', () => {
     m.enqueue(req([item(1)]))
     await settle()
     expect(statuses(m)).toEqual(['done'])
-    expect(autoDelogo).not.toHaveBeenCalled()
+    expect(autoRemove).not.toHaveBeenCalled()
     expect(m.list()[0].watermark).toBeUndefined()
   })
 
@@ -1051,7 +1060,7 @@ describe('自动去水印', () => {
     settings.naming.single = '{title} [{codec}]'
     const seen: unknown[] = []
     let m!: InstanceType<typeof DownloadManager>
-    vi.mocked(autoDelogo).mockImplementation(async (i) => {
+    vi.mocked(autoRemove).mockImplementation(async (i) => {
       const t = m.list()[0]
       i.onStage({ stage: 'encode', pct: 40, eta: 9 })
       seen.push({ status: t.status, processing: { ...t.processing } })
@@ -1064,11 +1073,13 @@ describe('自动去水印', () => {
     await settle()
     const t = m.list()[0]
     expect(seen).toEqual([{ status: 'processing', processing: { stage: 'encode', pct: 40, eta: 9 } }])
-    expect(vi.mocked(autoDelogo).mock.calls[0][0]).toMatchObject({
+    expect(vi.mocked(autoRemove).mock.calls[0][0]).toMatchObject({
       tmp: tmpOf(t.id),
       source: tmpOf(t.id, 'video.m4s'),
       stream: { id: 80 },
-      durationHint: 10
+      durationHint: 10,
+      method: 'fast',
+      ai: undefined
     })
     expect(vi.mocked(mux).mock.calls[0][0]).toMatchObject({
       video: tmpOf(t.id, 'video.wm.mp4'),
@@ -1087,7 +1098,7 @@ describe('自动去水印', () => {
 
   it('AV1 源转成 H.264：标签和合并参数都按 AVC', async () => {
     vi.mocked(getPlayInfo).mockResolvedValue(play(avc({ codecid: 13, codecs: 'av01.0.08M.08' })))
-    vi.mocked(autoDelogo).mockImplementation(async (i) => {
+    vi.mocked(autoRemove).mockImplementation(async (i) => {
       const video = join(i.tmp, 'video.wm.mp4')
       writeFileSync(video, 'clean')
       return { video, codec: 'h264', state: { width: 1920, height: 1080, detected: R, applied: R } }
@@ -1100,7 +1111,7 @@ describe('自动去水印', () => {
   })
 
   it('没识别到或处理失败：写进提示，用原视频合并', async () => {
-    vi.mocked(autoDelogo).mockResolvedValue({ note: '去水印：没有识别到水印', state: { width: 1920, height: 1080 } })
+    vi.mocked(autoRemove).mockResolvedValue({ note: '去水印：没有识别到水印', state: { width: 1920, height: 1080 } })
     const m = make()
     m.enqueue(req([item(1)], { options: wmOptions() }))
     await settle()
@@ -1119,11 +1130,11 @@ describe('自动去水印', () => {
     m.enqueue(req([item(1)], { options: wmOptions({ output: 'audio' }) }))
     await settle()
     expect(statuses(m)).toEqual(['done'])
-    expect(autoDelogo).not.toHaveBeenCalled()
+    expect(autoRemove).not.toHaveBeenCalled()
   })
 
   it('处理中暂停：变成暂停、清掉进度、保留分片；处理中删除：清掉临时目录', async () => {
-    vi.mocked(autoDelogo).mockImplementation((i) => {
+    vi.mocked(autoRemove).mockImplementation((i) => {
       i.onStage({ stage: 'queue' })
       return untilAbort(i.signal)
     })

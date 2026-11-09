@@ -1,9 +1,10 @@
+import { EventEmitter } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WM_NOTE } from '@shared/watermark'
-import type { ProcessingInfo } from '@shared/types'
+import type { AiModelStatus, ProcessingInfo } from '@shared/types'
 import type { DashStream } from '../bili/playurl'
 import { AbortError, FfmpegError } from '../download/errors'
 import type { Encoder } from './encoder'
@@ -15,13 +16,15 @@ vi.mock('./transcode', () => ({ encodeWithFallback: vi.fn() }))
 vi.mock('./encoder', () => ({ targetKbps: vi.fn(() => 6000) }))
 vi.mock('./delogo', () => ({ buildVideoOnlyArgs: vi.fn(() => ['args']) }))
 vi.mock('./detect', () => ({ AUTO_MIN_SCORE: 0.6 }))
+vi.mock('./ai/refine', () => ({ refineVideo: vi.fn() }))
 
 const { probeMedia } = await import('./probe')
 const { locateWatermark } = await import('./locate')
 const { encodeWithFallback } = await import('./transcode')
 const { targetKbps } = await import('./encoder')
 const { buildVideoOnlyArgs } = await import('./delogo')
-const { autoDelogo } = await import('./auto')
+const { refineVideo } = await import('./ai/refine')
+const { autoRemove } = await import('./auto')
 
 const V: ProbeVideo = { index: 0, codec: 'h264', width: 1920, height: 1080, rotation: 0, fps: 30, hdr: false, dolbyVision: false }
 const R = { x: 1668, y: 18, w: 234, h: 72 }
@@ -32,8 +35,10 @@ let tmp = ''
 let source = ''
 let stages: ProcessingInfo[]
 let ac: AbortController
-const run = (over: Partial<Parameters<typeof autoDelogo>[0]> = {}) =>
-  autoDelogo({ tmp, source, stream: stream(), durationHint: 50, signal: ac.signal, onStage: (p) => stages.push(p), ...over })
+type Input = Parameters<typeof autoRemove>[0]
+/** ai 可以传测试里的假模型 */
+const run = (over: Partial<Omit<Input, 'ai'>> & { ai?: { model: EventEmitter; spawn: unknown; threads?: number } } = {}) =>
+  autoRemove({ tmp, source, stream: stream(), durationHint: 50, method: 'fast', signal: ac.signal, onStage: (p) => stages.push(p), ...over } as Input)
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'auto-'))
@@ -98,7 +103,7 @@ describe('处理', () => {
     expect(r).toEqual({ video: out, codec: 'hevc', state })
     expect(readFileSync(out, 'utf8')).toBe('clean')
     expect(existsSync(join(tmp, 'video.wm.part'))).toBe(false)
-    expect(JSON.parse(readFileSync(join(tmp, 'watermark.json'), 'utf8'))).toEqual({ size: 12, codec: 'hevc', state })
+    expect(JSON.parse(readFileSync(join(tmp, 'watermark.json'), 'utf8'))).toEqual({ size: 12, codec: 'hevc', state, method: 'fast' })
     expect(stages[0]).toEqual({ stage: 'detect' })
     expect(locateWatermark).toHaveBeenCalledWith(source, V, 100, ac.signal)
     expect(targetKbps).toHaveBeenCalledWith(4000, 1920, 1080, 30)
@@ -178,5 +183,129 @@ describe('处理', () => {
       throw new FfmpegError('去水印失败（ffmpeg 退出码 255）')
     })
     await expect(run()).rejects.toBeInstanceOf(AbortError)
+  })
+})
+
+/** 假的模型：download 时按 plan 发出进度、变成就绪或出错 */
+class FakeModel extends EventEmitter {
+  state: AiModelStatus = { state: 'missing', size: 100 }
+  download = vi.fn(async (_o?: { threads?: number }) => {
+    this.set({ state: 'downloading', size: 100, done: 40 })
+    this.set({ state: 'downloading', size: 0 })
+    if (this.plan === 'ok') this.set({ state: 'ready', size: 100 })
+    else if (this.plan === 'error') this.set({ state: 'error', size: 100, message: '连不上模型的下载地址' })
+    else if (this.plan === 'hang') await new Promise(() => {})
+  })
+  constructor(public plan: 'ok' | 'error' | 'cancel' | 'hang' | 'ready') {
+    super()
+    if (plan === 'ready') this.state = { state: 'ready', size: 100 }
+  }
+  ready = (): boolean => this.state.state === 'ready'
+  status = (): AiModelStatus => this.state
+  set(s: AiModelStatus): void {
+    this.state = s
+    this.emit('status', s)
+  }
+}
+
+describe('AI 精修', () => {
+  const spawn = vi.fn()
+  const ai = (plan: FakeModel['plan']) => ({ model: new FakeModel(plan), spawn, threads: 6 })
+  beforeEach(() => {
+    vi.mocked(refineVideo)
+      .mockReset()
+      .mockImplementation(async (o) => {
+        writeFileSync(o.output, 'ai clean')
+        return { codec: 'h264', width: 1920, height: 1080, region: R }
+      })
+  })
+
+  it('模型就绪：用 AI 精修处理视频流，用接口给的码率，进度不带手动标记', async () => {
+    const a = ai('ready')
+    const r = await run({ method: 'ai', ai: a })
+    expect(r).toEqual({ video: join(tmp, 'video.wm.mp4'), codec: 'h264', state: { width: 1920, height: 1080, detected: R, applied: R } })
+    expect(readFileSync(join(tmp, 'video.wm.mp4'), 'utf8')).toBe('ai clean')
+    expect(vi.mocked(refineVideo).mock.calls[0][0]).toMatchObject({
+      input: source,
+      output: join(tmp, 'video.wm.part'),
+      workDir: join(tmp, 'wm-work'),
+      region: R,
+      format: 'mp4',
+      durationHint: 100,
+      manual: false,
+      kbps: 6000,
+      model: a.model,
+      spawn
+    })
+    expect(a.model.download).not.toHaveBeenCalled()
+    expect(encodeWithFallback).not.toHaveBeenCalled()
+    expect(JSON.parse(readFileSync(join(tmp, 'watermark.json'), 'utf8')).method).toBe('ai')
+  })
+
+  it('模型还没下载：先下载，进度报成 model 阶段，下好了再精修', async () => {
+    const a = ai('ok')
+    await run({ method: 'ai', ai: a })
+    expect(a.model.download).toHaveBeenCalledWith({ threads: 6 })
+    expect(stages.filter((p) => p.stage === 'model')).toEqual([
+      { stage: 'model', pct: 0 },
+      { stage: 'model', pct: 40 },
+      { stage: 'model', pct: 0 }
+    ])
+    expect(refineVideo).toHaveBeenCalled()
+    expect(a.model.listenerCount('status')).toBe(0)
+  })
+
+  it('模型下不下来：这次改用快速去除，提示原因；提示和结果一起缓存', async () => {
+    const r = await run({ method: 'ai', ai: ai('error') })
+    expect(refineVideo).not.toHaveBeenCalled()
+    expect(encodeWithFallback).toHaveBeenCalled()
+    expect(r).toMatchObject({ codec: 'hevc', note: WM_NOTE.aiFallback('连不上模型的下载地址') })
+    vi.mocked(probeMedia).mockClear()
+    expect(await run({ method: 'ai', ai: ai('error') })).toEqual(r)
+    expect(probeMedia).not.toHaveBeenCalled()
+
+    rmSync(join(tmp, 'video.wm.mp4'))
+    expect((await run({ method: 'ai', ai: ai('cancel') })).note).toBe(WM_NOTE.aiFallback('下载没有完成'))
+  })
+
+  it('精修失败：改用快速去除并提示；被中止就直接结束', async () => {
+    vi.mocked(refineVideo).mockImplementationOnce(async (o) => {
+      writeFileSync(o.output, 'half')
+      throw new Error('没有可用的 AI 推理方式')
+    })
+    const r = await run({ method: 'ai', ai: ai('ready') })
+    expect(r).toMatchObject({ codec: 'hevc', note: WM_NOTE.aiFailed('没有可用的 AI 推理方式') })
+    expect(readFileSync(join(tmp, 'video.wm.mp4'), 'utf8')).toBe('clean')
+
+    rmSync(join(tmp, 'video.wm.mp4'))
+    vi.mocked(refineVideo).mockRejectedValueOnce(new AbortError())
+    await expect(run({ method: 'ai', ai: ai('ready') })).rejects.toBeInstanceOf(AbortError)
+    vi.mocked(refineVideo).mockImplementationOnce(async () => {
+      ac.abort()
+      throw new Error('推理进程意外退出')
+    })
+    await expect(run({ method: 'ai', ai: ai('ready') })).rejects.toBeInstanceOf(AbortError)
+  })
+
+  it('等模型下载时被中止：不再等，抛 AbortError', async () => {
+    const a = ai('hang')
+    const p = run({ method: 'ai', ai: a })
+    await vi.waitFor(() => expect(a.model.download).toHaveBeenCalled())
+    ac.abort()
+    await expect(p).rejects.toBeInstanceOf(AbortError)
+    expect(a.model.listenerCount('status')).toBe(0)
+  })
+
+  it('换了处理方式不复用上次的结果；ai 方式没给依赖时按快速处理', async () => {
+    await run()
+    vi.mocked(probeMedia).mockClear()
+    await run({ method: 'ai', ai: ai('ready') })
+    expect(probeMedia).toHaveBeenCalledTimes(1)
+    expect(refineVideo).toHaveBeenCalledTimes(1)
+
+    rmSync(join(tmp, 'video.wm.mp4'))
+    vi.mocked(encodeWithFallback).mockClear()
+    await run({ method: 'ai' })
+    expect(encodeWithFallback).toHaveBeenCalledTimes(1)
   })
 })

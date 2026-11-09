@@ -56,7 +56,9 @@ export const WM_NOTE = {
   hdr: '去水印：暂不支持 HDR 和杜比视界视频，已保留原视频',
   interrupted: '去水印没有完成（应用中途退出了），已保留原视频',
   moved: '去水印没有完成：处理期间原视频被移动或删除了',
-  failed: (reason: string): string => `${reason.startsWith('去水印') ? reason : `去水印失败：${reason}`}，已保留原视频`
+  failed: (reason: string): string => `${reason.startsWith('去水印') ? reason : `去水印失败：${reason}`}，已保留原视频`,
+  aiFallback: (reason: string): string => `去水印：AI 模型没能下载（${reason}），这次改用了快速去除`,
+  aiFailed: (reason: string): string => `去水印：AI 精修没能完成（${reason}），这次改用了快速去除`
 }
 
 /** 任务提示用“；”拼接，去掉其中旧的去水印提示，其余保留 */

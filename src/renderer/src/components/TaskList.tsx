@@ -10,7 +10,6 @@ import {
   Clock,
   Coffee,
   Download,
-  Eraser,
   FolderOpen,
   Gauge,
   KeyRound,
@@ -30,6 +29,7 @@ import { itemUrl } from '@shared/parseUrl'
 import { isVideoTask } from '@shared/watermark'
 import type { PowerMode, TaskInfo, TaskStatus } from '@shared/types'
 import { fmtSpeed, thumb } from '../format'
+import { WatermarkOff } from '../icons'
 import { api, sysText, updateSettings, useStore } from '../store'
 import { ACTIVE, buildEntries } from '../taskOrder'
 import {
@@ -204,7 +204,7 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
             />
           )}
           {t.status === 'done' && t.outputPath && !manual && isVideoTask(t) && (
-            <IconButton icon={Eraser} label="去水印…" onClick={() => useStore.getState().set({ watermarkTaskId: t.id })} />
+            <IconButton icon={WatermarkOff} label="去水印…" onClick={() => useStore.getState().set({ watermarkTaskId: t.id })} />
           )}
           {finished && !manual && (
             <IconButton icon={X} label="从列表移除（保留文件）" onClick={() => removeTasks([t.id], false)} />

@@ -50,7 +50,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 - Danmaku (commentaires défilants) en `.ass` et/ou `.xml`, avec taille de police, opacité et durée réglables
 - Les segments de la barre de progression de bilibili, écrits comme de vrais chapitres
 - Métadonnées NFO pour les médiathèques Kodi / Jellyfin
-- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée ; sur une vidéo déjà téléchargée, le mode « Retouche IA » repeint image par image ce qui se trouve sous le filigrane avec un modèle d'IA — bien plus net que le mode rapide par défaut — et affiche une durée estimée avant de commencer (accéléré par la carte graphique si possible ; le modèle d'environ 200 Mo est téléchargé à la première utilisation)
+- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée ; dans les options de téléchargement comme sur une vidéo déjà téléchargée, le mode « Retouche IA » repeint image par image ce qui se trouve sous le filigrane avec un modèle d'IA — bien plus net que le mode rapide par défaut — et affiche une durée estimée avant de commencer (accéléré par la carte graphique si possible ; le modèle d'environ 200 Mo est téléchargé à la première utilisation)
 
 ### File d'attente et réseau
 

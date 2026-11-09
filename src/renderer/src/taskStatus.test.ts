@@ -171,6 +171,8 @@ describe('taskDetail', () => {
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'encode', pct: 10, eta: 90 } }), now)).toBe('剩 1 分 30 秒')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'encode', pct: 0 } }), now)).toBe('重新编码中')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'analyze' } }), now)).toBe('AI 精修：分析画面、加载模型…')
+    expect(taskDetail(task('a', 'processing', { processing: { stage: 'model', pct: 45.6 } }), now)).toBe('下载 AI 模型 45%')
+    expect(taskDetail(task('a', 'processing', { processing: { stage: 'model' } }), now)).toBe('下载 AI 模型 0%')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'refine', pct: 5, eta: 90, backend: 'GPU' } }), now)).toBe('AI · 剩 1 分 30 秒')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'refine', pct: 0, backend: 'CPU × 6' } }), now)).toBe('AI 精修中（CPU × 6）')
     expect(taskDetail(task('a', 'done', { processing: { manual: true, stage: 'refine', pct: 0 } }), now)).toBe('AI 精修中')

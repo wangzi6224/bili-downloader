@@ -50,7 +50,7 @@ Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un li
 - Danmaku (commenti a scorrimento) in `.ass` e/o `.xml`, con dimensione del carattere, opacità e durata regolabili
 - I segmenti della barra di avanzamento di bilibili, scritti come veri capitoli
 - Metadati NFO per le librerie multimediali Kodi / Jellyfin
-- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato; su un video già scaricato si può scegliere il «Ritocco IA», che ricostruisce fotogramma per fotogramma ciò che sta sotto la filigrana con un modello di IA — molto più pulito della modalità rapida predefinita — e mostra una stima del tempo prima di iniziare (con accelerazione GPU quando disponibile; il modello di circa 200 MB viene scaricato al primo utilizzo)
+- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato; sia nelle opzioni di download sia su un video già scaricato si può scegliere il «Ritocco IA», che ricostruisce fotogramma per fotogramma ciò che sta sotto la filigrana con un modello di IA — molto più pulito della modalità rapida predefinita — e mostra una stima del tempo prima di iniziare (con accelerazione GPU quando disponibile; il modello di circa 200 MB viene scaricato al primo utilizzo)
 
 ### Coda e rete
 

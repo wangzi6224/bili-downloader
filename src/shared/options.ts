@@ -25,7 +25,7 @@ export function normalizeOptions(raw: Partial<DownloadOptions> & { codec?: Codec
   if (raw.audioOnly !== undefined && !raw.output) o.output = raw.audioOnly ? 'audio' : 'full'
   // 编码列表必须包含全部三种且不重复
   o.codecOrder = [...new Set([...(o.codecOrder ?? []).filter((c) => CODECS.includes(c)), ...CODECS])]
-  if (o.watermark !== 'auto') o.watermark = 'off'
+  if (o.watermark !== 'auto' && o.watermark !== 'ai') o.watermark = 'off'
   delete o.codec
   delete o.audioOnly
   return o

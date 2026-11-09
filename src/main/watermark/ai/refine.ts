@@ -261,6 +261,10 @@ export interface RefineInput {
   onStage: (p: ProcessingInfo) => void
   model: AiModel
   spawn: SpawnHost
+  /** 对已完成任务手动发起（默认）；下载流程里的自动去水印传 false，进度上不带 manual */
+  manual?: boolean
+  /** 目标码率；分片 MP4 里读出的码率不准，下载流程用接口给的码率算好传进来 */
+  kbps?: number
 }
 
 /** 剩余时间：最近一段的速度估算，开头几秒数据太少不报 */
@@ -288,11 +292,12 @@ async function exportCover(o: RefineInput, probe: MediaProbe): Promise<string | 
 
 /** 把成品里的视频流换成 AI 去掉水印的版本，音频、字幕、封面、章节原样保留，写到 output */
 export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['codec']; width: number; height: number; region: WatermarkRegion }> {
-  o.onStage({ manual: true, stage: 'queue' })
+  const tag = o.manual === false ? {} : { manual: true }
+  o.onStage({ ...tag, stage: 'queue' })
   const release = await heavyTurn(o.signal)
   let inferencer: Inferencer | undefined
   try {
-    o.onStage({ manual: true, stage: 'analyze' })
+    o.onStage({ ...tag, stage: 'analyze' })
     const probe = await probeMedia(o.input, o.signal)
     const v = probe.video
     if (!v) throw new Error('文件里没有视频画面')
@@ -317,10 +322,10 @@ export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['cod
     }
     inferencer = new Inferencer(await open(), open, setPool)
     setPool(inferencer.current)
-    o.onStage({ manual: true, stage: 'refine', pct: 0, backend: label })
+    o.onStage({ ...tag, stage: 'refine', pct: 0, backend: label })
 
     const coverFile = await exportCover(o, probe)
-    const kbps = targetKbps(v.bitrate, a.width, a.height, v.fps)
+    const kbps = o.kbps ?? targetKbps(v.bitrate, a.width, a.height, v.fps)
     const inf = inferencer
     const pass = (enc: Encoder): Promise<PassResult> =>
       runPass({
@@ -335,7 +340,7 @@ export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['cod
         onFrame: (n) => {
           // 每 10 帧报一次，界面不用刷那么勤
           if (n % 10) return
-          o.onStage({ manual: true, stage: 'refine', pct: total ? Math.min(99.9, Math.round((n / total) * 1000) / 10) : undefined, eta: eta(n), backend: label })
+          o.onStage({ ...tag, stage: 'refine', pct: total ? Math.min(99.9, Math.round((n / total) * 1000) / 10) : undefined, eta: eta(n), backend: label })
         }
       })
     let enc = await pickEncoder({ srcCodec: v.codec, width: a.width, height: a.height }, o.signal)

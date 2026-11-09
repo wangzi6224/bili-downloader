@@ -116,9 +116,11 @@ const OPTION_FIELDS: Record<string, OptionField> = {
   watermark: {
     key: 'watermark',
     type: 'enum',
-    values: ['off', 'auto'],
+    values: ['off', 'auto', 'ai'],
     description:
-      '去水印：auto 下载后自动识别画面角落的水印并去掉（要重新编码视频，耗时较长；没识别到、HDR、杜比视界时保留原视频）'
+      '去水印：下载后自动识别画面角落的水印并去掉（要重新编码视频；没识别到、HDR、杜比视界时保留原视频）。' +
+      'auto 快速去除（插值填补，几分钟内完成，水印处略糊）；ai 用 AI 模型逐帧修补，清楚得多但慢很多' +
+      '（有显卡时约为视频时长的 2～4 倍，没有显卡更慢；第一次会先下载约 200MB 的模型，下不下来时改用快速去除）'
   }
 }
 

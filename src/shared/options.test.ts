@@ -11,6 +11,7 @@ describe('normalizeOptions', () => {
 
   it('去水印只认 auto，其他值（包括旧数据里没有的）都当作不处理', () => {
     expect(normalizeOptions({ watermark: 'auto' }).watermark).toBe('auto')
+    expect(normalizeOptions({ watermark: 'ai' }).watermark).toBe('ai')
     expect(normalizeOptions({ watermark: 'yes' as never }).watermark).toBe('off')
     expect(normalizeOptions({}).watermark).toBe('off')
   })

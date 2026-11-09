@@ -1,9 +1,43 @@
-import type { ReactNode } from 'react'
-import { ArrowUp } from 'lucide-react'
-import type { AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo, WatermarkMode } from '@shared/types'
-import { sysText } from '../store'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowUp, Download, X } from 'lucide-react'
+import type { AiModelStatus, AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo, WatermarkMode } from '@shared/types'
+import { modelPct, modelText } from '../aiRefine'
+import { api, sysText } from '../store'
 import { actualCodec, AUDIO_LABEL, moveUp, type EditableOptions } from '../viewLogic'
-import { IconButton, Segmented, Select } from './ui'
+import { Button, IconButton, Progress, Segmented, Select } from './ui'
+
+const WATERMARKS: { value: WatermarkMode; label: string; hint: string }[] = [
+  { value: 'off', label: '不处理', hint: '原样保存，不重新编码' },
+  { value: 'auto', label: '快速去除', hint: '用周围的画面填补水印，几分钟内完成，水印处会有些糊' },
+  { value: 'ai', label: 'AI 精修', hint: '用 AI 模型逐帧补出水印下面的画面，清楚得多，但慢' }
+]
+
+/** 选了 AI 精修时：模型下载好没有，没下载可以先下好 */
+function AiModelLine() {
+  const [m, setM] = useState<AiModelStatus | null>(null)
+  useEffect(() => {
+    void api.watermark.aiStatus().then(setM)
+    return api.watermark.onAiStatus(setM)
+  }, [])
+  if (!m || m.state === 'ready') return null
+  return (
+    <div className="mt-1.5 flex items-center gap-2 text-xs text-muted">
+      <div className="min-w-0 flex-1">
+        <div>{m.state === 'missing' ? `${modelText(m)}；也可以等到第一次去水印时再自动下载` : modelText(m)}</div>
+        {m.state === 'downloading' && <Progress value={modelPct(m)} className="mt-1" />}
+      </div>
+      {m.state === 'downloading' ? (
+        <Button size="sm" variant="ghost" icon={X} disabled={m.verifying} onClick={() => void api.watermark.aiCancelDownload()}>
+          取消
+        </Button>
+      ) : (
+        <Button size="sm" icon={Download} onClick={() => void api.watermark.aiDownload()}>
+          {m.state === 'error' ? '重试' : '下载模型'}
+        </Button>
+      )}
+    </div>
+  )
+}
 
 const CODEC_LABEL: Record<CodecPref, string> = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' }
 const CODEC_HINT: Record<CodecPref, string> = { avc: '兼容性最好', hevc: '体积更小', av1: sysText.av1Hint }
@@ -162,20 +196,20 @@ export function OptionsEditor({
       </Section>
 
       <Section title="水印" dim={audioOnly}>
-        <Segmented<WatermarkMode>
-          fill
-          value={o.watermark}
-          disabled={audioOnly}
-          onChange={(watermark) => set({ watermark })}
-          options={[
-            { value: 'off', label: '不处理', hint: '原样保存，不重新编码' },
-            { value: 'auto', label: '自动去除', hint: '识别画面角落的水印并去掉' }
-          ]}
-        />
+        <Segmented<WatermarkMode> fill value={o.watermark} disabled={audioOnly} onChange={(watermark) => set({ watermark })} options={WATERMARKS} />
         {o.watermark === 'auto' && !audioOnly && (
           <div className="mt-1.5 text-xs leading-relaxed text-muted">
             识别到水印才处理，要重新编码视频，比直接下载慢不少；成功后只保留去水印的版本。HDR、杜比视界视频不处理。
           </div>
+        )}
+        {o.watermark === 'ai' && !audioOnly && (
+          <>
+            <div className="mt-1.5 text-xs leading-relaxed text-muted">
+              识别到水印才处理，用 AI 模型逐帧补出水印下面的画面，比快速去除清楚得多，但慢很多：有显卡时大约是视频时长的
+              2～4 倍，没有显卡更慢。模型下不下来或精修失败时，这次改用快速去除。HDR、杜比视界视频不处理。
+            </div>
+            <AiModelLine />
+          </>
         )}
       </Section>
 

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
-import { Download, Eraser, Eye, EyeOff, Loader2, RefreshCw, RotateCcw, Sparkles, X } from 'lucide-react'
+import { Download, Eye, EyeOff, Loader2, RefreshCw, RotateCcw, Sparkles, X } from 'lucide-react'
 import { cornerName } from '@shared/watermark'
 import type { AiEstimate, AiModelStatus, WatermarkMethod, WatermarkPrep, WatermarkRegion } from '@shared/types'
 import { estimateHints, estimateText, modelPct, modelText } from '../aiRefine'
 import { fmtDuration } from '../format'
+import { WatermarkOff } from '../icons'
 import { api, useStore } from '../store'
 import { dragRect, handleStyle, HANDLES, nextFrameTime, nudge, toView, type Handle } from '../watermarkBox'
 import { Banner, Button, Modal, ModalFooter, ModalHeader, Progress, Segmented, STROKE } from './ui'
@@ -37,7 +38,9 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
   const [viewW, setViewW] = useState(0)
   const imgRef = useRef<HTMLImageElement>(null)
   const drag = useRef<Drag | null>(null)
-  const [method, setMethod] = useState<WatermarkMethod>('fast')
+  // 默认跟设置里的“水印”一致：默认用 AI 精修的人，手动处理时也先选 AI 精修
+  const preferAi = useStore((s) => s.settings?.defaults.watermark === 'ai')
+  const [method, setMethod] = useState<WatermarkMethod>(preferAi ? 'ai' : 'fast')
   const [model, setModel] = useState<AiModelStatus | null>(null)
   const [estimate, setEstimate] = useState<AiEstimate | null>(null)
   const [estimating, setEstimating] = useState(false)
@@ -170,7 +173,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
   return (
     <Modal onClose={onClose} className="flex max-h-full max-w-3xl flex-col">
       <ModalHeader
-        icon={Eraser}
+        icon={WatermarkOff}
         title="去水印"
         subtitle="拖动方框盖住水印，拖四角和四边调整大小。处理时会重新编码视频，完成后替换原文件。"
         onClose={onClose}
@@ -314,7 +317,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
         </Button>
         <Button
           variant="primary"
-          icon={ai ? Sparkles : Eraser}
+          icon={ai ? Sparkles : WatermarkOff}
           disabled={!region || busy || Boolean(prep?.blocker) || (ai && !modelReady)}
           onClick={start}
         >

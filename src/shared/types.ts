@@ -171,11 +171,11 @@ export interface DownloadOptions {
   chapters: boolean
   /** Kodi / Jellyfin 元数据 */
   nfo: boolean
-  /** 去水印：auto 下载后自动识别画面角落的水印并去掉（要重新编码视频） */
+  /** 去水印：下载后自动识别画面角落的水印并去掉（要重新编码视频）。auto 是快速（delogo），ai 是 AI 精修 */
   watermark: WatermarkMode
 }
 
-export type WatermarkMode = 'off' | 'auto'
+export type WatermarkMode = 'off' | 'auto' | 'ai'
 
 /** 水印区域：视频显示方向（已按旋转转正）下原分辨率的像素坐标 */
 export interface WatermarkRegion {
@@ -197,11 +197,11 @@ export interface WatermarkState {
 
 /**
  * 去水印的进度；manual 表示对已完成任务手动发起（此时 status 仍为 done）。
- * AI 精修的阶段：analyze（抽帧找笔画、加载模型）→ refine（逐帧修补并编码）
+ * AI 精修的阶段：model（第一次用时下载模型）→ analyze（抽帧找笔画、加载模型）→ refine（逐帧修补并编码）
  */
 export interface ProcessingInfo {
   manual?: boolean
-  stage: 'detect' | 'queue' | 'encode' | 'analyze' | 'refine'
+  stage: 'detect' | 'queue' | 'encode' | 'model' | 'analyze' | 'refine'
   /** 0-100 */
   pct?: number
   /** 剩余秒数 */
