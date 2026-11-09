@@ -74,6 +74,7 @@ export default function BranchExplorer({ locale }) {
   const [activeId, setActiveId] = useState('collections');
   const [selectedLeaves, setSelectedLeaves] = useState(['quality', 'subtitle', 'chapter']);
   const [pixiReady, setPixiReady] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const explorerRef = useRef(null);
   const canvasHostRef = useRef(null);
   const rootRef = useRef(null);
@@ -87,6 +88,14 @@ export default function BranchExplorer({ locale }) {
   const selectedLabels = selectedLeaves
     .map((id) => localizedLeaves.find((leaf) => leaf.id === id)?.label)
     .filter(Boolean);
+
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setReduceMotion(preference.matches);
+    updatePreference();
+    preference.addEventListener('change', updatePreference);
+    return () => preference.removeEventListener('change', updatePreference);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +132,7 @@ export default function BranchExplorer({ locale }) {
         const track = new Graphics();
         const particle = new Graphics();
         app.stage.addChild(track, particle);
-        pixiRef.current = { app, Graphics, gsap: gsapModule.gsap, track, particle };
+        pixiRef.current = { app, gsap: gsapModule.gsap, track, particle };
         setPixiReady(true);
       } catch {
         // The DOM tree and its connectors remain the accessible fallback.
@@ -145,7 +154,6 @@ export default function BranchExplorer({ locale }) {
     let motionTimeline;
     let resizeObserver;
     const explorer = explorerRef.current;
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let mainPoints = [];
 
     const draw = () => {
@@ -227,10 +235,19 @@ export default function BranchExplorer({ locale }) {
       app.render();
     };
 
-    draw();
     const gsap = pixiRef.current.gsap;
-    const context = gsap.context(() => {
-      if (!prefersReducedMotion) {
+    let context;
+    const animatePath = () => {
+      motionTimeline?.kill();
+      context?.revert();
+      draw();
+      context = gsap.context(() => {
+        if (reduceMotion) {
+          particle.visible = false;
+          app.render();
+          return;
+        }
+
         const progress = { value: 0 };
         particle.visible = true;
         motionTimeline = gsap.timeline({ onUpdate: () => {
@@ -247,11 +264,9 @@ export default function BranchExplorer({ locale }) {
         if (resultNode) {
           motionTimeline.fromTo(resultNode, { y: 7, autoAlpha: 0.72 }, { y: 0, autoAlpha: 1, duration: 0.32, ease: 'power2.out', clearProps: 'transform,opacity,visibility' }, 0.62);
         }
-      } else {
-        particle.visible = false;
-        app.render();
-      }
-    }, explorer);
+      }, explorer);
+    };
+    animatePath();
     let previousWidth = explorer.clientWidth;
     let previousHeight = explorer.clientHeight;
     resizeObserver = new ResizeObserver(([entry]) => {
@@ -259,17 +274,16 @@ export default function BranchExplorer({ locale }) {
       if (Math.abs(width - previousWidth) < 1 && Math.abs(height - previousHeight) < 1) return;
       previousWidth = width;
       previousHeight = height;
-      motionTimeline?.kill();
-      draw();
+      animatePath();
     });
     resizeObserver.observe(explorer);
 
     return () => {
       resizeObserver?.disconnect();
       motionTimeline?.kill();
-      context.revert();
+      context?.revert();
     };
-  }, [activeId, selectedLeaves, pixiReady]);
+  }, [activeId, selectedLeaves, pixiReady, reduceMotion]);
 
   const toggleLeaf = (id) => {
     setSelectedLeaves((current) => current.includes(id)
@@ -317,7 +331,7 @@ export default function BranchExplorer({ locale }) {
                   <span className="branch-node" aria-hidden="true" />
                   <span className="branch-number">{String(index + 1).padStart(2, '0')}</span>
                   <span className="branch-name">{text.name}</span>
-                  <span className="branch-token">{branch.token}</span>
+                  <span className="branch-token">{branch.token[locale]}</span>
                   <span className="branch-chevron" aria-hidden="true">↗</span>
                 </button>
               </li>
