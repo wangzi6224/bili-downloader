@@ -151,7 +151,7 @@ describe('preload', () => {
     registerIpc({ manager: {}, subs: {}, mcp: {}, updater: {}, enqueue: vi.fn() } as unknown as IpcDeps)
 
     expect([...invoked].sort()).toEqual([...h.registered].sort())
-    expect(invoked.size).toBe(68)
+    expect(invoked.size).toBe(69)
     // 每个 api 函数各用一个频道，主进程也没有重复注册
     expect(invokers).toBe(invoked.size)
     expect(new Set(h.registered).size).toBe(h.registered.length)

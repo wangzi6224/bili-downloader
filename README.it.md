@@ -50,7 +50,7 @@ Un'app desktop per Windows, macOS e Linux che scarica da bilibili: incolla un li
 - Danmaku (commenti a scorrimento) in `.ass` e/o `.xml`, con dimensione del carattere, opacità e durata regolabili
 - I segmenti della barra di avanzamento di bilibili, scritti come veri capitoli
 - Metadati NFO per le librerie multimediali Kodi / Jellyfin
-- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato; sia nelle opzioni di download sia su un video già scaricato si può scegliere il «Ritocco IA», che ricostruisce fotogramma per fotogramma ciò che sta sotto la filigrana con un modello di IA — molto più pulito della modalità rapida predefinita — e mostra una stima del tempo prima di iniziare (con accelerazione GPU quando disponibile; il modello di circa 200 MB viene scaricato al primo utilizzo)
+- Rimozione della filigrana: rileva la filigrana in un angolo dell'immagine e la rimuove automaticamente (ricodifica il video; HDR e Dolby Vision vengono saltati), oppure la si seleziona a mano su un video già scaricato; sia nelle opzioni di download sia su un video già scaricato si può scegliere il «Ritocco IA», che ricostruisce fotogramma per fotogramma ciò che sta sotto la filigrana con un modello di IA — molto più pulito della modalità rapida predefinita — e mostra una stima del tempo prima di iniziare (con accelerazione GPU quando disponibile; il modello di circa 200 MB viene scaricato al primo utilizzo); un interruttore «Rimuovi la filigrana dopo il download» sopra l'elenco dei download cambia modalità in qualsiasi momento
 
 ### Coda e rete
 
@@ -163,10 +163,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_status` | Stato di accesso e dell'abbonamento premium (大会员), riepilogo della coda, spazio libero nella cartella di download e cose a cui fare attenzione. Da chiamare per primo |
 | `parse_link` | Analizza un link bilibili (video, raccolta, anime, corso, preferiti, autore…); gli elenchi vengono sfogliati automaticamente. Gli id degli elementi sono stabili; i risultati si leggono a blocchi e i video in più parti si possono espandere |
 | `download_batch` | Aggiunge un intero link o gli elementi scelti come un unico lotto e restituisce un `batch_id`. Per impostazione predefinita salta gli elementi già scaricati, e reinviare la stessa richiesta non scarica nulla due volte Con `videos` più video, ad esempio i risultati di una ricerca, formano un unico lotto |
-| `get_batch_status` | Avanzamento del lotto: attività per stato, velocità, tempo rimanente stimato, qualità effettiva, motivi degli errori. `wait_seconds` attende i cambiamenti |
+| `get_batch_status` | Avanzamento del lotto: attività per stato, velocità, tempo rimanente stimato, qualità effettiva, motivi degli errori, oltre ai video con la filigrana di Bilibili e al tempo richiesto da ciascuna modalità di rimozione. `wait_seconds` attende i cambiamenti |
 | `list_batches` | Lotti inviati di recente |
 | `list_tasks` | Elenca le attività a pagine, filtrate per lotto, stato o titolo |
-| `control_tasks` | Mette in pausa, riprende, ritenta, riscarica o rimuove attività in blocco (i file scaricati non vengono mai eliminati) |
+| `control_tasks` | Mette in pausa, riprende, ritenta, riscarica o rimuove attività in blocco (i file scaricati non vengono mai eliminati), oppure annulla una rimozione della filigrana in corso |
+| `remove_watermark` | Rimuove la filigrana dai video già scaricati, in modalità rapida o con ritocco IA; può prima solo stimare il tempo. Ricodifica e sostituisce il file originale |
 | `get_settings` / `update_settings` | Legge o modifica cartella di download, download simultanei, thread, limite di velocità, tentativi automatici, qualità e opzioni predefinite |
 | `search_videos` | Cerca video per parola chiave, con filtri per data e durata. I risultati includono titolo, autore, data di pubblicazione, durata, visualizzazioni, categoria, tag e un estratto della descrizione |
 | `search_users` | Cerca autori per nome e restituisce `mid`, follower, numero di video e un link allo spazio utilizzabile con `parse_link` |

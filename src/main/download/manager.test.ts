@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_TEMPLATES } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
 import type { DownloadOptions, EnqueueRequest, MediaItem, Settings, TaskInfo } from '@shared/types'
+import { WM_NOTE } from '@shared/watermark'
 import type { DashStream, PlayInfo } from '../bili/playurl'
 import type { PreparedExtras } from './extras'
 
@@ -14,7 +15,7 @@ vi.mock('../bili/audio', () => ({ getAudioStream: vi.fn() }))
 vi.mock('./fetchFile', () => ({ fetchFile: vi.fn() }))
 vi.mock('./mux', () => ({ mux: vi.fn() }))
 vi.mock('./extras', () => ({ prepareExtras: vi.fn(), placeSidecars: vi.fn() }))
-vi.mock('../watermark/auto', () => ({ autoRemove: vi.fn() }))
+vi.mock('../watermark/auto', () => ({ autoRemove: vi.fn(), detectOnly: vi.fn(), ensureModel: vi.fn() }))
 vi.mock('../watermark/manual', async (o) => ({ ...(await o<typeof import('../watermark/manual')>()), replaceVideo: vi.fn() }))
 const ai = vi.hoisted(() => ({ ready: vi.fn(() => true), refine: vi.fn() }))
 vi.mock('../watermark/ai', () => ({ aiModel: () => ({ ready: ai.ready }), spawnHost: () => ({}) }))
@@ -33,7 +34,7 @@ const { prepareExtras, placeSidecars } = await import('./extras')
 const { AuthExpiredError, UnsupportedError } = await import('../bili/http')
 const { AbortError, DownloadError, FfmpegError } = await import('./errors')
 const { DownloadManager } = await import('./manager')
-const { autoRemove } = await import('../watermark/auto')
+const { autoRemove, detectOnly, ensureModel } = await import('../watermark/auto')
 const { replaceVideo } = await import('../watermark/manual')
 const { renameSync, rmSync: rmSyncMock } = await import('node:fs')
 
@@ -1053,7 +1054,35 @@ describe('自动去水印', () => {
     await settle()
     expect(statuses(m)).toEqual(['done'])
     expect(autoRemove).not.toHaveBeenCalled()
+    expect(detectOnly).not.toHaveBeenCalled()
     expect(m.list()[0].watermark).toBeUndefined()
+  })
+
+  it('AI 助手提交的下载（有批次 id）没选去水印：合并前只识别，记下结果，不处理', async () => {
+    const state = { width: 1920, height: 1080, detected: R, found: true }
+    const m = make()
+    const stages: string[] = []
+    vi.mocked(detectOnly)
+      .mockReset()
+      .mockImplementation(async () => {
+        const t = m.list()[0]
+        stages.push(`${t.status}:${t.processing?.stage}`)
+        return state
+      })
+    m.enqueue(req([item(1)], { batchId: 'b1' }))
+    await settle()
+    expect(statuses(m)).toEqual(['done'])
+    expect(autoRemove).not.toHaveBeenCalled()
+    expect(vi.mocked(detectOnly).mock.calls[0][0]).toMatchObject({ source: expect.stringMatching(/video\.m4s$/), durationHint: item(1).duration })
+    expect(stages).toContain('processing:detect')
+    expect(m.list()[0]).toMatchObject({ watermark: state, processing: undefined })
+
+    // 只下音频的不识别
+    vi.mocked(detectOnly).mockClear()
+    const m2 = make()
+    m2.enqueue(req([item(2)], { batchId: 'b1', options: normalizeOptions({ output: 'audio' }) }))
+    await settle()
+    expect(detectOnly).not.toHaveBeenCalled()
   })
 
   it('成功：附加内容之后去水印，合并用处理好的视频和实际编码，文件名和画质标签跟着变', async () => {
@@ -1249,11 +1278,8 @@ describe('手动去水印', () => {
     expect(m.isActive()).toBe(false)
   })
 
-  it('AI 精修：没下载模型时报错；下载了就交给 refineVideo，带上模型和启动推理进程的方法，其余和快速一样', async () => {
+  it('AI 精修：交给 refineVideo，带上模型和启动推理进程的方法，其余和快速一样', async () => {
     seedDone()
-    ai.ready.mockReturnValueOnce(false)
-    expect(() => make().startWatermark('t1', R, 'ai')).toThrow('请先下载 AI 模型')
-
     ai.refine.mockReset().mockImplementation(async (o: { output: string; onStage: (p: unknown) => void }) => {
       o.onStage({ manual: true, stage: 'refine', pct: 40, backend: 'GPU' })
       writeFileSync(o.output, 'ai video')
@@ -1267,6 +1293,81 @@ describe('手动去水印', () => {
     expect(typeof ai.refine.mock.calls[0][0].spawn).toBe('function')
     expect(readFileSync(out, 'utf8')).toBe('ai video')
     expect(m.list()[0]).toMatchObject({ qualityLabel: '1080P 高清 · HEVC', watermark: { applied: R }, processing: undefined })
+  })
+
+  it('AI 精修缺模型：先下载（进度带手动标记）；下载好了照常精修', async () => {
+    seedDone()
+    ai.ready.mockReturnValueOnce(false)
+    const m = make()
+    const stages: unknown[] = []
+    vi.mocked(ensureModel)
+      .mockReset()
+      .mockImplementation(async (_ai, _signal, onStage) => {
+        onStage({ stage: 'model', pct: 30 })
+        stages.push(m.list()[0].processing)
+        return undefined
+      })
+    ai.refine.mockReset().mockImplementation(async (o: { output: string }) => {
+      writeFileSync(o.output, 'ai video')
+      return { codec: 'hevc', width: 1920, height: 1080, region: R }
+    })
+    m.startWatermark('t1', R, 'ai')
+    await settle()
+    expect(stages).toContainEqual({ stage: 'model', pct: 30, manual: true })
+    expect(vi.mocked(ensureModel).mock.calls[0][0]).toMatchObject({ model: { ready: ai.ready }, threads: settings.threads })
+    expect(ai.refine).toHaveBeenCalledTimes(1)
+    expect(replaceVideo).not.toHaveBeenCalled()
+    expect(m.list()[0].note).toBeUndefined()
+  })
+
+  it('AI 精修缺模型且下不下来、或精修失败：这次改用快速去除，写明原因', async () => {
+    seedDone()
+    const fast = async (o: { output: string }) => {
+      writeFileSync(o.output, 'fast video')
+      return { codec: 'h264' as const, width: 1920, height: 1080, region: R }
+    }
+    vi.mocked(replaceVideo).mockImplementation(fast)
+    ai.ready.mockReturnValueOnce(false)
+    vi.mocked(ensureModel).mockReset().mockResolvedValue('连不上模型的下载地址')
+    const m = make()
+    m.startWatermark('t1', R, 'ai')
+    await settle()
+    expect(ai.refine).not.toHaveBeenCalled()
+    expect(readFileSync(out, 'utf8')).toBe('fast video')
+    expect(m.list()[0]).toMatchObject({ note: WM_NOTE.aiFallback('连不上模型的下载地址'), watermark: { applied: R } })
+
+    seedDone()
+    ai.refine.mockReset().mockImplementation(async (o: { output: string }) => {
+      writeFileSync(o.output, 'half')
+      throw new Error('推理进程意外退出')
+    })
+    const m2 = make()
+    m2.startWatermark('t1', R, 'ai')
+    await settle()
+    expect(readFileSync(out, 'utf8')).toBe('fast video')
+    expect(m2.list()[0].note).toBe(WM_NOTE.aiFailed('推理进程意外退出'))
+
+    // 不是 Error 的失败也说明原因
+    seedDone()
+    ai.refine.mockReset().mockRejectedValue('坏了')
+    const m3 = make()
+    m3.startWatermark('t1', R, 'ai')
+    await settle()
+    expect(m3.list()[0].note).toBe(WM_NOTE.aiFailed('坏了'))
+  })
+
+  it('AI 精修时被取消：不改用快速去除，原视频不变', async () => {
+    seedDone()
+    ai.refine.mockReset().mockImplementation((o: { signal: AbortSignal }) => untilAbort(o.signal))
+    const m = make()
+    m.startWatermark('t1', R, 'ai')
+    await settle()
+    m.cancelWatermark('t1')
+    await settle()
+    expect(replaceVideo).not.toHaveBeenCalled()
+    expect(readFileSync(out, 'utf8')).toBe('orig')
+    expect(m.list()[0].processing).toBeUndefined()
+    expect(m.list()[0].note).toBeUndefined()
   })
 
   it('MKV 按 mkv 处理', async () => {

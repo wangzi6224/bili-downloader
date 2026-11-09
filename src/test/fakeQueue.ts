@@ -2,8 +2,9 @@
 import { EventEmitter } from 'node:events'
 import { vi } from 'vitest'
 import { normalizeOptions } from '@shared/options'
-import type { EnqueueRequest, MediaItem, TaskInfo } from '@shared/types'
+import type { EnqueueRequest, MediaItem, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
 import type { EnqueueResult } from '../main/download/manager'
+import type { WatermarkDeps } from '../main/mcp/watermark'
 
 export const mediaItem = (key: string, over: Partial<MediaItem> = {}): MediaItem => ({
   key,
@@ -66,6 +67,11 @@ export class FakeQueue extends EventEmitter {
   remove = vi.fn((ids: string[], _deleteFiles: boolean): void => {
     this.tasks = this.tasks.filter((t) => !ids.includes(t.id))
   })
+  /** 和 DownloadManager 一样：开始后任务仍是 done，带上手动去水印的进度 */
+  startWatermark = vi.fn((id: string, _region: WatermarkRegion, _method: WatermarkMethod): void =>
+    this.patchAll([id], { processing: { manual: true, stage: 'queue' } })
+  )
+  cancelWatermark = vi.fn((id: string): void => this.patchAll([id], { processing: undefined }))
 
   add(...tasks: TaskInfo[]): void {
     this.tasks.push(...tasks)
@@ -81,3 +87,29 @@ export class FakeQueue extends EventEmitter {
     for (const t of this.tasks) if (ids.includes(t.id)) Object.assign(t, fields)
   }
 }
+
+export const WM_REGION = { x: 1668, y: 18, w: 234, h: 72 }
+
+/**
+ * MCP 去水印的依赖：快速去除按时长的 0.1～0.2 倍加 5 秒、AI 精修按 2～3 倍加 15 秒估算；
+ * 模型没下载；识别都能认出右上角的水印
+ */
+export const fakeWatermark = () => ({
+  estimate: vi.fn<WatermarkDeps['estimate']>((method, w) => {
+    const [a, b, prep] = method === 'ai' ? [2, 3, 15] : [0.1, 0.2, 5]
+    return { seconds: [Math.round(prep + w.duration * a), Math.round(prep + w.duration * b)], basis: 'default' }
+  }),
+  speed: vi.fn<WatermarkDeps['speed']>(() => ({
+    fast: { ratio: [0.05, 0.4], basis: 'default' },
+    ai: { ratio: [2, 3], basis: 'measured', backend: 'GPU' }
+  })),
+  model: vi.fn<WatermarkDeps['model']>(() => ({ state: 'missing', size: 208_044_816 })),
+  inspect: vi.fn<WatermarkDeps['inspect']>(async (t) => ({
+    width: 1920,
+    height: 1080,
+    duration: t.item.duration ?? 60,
+    found: true,
+    known: false,
+    region: WM_REGION
+  }))
+})

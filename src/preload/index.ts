@@ -63,7 +63,8 @@ const api: BiliApi = {
     onAiStatus: on('wm:ai:status'),
     aiEstimate: (taskId, region) => invoke('wm:ai:estimate', taskId, region),
     aiPreview: (taskId, time, region) => invoke('wm:ai:preview', taskId, time, region),
-    aiRelease: (taskId) => invoke('wm:ai:release', taskId)
+    aiRelease: (taskId) => invoke('wm:ai:release', taskId),
+    speed: () => invoke('wm:speed')
   },
   history: {
     downloadedKeys: () => invoke('history:downloadedKeys'),

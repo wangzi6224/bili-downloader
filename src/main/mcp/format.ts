@@ -1,4 +1,5 @@
-import type { TaskInfo } from '@shared/types'
+import { isVideoTask } from '@shared/watermark'
+import type { ProcessingInfo, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BiliError, LoginRequiredError } from '../bili/http'
 
 /** 给 agent 看的任务状态：运行中的几个阶段合成 running，等待自动重试的 error 单独算 retrying */
@@ -36,6 +37,40 @@ export function countStatuses(tasks: TaskInfo[]): Record<McpStatus, number> {
 export const totalSpeed = (tasks: TaskInfo[]): number =>
   Math.round(tasks.reduce((n, t) => n + (mcpStatus(t) === 'running' ? t.speed : 0), 0))
 
+const STAGE_TEXT: Record<ProcessingInfo['stage'], string> = {
+  detect: '识别水印',
+  queue: '排队',
+  encode: '重新编码',
+  model: '下载 AI 模型',
+  analyze: 'AI 准备',
+  refine: 'AI 逐帧修补'
+}
+
+export function processingOut(p: ProcessingInfo) {
+  return {
+    stage: p.stage,
+    stage_text: STAGE_TEXT[p.stage],
+    progress: p.pct === undefined ? undefined : Math.round(p.pct),
+    eta_seconds: p.eta === undefined ? undefined : Math.round(p.eta),
+    backend: p.backend
+  }
+}
+
+/** 任务摘要里的水印信息；没什么可说的（音频、没开也没识别过）时没有 */
+export function taskWatermark(t: TaskInfo) {
+  if (!isVideoTask(t)) return undefined
+  const option = t.options.watermark ?? 'off'
+  const wm = t.watermark
+  if (!wm && !t.processing && option === 'off') return undefined
+  return {
+    option,
+    // undefined：没识别过
+    found: wm ? Boolean(wm.found) || Boolean(wm.applied) : undefined,
+    removed: wm?.applied ? true : undefined,
+    processing: t.processing ? processingOut(t.processing) : undefined
+  }
+}
+
 export function summarizeTask(t: TaskInfo) {
   const status = mcpStatus(t)
   return {
@@ -53,7 +88,8 @@ export function summarizeTask(t: TaskInfo) {
     error: t.error,
     retry_at: t.retryAt ? new Date(t.retryAt).toISOString() : undefined,
     note: t.note,
-    path: t.outputPath
+    path: t.outputPath,
+    watermark: taskWatermark(t)
   }
 }
 

@@ -13,6 +13,7 @@ import { estimateSeconds } from './estimate'
 import type { AiModel } from './model'
 import type { StripCodec } from './pixels'
 import type { InferencePool, SpawnHost } from './pool'
+import { recordCalibration } from '../speed'
 import { backendLabel, grabFrame } from './refine'
 
 /** 闲置这么久就结束推理进程 */
@@ -78,7 +79,9 @@ export class AiSessions {
       sample: { image: codec.toTensor(frame), mask: codec.maskTensor, height: a.strip.mh, width: a.strip.mw },
       cpu: { hosts: 1, threads: plan.threads }
     })
-    return { a, codec, pool, duration, hosts: pool.backend === 'cpu' ? plan.hosts : 1 }
+    const hosts = pool.backend === 'cpu' ? plan.hosts : 1
+    recordCalibration(backendLabel(pool.backend, hosts), pool.msPerFrame, hosts)
+    return { a, codec, pool, duration, hosts }
   }
 
   private session(taskId: string, path: string, region: WatermarkRegion): Session {

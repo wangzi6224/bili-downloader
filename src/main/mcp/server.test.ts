@@ -329,7 +329,7 @@ describe('和真实的工具一起', () => {
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
     const { DEFAULT_OPTIONS } = await import('@shared/options')
-    const { FakeQueue, mediaItem } = await import('../../test/fakeQueue')
+    const { fakeWatermark, FakeQueue, mediaItem } = await import('../../test/fakeQueue')
     const { McpTools } = await import('./tools')
     const dir = mkdtempSync(join(tmpdir(), 'mcp-e2e-'))
     const queue = new FakeQueue()
@@ -348,7 +348,8 @@ describe('和真实的工具一起', () => {
       updateSettings: (p) => p as never,
       authState: async () => ({ loggedIn: false }),
       lookup: {} as never,
-      login: {} as never
+      login: {} as never,
+      watermark: fakeWatermark()
     })
     const port = await freePort()
     const s = new McpServer(tools)

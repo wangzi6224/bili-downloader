@@ -3,6 +3,7 @@ import type { ProbeVideo } from './probe'
 
 vi.mock('./detect', () => ({
   SUGGEST_MIN_SCORE: 0.35,
+  AUTO_MIN_SCORE: 0.7,
   analysisSize: vi.fn(),
   detectWatermark: vi.fn(),
   frameCount: vi.fn()
@@ -11,7 +12,7 @@ vi.mock('./frames', () => ({ grabFrames: vi.fn(), sampleTimes: vi.fn() }))
 
 const { analysisSize, detectWatermark, frameCount } = await import('./detect')
 const { grabFrames, sampleTimes } = await import('./frames')
-const { locateWatermark } = await import('./locate')
+const { isConfident, locateWatermark } = await import('./locate')
 
 const V: ProbeVideo = { index: 0, codec: 'h264', width: 1920, height: 1080, rotation: 0, hdr: false, dolbyVision: false }
 const FRAMES = [new Uint8Array(4)]
@@ -51,5 +52,15 @@ describe('locateWatermark', () => {
     expect((await locateWatermark('/v', V, 100)).region).toBeUndefined()
     vi.mocked(detectWatermark).mockReturnValueOnce({ box: { x: 5000, y: 1, w: 50, h: 10 }, score: 0.9 })
     expect((await locateWatermark('/v', V, 100)).region).toBeUndefined()
+  })
+})
+
+describe('isConfident', () => {
+  const R = { x: 1, y: 1, w: 10, h: 10 }
+  it('有位置、分数够自动处理、画面不是几乎不动才算认得准', () => {
+    expect(isConfident({ result: { score: 0.7 }, region: R })).toBe(true)
+    expect(isConfident({ result: { score: 0.69 }, region: R })).toBe(false)
+    expect(isConfident({ result: { score: 0.9, reason: 'static' }, region: R })).toBe(false)
+    expect(isConfident({ result: { score: 0.9 } })).toBe(false)
   })
 })

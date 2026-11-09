@@ -1,4 +1,4 @@
-import type { AiEstimate, AiModelStatus } from '@shared/types'
+import type { AiEstimate, AiModelStatus, WatermarkMode, WatermarkSpeed, WatermarkSpeedInfo } from '@shared/types'
 import { fmtBytes } from './format'
 
 /** 预计耗时的区间，按量级取整：“不到 1 分钟”“约 3～5 分钟”“约 1.5～2 小时” */
@@ -51,4 +51,28 @@ export function modelSettingsText(s: AiModelStatus): string {
   const base = `去水印选“AI 精修”时需要，第一次使用时下载（${fmtBytes(s.size)}）`
   if (s.state === 'error') return `${modelText(s)}。${base}。`
   return `${base}${s.disk ? `；没下完的部分占 ${fmtBytes(s.disk)}` : ''}。`
+}
+
+/** 倍数：小于 1 保留一位小数，大于 1 去掉多余的 0 */
+const fmtRatio = (v: number): string => (v < 1 ? v.toFixed(1) : String(Math.round(v * 10) / 10))
+
+/** “约为视频时长的 2～3 倍 · 实测 · GPU” */
+export function speedText(s: WatermarkSpeedInfo): string {
+  const [a, b] = s.ratio.map(fmtRatio)
+  const range = a === b ? `约为视频时长的 ${a} 倍` : `约为视频时长的 ${a}～${b} 倍`
+  const basis = s.basis === 'measured' ? '这台电脑实测' : s.basis === 'calibrated' ? '按试跑估算' : '粗估'
+  return [range, basis, s.backend].filter(Boolean).join(' · ')
+}
+
+export const WATERMARK_MODES: { value: WatermarkMode; label: string; hint: string }[] = [
+  { value: 'off', label: '不处理', hint: '保留原视频，不重新编码' },
+  { value: 'auto', label: '快速去除', hint: '用周围的画面填补，水印处略糊' },
+  { value: 'ai', label: 'AI 精修', hint: '用 AI 模型逐帧补出水印下面的画面，清楚得多' }
+]
+
+/** 总开关菜单里每一项下面的小字：效果 + 预计耗时 */
+export function watermarkModeHint(mode: WatermarkMode, speed: WatermarkSpeed | null): string {
+  const base = WATERMARK_MODES.find((m) => m.value === mode)!.hint
+  if (mode === 'off' || !speed) return base
+  return `${base}；${speedText(mode === 'ai' ? speed.ai : speed.fast)}`
 }

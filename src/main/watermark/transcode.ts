@@ -3,6 +3,7 @@ import { FfmpegError } from '../download/errors'
 import { isEncoderFailure } from '../download/mux'
 import { markBroken, pickEncoder, softwareEncoder, type Encoder } from './encoder'
 import { runTranscode } from './ffmpegJob'
+import { recordRun } from './speed'
 
 /** 换编码器也没用的错误：磁盘满、没权限、区域超出画面、源文件坏了 */
 export const HOPELESS = /no space left|permission denied|operation not permitted|logo area is outside|invalid data found|moov atom not found/i
@@ -27,14 +28,22 @@ export interface EncodeJob {
  */
 export async function encodeWithFallback(job: EncodeJob): Promise<Encoder> {
   const manual = job.manual ? { manual: true } : {}
-  const run = (enc: Encoder): Promise<void> => {
+  const run = async (enc: Encoder): Promise<void> => {
     job.onStage({ ...manual, stage: 'queue' })
-    return runTranscode(job.build(enc), {
+    // 从真正开始编码算起（不含排队），成功了记下这台机器的速度，供以后估算
+    let started = 0
+    await runTranscode(job.build(enc), {
       signal: job.signal,
       durationSec: job.durationSec,
-      onStart: () => job.onStage({ ...manual, stage: 'encode', pct: 0 }),
+      onStart: () => {
+        started = Date.now()
+        job.onStage({ ...manual, stage: 'encode', pct: 0 })
+      },
       onProgress: (p) => job.onStage({ ...manual, stage: 'encode', ...p })
     })
+    if (started && job.durationSec) {
+      recordRun('fast', { seconds: (Date.now() - started) / 1000, duration: job.durationSec, width: job.width, height: job.height })
+    }
   }
   const enc = await pickEncoder({ srcCodec: job.srcCodec, width: job.width, height: job.height }, job.signal)
   try {

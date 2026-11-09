@@ -9,7 +9,8 @@ import {
   validateTemplate,
   type NamingTemplates
 } from '@shared/naming'
-import type { CloseAction, DuplicateAction, PowerMode, ThemeMode } from '@shared/types'
+import type { CloseAction, DuplicateAction, PowerMode, ThemeMode, WatermarkMode } from '@shared/types'
+import { WATERMARK_MODES } from '../aiRefine'
 import { insertAt } from '../format'
 import { api, sysText, updateSettings, useStore } from '../store'
 import { updateHint } from '../viewLogic'
@@ -199,6 +200,16 @@ export function SettingsPage() {
                   <Button icon={FolderOpen} onClick={async () => set({ settings: await api.settings.chooseDir() })}>
                     更改
                   </Button>
+                </Row>
+                <Row
+                  label="下载后去水印"
+                  hint="识别到画面角落的 B站水印才处理；AI 精修清楚得多但慢，第一次用会先下载约 200 MB 的模型。和“默认格式”里的水印是同一个设置"
+                >
+                  <Segmented
+                    value={s.defaults.watermark}
+                    options={WATERMARK_MODES}
+                    onChange={(watermark: WatermarkMode) => updateSettings({ defaults: { ...s.defaults, watermark } })}
+                  />
                 </Row>
               </Group>
               <Group title="外观与行为">

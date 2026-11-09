@@ -26,7 +26,10 @@ import { readJson, writeJson } from './store'
 import { SubscriptionManager } from './subscriptions'
 import { trayMenu, updateCheckReply } from './tray'
 import { Updater } from './update/updater'
+import { aiModel } from './watermark/ai'
+import { inspectWatermark, requireVideoTask } from './watermark/manual'
 import { initOrphans } from './watermark/orphans'
+import { estimateTime, initSpeed, speedRatio } from './watermark/speed'
 import { closeDecision, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
 
@@ -257,6 +260,7 @@ async function start(): Promise<void> {
 
   // 先结束上次崩溃时没退出的转码进程，下面清理残留文件时它们就不会再占着文件
   initOrphans(join(app.getPath('userData'), 'ffmpeg-jobs.json'))
+  initSpeed(join(app.getPath('userData'), 'watermark-speed.json'))
   const manager = new DownloadManager(
     join(app.getPath('userData'), 'tmp'),
     join(app.getPath('userData'), 'tasks.json'),
@@ -304,7 +308,13 @@ async function start(): Promise<void> {
     updateSettings,
     authState: () => checkAuthThrottled(60_000),
     lookup: biliLookup,
-    login
+    login,
+    watermark: {
+      estimate: estimateTime,
+      speed: () => ({ fast: speedRatio('fast'), ai: speedRatio('ai') }),
+      model: () => aiModel().status(),
+      inspect: (t) => inspectWatermark(requireVideoTask(t))
+    }
   })
   const mcp = new McpServer(mcpTools)
   void mcp.apply(settings.mcp)

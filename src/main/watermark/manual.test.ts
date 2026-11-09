@@ -8,7 +8,7 @@ import type { Encoder } from './encoder'
 import type { MediaProbe, ProbeVideo } from './probe'
 
 vi.mock('./probe', () => ({ probeMedia: vi.fn() }))
-vi.mock('./locate', () => ({ locateWatermark: vi.fn() }))
+vi.mock('./locate', async (importOriginal) => ({ ...(await importOriginal<typeof import('./locate')>()), locateWatermark: vi.fn() }))
 vi.mock('./frames', () => ({ grabJpeg: vi.fn() }))
 vi.mock('./ffmpegJob', () => ({ ffmpegCapture: vi.fn() }))
 vi.mock('./transcode', () => ({ encodeWithFallback: vi.fn() }))
@@ -25,7 +25,7 @@ const { grabJpeg } = await import('./frames')
 const { ffmpegCapture } = await import('./ffmpegJob')
 const { encodeWithFallback } = await import('./transcode')
 const { buildReplaceArgs, buildCoverExtractArgs } = await import('./delogo')
-const { prepareManual, previewFrame, replaceVideo, requireVideoTask } = await import('./manual')
+const { inspectWatermark, prepareManual, previewFrame, replaceVideo, requireVideoTask } = await import('./manual')
 
 const V: ProbeVideo = { index: 0, codec: 'hevc', width: 1920, height: 1080, rotation: 0, bitrate: 3000, fps: 25, hdr: false, dolbyVision: false }
 const PROBE: MediaProbe = { duration: 200, video: V, streams: [] }
@@ -79,6 +79,53 @@ describe('requireVideoTask', () => {
     expect(() => task({ options: normalizeOptions({ output: 'audio' }) })).toThrow('这个任务只有音频，没有画面')
     expect(() => task({ outputPath: join(dir, '没有.mp4') })).toThrow('找不到视频文件')
     expect(task().outputPath).toBe(file)
+  })
+})
+
+describe('inspectWatermark（AI 助手发起去水印前）', () => {
+  it('现场识别：分数够、画面不是几乎不动才算认出；带上尺寸、时长和帧率', async () => {
+    vi.mocked(locateWatermark).mockResolvedValueOnce({ result: { score: 0.9 }, region: R })
+    expect(await inspectWatermark(task())).toEqual({ width: 1920, height: 1080, duration: 200, fps: 25, region: R, found: true, known: false })
+    expect(locateWatermark).toHaveBeenCalledWith(file, V, 200, undefined)
+    expect(grabJpeg).not.toHaveBeenCalled()
+    // 分数不够：只有可能的位置
+    expect(await inspectWatermark(task())).toMatchObject({ region: R, found: false, known: false })
+    vi.mocked(locateWatermark).mockResolvedValueOnce({ result: { score: 0.9, reason: 'static' }, region: R })
+    expect((await inspectWatermark(task())).found).toBe(false)
+    // 时长读不出来用接口给的
+    vi.mocked(probeMedia).mockResolvedValueOnce({ video: V, streams: [] })
+    vi.mocked(locateWatermark).mockResolvedValueOnce({ result: { score: 0 } })
+    expect(await inspectWatermark(task())).toMatchObject({ duration: 90, region: undefined, found: false })
+  })
+
+  it('下载时识别过、尺寸对得上就直接用；旧记录没有 found 时当作不确定', async () => {
+    expect(await inspectWatermark(task({ watermark: { width: 1920, height: 1080, detected: R, found: true } }))).toMatchObject({
+      region: R,
+      found: true,
+      known: true
+    })
+    expect(await inspectWatermark(task({ watermark: { width: 1920, height: 1080, detected: R } }))).toMatchObject({ found: false, known: true })
+    expect(locateWatermark).not.toHaveBeenCalled()
+    // 尺寸变了、或者识别过但没找到：重新识别
+    await inspectWatermark(task({ watermark: { width: 1280, height: 720, detected: R, found: true } }))
+    await inspectWatermark(task({ watermark: { width: 1920, height: 1080 } }))
+    expect(locateWatermark).toHaveBeenCalledTimes(2)
+  })
+
+  it('去过水印的用当时的位置（尺寸变了就没有）；HDR 不能处理', async () => {
+    expect(await inspectWatermark(task({ watermark: { width: 1920, height: 1080, detected: R, found: true, applied: R } }))).toMatchObject({
+      region: R,
+      found: false,
+      known: true,
+      applied: true
+    })
+    expect((await inspectWatermark(task({ watermark: { width: 1280, height: 720, applied: R } }))).region).toBeUndefined()
+    expect(locateWatermark).not.toHaveBeenCalled()
+
+    vi.mocked(probeMedia).mockResolvedValueOnce({ duration: 10, video: { ...V, dolbyVision: true }, streams: [] })
+    expect(await inspectWatermark(task())).toMatchObject({ found: false, blocker: '暂不支持 HDR 和杜比视界视频' })
+    vi.mocked(probeMedia).mockResolvedValueOnce({ duration: 10, streams: [] })
+    await expect(inspectWatermark(task())).rejects.toThrow('文件里没有视频画面')
   })
 })
 

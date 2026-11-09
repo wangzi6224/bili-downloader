@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
 import type { AuthState, MediaItem, ParseResult, Settings } from '@shared/types'
-import { FakeQueue, makeTask, mediaItem } from '../../test/fakeQueue'
+import { fakeWatermark, FakeQueue, makeTask, mediaItem, WM_REGION } from '../../test/fakeQueue'
 
 vi.mock('electron', () => ({}))
 // 透传真实实现，个别用例再改返回值
@@ -28,6 +28,7 @@ let dir = ''
 let queue: FakeQueue
 let settings: Settings
 let tools: InstanceType<typeof McpTools>
+let wm: ReturnType<typeof fakeWatermark>
 let history: string[]
 let now = 0
 
@@ -102,6 +103,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   dir = mkdtempSync(join(tmpdir(), 'mcp-tools-'))
   queue = new FakeQueue()
+  wm = fakeWatermark()
   history = []
   now = 1_000_000
   settings = {
@@ -121,7 +123,8 @@ beforeEach(() => {
       downloadedKeys: () => history,
       settings: () => settings,
       lookup: { searchUsers: deps.searchUsers, fetchVideoDetail: deps.fetchVideoDetail, expandShort: deps.expandShort } as unknown as Lookup,
-      login
+      login,
+      watermark: wm
     },
     () => now
   )
@@ -143,6 +146,7 @@ describe('工具列表和通用错误', () => {
       'list_batches',
       'list_tasks',
       'control_tasks',
+      'remove_watermark',
       'get_settings',
       'update_settings',
       'start_login',
@@ -160,6 +164,9 @@ describe('工具列表和通用错误', () => {
     }
     const control = tools.definitions.find((t) => t.name === 'control_tasks')!
     expect(control.annotations.destructiveHint).toBe(true)
+    // 去水印会替换原文件
+    const wmTool = tools.definitions.find((t) => t.name === 'remove_watermark')!
+    expect(wmTool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
   })
 
   it('没有这个工具', async () => {
@@ -748,7 +755,7 @@ describe('control_tasks', () => {
   it('必须指定范围和合法的 action', async () => {
     expect(await error('control_tasks', { action: 'pause' })).toMatchObject({ message: '需要用 task_ids、batch_id 或 status 指定要操作的任务' })
     expect(await error('control_tasks', { action: 'delete', status: 'done' })).toMatchObject({
-      message: 'action 必须是以下之一：pause、resume、retry、redownload、remove'
+      message: 'action 必须是以下之一：pause、resume、retry、redownload、remove、cancel_watermark'
     })
     expect(await error('control_tasks', { action: 'pause', batch_id: 'nope' })).toMatchObject({ code: 'NOT_FOUND' })
   })
@@ -909,5 +916,306 @@ describe('设置', () => {
     expect(await error('update_settings', { concurrency: 9 })).toMatchObject({ message: 'concurrency 必须是 1～5 之间的整数' })
     expect(await error('update_settings', { defaults: { foo: true } })).toMatchObject({ code: 'INVALID_ARGS' })
     expect(deps.updateSettings).not.toHaveBeenCalled()
+  })
+})
+
+describe('去水印', () => {
+  const R = WM_REGION
+  const found = { width: 1920, height: 1080, detected: R, found: true }
+  /** 三个视频的合集，时长 100、200 秒和未知 */
+  const submit = async (args: Record<string, unknown> = {}) => {
+    deps.parseAll.mockResolvedValueOnce({
+      result: result([plain(1, { duration: 100 }), plain(2, { duration: 200 }), plain(3)]),
+      complete: true
+    })
+    return data('download_batch', { url: 'x', all: true, ...args })
+  }
+
+  it('get_status：默认方式、AI 模型、两种方式的速度、正在去水印的数量', async () => {
+    queue.add(makeTask('a', { status: 'done', processing: { manual: true, stage: 'refine', pct: 10 } }), makeTask('b'))
+    const r = await data('get_status')
+    expect(r.watermark).toEqual({
+      default_option: 'off',
+      ai_model: { state: 'missing', size_mb: 198 },
+      speed: { fast: '约 0.05～0.4 倍（还没在这台电脑上处理过，是粗估）', ai: '约 2～3 倍（按这台电脑实际处理过的速度，GPU）' },
+      processing: 1
+    })
+    wm.model.mockReturnValueOnce({ state: 'downloading', size: 200, done: 50 })
+    expect((await data('get_status')).watermark.ai_model).toEqual({ state: 'downloading', size_mb: 0, progress: 25 })
+    wm.model.mockReturnValueOnce({ state: 'downloading', size: 0 })
+    expect((await data('get_status')).watermark.ai_model.progress).toBeUndefined()
+    wm.model.mockReturnValueOnce({ state: 'error', size: 200, message: '连不上' })
+    expect((await data('get_status')).watermark.ai_model).toMatchObject({ state: 'error', error: '连不上' })
+    wm.speed.mockReturnValueOnce({ fast: { ratio: [0.2, 0.2], basis: 'measured' }, ai: { ratio: [1.5, 2.6], basis: 'calibrated' } })
+    expect((await data('get_status')).watermark.speed).toEqual({
+      fast: '约 0.2 倍（按这台电脑实际处理过的速度）',
+      ai: '约 1.5～2.6 倍（按试跑的速度）'
+    })
+  })
+
+  it('download_batch：说明这批怎么处理水印，选了去水印时按已知时长估算额外耗时', async () => {
+    const off = await submit()
+    expect(off.watermark).toEqual({ option: 'off', note: expect.stringContaining('下载时会识别有没有 B站水印') })
+
+    const fast = await submit({ options: { watermark: 'auto' }, request_id: 'a' })
+    expect(fast.watermark).toEqual({
+      option: 'auto',
+      // 100 秒：15～25 秒；200 秒：25～45 秒
+      extra_seconds: [40, 70],
+      note: '识别到 B站水印的视频下载后会去掉水印，要重新编码；已知时长的视频去水印合计约 40～70 秒（还没在这台电脑上处理过，是粗估）'
+    })
+    const ai = await submit({ options: { watermark: 'ai' }, request_id: 'b' })
+    expect(ai.watermark.note).toContain('第一次用要先下载约 198 MB 的 AI 模型，下不下来时改用快速去除')
+    wm.model.mockReturnValue({ state: 'ready', size: 1 })
+    expect((await submit({ options: { watermark: 'ai' }, request_id: 'c' })).watermark.note).not.toContain('模型')
+
+    expect((await submit({ options: { output: 'audio' }, request_id: 'd' })).watermark).toBeUndefined()
+  })
+
+  it('download_batch 的 videos：只有一个视频时按它的时长估，多个时不估', async () => {
+    deps.fetchVideoDetail.mockResolvedValue({ bvid: 'BV1000000000', title: '单个视频', cover: 'c.jpg', duration: 100 })
+    const one = await data('download_batch', { videos: ['BV1000000000'], options: { watermark: 'auto' } })
+    expect(one.watermark).toMatchObject({ option: 'auto', extra_seconds: [15, 25], note: expect.stringContaining('全部视频去水印合计约 15～25 秒') })
+    const many = await data('download_batch', { videos: ['BV1000000000', 'BV2000000000'], options: { watermark: 'auto' } })
+    expect(many.watermark).toEqual({ option: 'auto', extra_seconds: undefined, note: '识别到 B站水印的视频下载后会去掉水印，要重新编码' })
+  })
+
+  it('get_batch_status：识别结果、有水印没去掉时两种方式各要多久，以及给用户的说法', async () => {
+    const { batch_id } = await submit()
+    let r = await data('get_batch_status', { batch_id })
+    expect(r.watermark).toMatchObject({ option: 'off', checked: 0, hint: '下载时会识别每个视频有没有 B站水印，结果会出现在这里' })
+
+    queue.patch('t1', { status: 'done', watermark: found })
+    queue.patch('t2', { status: 'done', watermark: { width: 1920, height: 1080 } })
+    queue.patch('t3', { status: 'done', watermark: found })
+    r = await data('get_batch_status', { batch_id })
+    expect(r.watermark).toEqual({
+      option: 'off',
+      checked: 3,
+      found: 2,
+      removed: 0,
+      not_found: 1,
+      // 时长未知的 t3 不算
+      estimate_seconds: { fast: [15, 25], ai: [215, 315] },
+      estimate_basis: '还没在这台电脑上处理过，是粗估',
+      hint:
+        '2 个已下载的视频有 B站水印：先问用户要不要去掉，可选快速去除约 15～25 秒（用周围的画面填补，水印处会略糊），' +
+        'AI 精修约 4～5 分钟（逐帧补出水印下面的画面，清楚得多；第一次用要先下载约 198 MB 的 AI 模型）。' +
+        `去水印会重新编码并替换原文件；用户同意后调用 remove_watermark batch_id=${batch_id} method=fast 或 method=ai`
+    })
+
+    // 一个在处理、一个处理完了
+    queue.patch('t1', { processing: { manual: true, stage: 'refine', pct: 40.4, eta: 99.6, backend: 'GPU' } })
+    queue.patch('t3', { watermark: { ...found, applied: R } })
+    r = await data('get_batch_status', { batch_id })
+    expect(r.watermark).toMatchObject({ found: 2, removed: 1, not_found: 1, estimate_seconds: undefined })
+    expect(r.watermark.processing).toEqual([
+      { task_id: 't1', title: '视频1', manual: true, stage: 'refine', stage_text: 'AI 逐帧修补', progress: 40, eta_seconds: 100, backend: 'GPU' }
+    ])
+    expect(r.watermark.hint).toBe('正在去水印，可以带 wait_seconds 等待，处理完后任务的 watermark.removed 为 true')
+  })
+
+  it('get_batch_status：时长都不知道时只给提示不给估算；只下音频的批次没有 watermark', async () => {
+    const { batch_id } = await data('download_batch', { url: 'x', all: true })
+    queue.patch('t1', { status: 'done', watermark: found })
+    const r = await data('get_batch_status', { batch_id })
+    expect(r.watermark.estimate_seconds).toBeUndefined()
+    expect(r.watermark.hint).toContain('可选快速去除（用周围的画面填补')
+
+    deps.parseAll.mockResolvedValueOnce({ result: result([plain(5)]), complete: true })
+    const audio = await data('download_batch', { url: 'y', all: true, options: { output: 'audio' } })
+    expect((await data('get_batch_status', { batch_id: audio.batch_id })).watermark).toBeUndefined()
+  })
+
+  it('get_batch_status 的 wait_seconds：下载完了还在去水印时继续等', async () => {
+    const { batch_id } = await submit()
+    for (const id of ['t1', 't2', 't3']) queue.patch(id, { status: 'done' })
+    queue.patch('t1', { processing: { manual: true, stage: 'encode', pct: 50 } })
+    let resolved = false
+    const p = data('get_batch_status', { batch_id, wait_seconds: 50 }).then((r) => {
+      resolved = true
+      return r
+    })
+    await settle()
+    expect(resolved).toBe(false)
+    queue.patch('t1', { processing: undefined, watermark: { ...found, applied: R } })
+    expect((await p).watermark.removed).toBe(1)
+  })
+
+  it('list_tasks：任务摘要里的 watermark', async () => {
+    queue.add(
+      makeTask('a', { status: 'done', watermark: found, processing: { manual: true, stage: 'model', pct: 10 } }),
+      makeTask('b', { options: normalizeOptions({ watermark: 'auto' }) }),
+      makeTask('c', { status: 'done', options: normalizeOptions({ output: 'audio' }) }),
+      makeTask('d'),
+      makeTask('e', { status: 'done', watermark: { width: 1, height: 1, applied: R } }),
+      makeTask('f', { status: 'processing', processing: { stage: 'detect' } })
+    )
+    const tasks = (await data('list_tasks', { fields: ['id', 'watermark'] })).tasks
+    expect(tasks).toEqual([
+      { id: 'a', watermark: { option: 'off', found: true, processing: { stage: 'model', stage_text: '下载 AI 模型', progress: 10 } } },
+      { id: 'b', watermark: { option: 'auto' } },
+      { id: 'c' },
+      { id: 'd' },
+      { id: 'e', watermark: { option: 'off', found: true, removed: true } },
+      { id: 'f', watermark: { option: 'off', processing: { stage: 'detect', stage_text: '识别水印' } } }
+    ])
+  })
+
+  describe('remove_watermark', () => {
+    const done = (id: string, over: Parameters<typeof makeTask>[1] = {}) =>
+      makeTask(id, { status: 'done', outputPath: `/dl/${id}.mp4`, item: mediaItem(`ugc:${id}:1`, { duration: 100 }), ...over })
+
+    it('batch_id：只挑下载完、识别到水印、还没去掉的；dry_run 只估算不开始', async () => {
+      const { batch_id } = await submit()
+      queue.patch('t1', { status: 'done', watermark: found })
+      queue.patch('t2', { status: 'done', watermark: { width: 1920, height: 1080 } })
+      queue.patch('t3', { status: 'downloading' })
+      wm.inspect.mockResolvedValue({ width: 1920, height: 1080, duration: 100, region: R, found: true, known: true })
+      const dry = await data('remove_watermark', { batch_id, method: 'ai', dry_run: true })
+      expect(dry).toEqual({
+        method: 'ai',
+        dry_run: true,
+        would_start: [{ task_id: 't1', title: '视频1', region: R, region_source: 'download', estimate_seconds: [215, 315] }],
+        total_estimate_seconds: [215, 315],
+        hint:
+          '合计约 4～5 分钟（还没在这台电脑上处理过，是粗估）；第一次用要先下载约 198 MB 的 AI 模型，下不下来或精修失败时这次改用快速去除，任务的 note 里会说明；' +
+          '这是预估，没有开始处理；用户同意后去掉 dry_run 再调用一次'
+      })
+      expect(queue.startWatermark).not.toHaveBeenCalled()
+
+      const r = await data('remove_watermark', { batch_id, method: 'fast' })
+      expect(r.started).toEqual([{ task_id: 't1', title: '视频1', region: R, region_source: 'download', estimate_seconds: [15, 25] }])
+      expect(r.hint).toContain('control_tasks action=cancel_watermark')
+      expect(r.hint).not.toContain('模型')
+      expect(queue.startWatermark).toHaveBeenCalledWith('t1', R, 'fast')
+      // 已经在处理的不再选中
+      expect((await data('remove_watermark', { batch_id, method: 'fast' })).hint).toContain('没有要处理的视频')
+    })
+
+    it('batch_id：force 时已经去过的也处理；批次记录没了按任务上的批次 id 找；找不到批次时报错', async () => {
+      queue.add(done('a', { batchId: 'old', watermark: { ...found, applied: R } }), done('b', { batchId: 'old', watermark: found }))
+      wm.inspect.mockImplementation(async (t) => ({
+        width: 1920,
+        height: 1080,
+        duration: 100,
+        region: R,
+        found: !t.watermark?.applied,
+        known: true,
+        applied: Boolean(t.watermark?.applied)
+      }))
+      const pick = (list: { task_id: string; region_source: string }[]) => list.map((x) => [x.task_id, x.region_source])
+      const dry = await data('remove_watermark', { batch_id: 'old', method: 'ai', force: true, dry_run: true })
+      expect(pick(dry.would_start)).toEqual([
+        ['a', 'applied'],
+        ['b', 'download']
+      ])
+      expect(pick((await data('remove_watermark', { batch_id: 'old', method: 'ai' })).started)).toEqual([['b', 'download']])
+      expect(await error('remove_watermark', { batch_id: 'nope', method: 'ai' })).toMatchObject({ code: 'NOT_FOUND' })
+    })
+
+    it('task_ids：各种不能处理的情况放进 skipped', async () => {
+      queue.add(
+        done('ok'),
+        done('busy', { processing: { manual: true, stage: 'encode' } }),
+        done('bad'),
+        done('odd'),
+        done('hdr'),
+        done('again', { watermark: { ...found, applied: R } }),
+        done('maybe'),
+        done('none'),
+        done('boom')
+      )
+      wm.inspect.mockImplementation(async (t) => {
+        const base = { width: 1920, height: 1080, duration: 100, found: false, known: false }
+        switch (t.id) {
+          case 'bad':
+            throw new Error('找不到视频文件，可能已被移动或删除')
+          case 'odd':
+            throw '读不了'
+          case 'hdr':
+            return { ...base, blocker: '暂不支持 HDR 和杜比视界视频' }
+          case 'again':
+            return { ...base, region: R, known: true, applied: true }
+          case 'maybe':
+            return { ...base, region: R }
+          case 'none':
+            return base
+          default:
+            return { ...base, region: R, found: true }
+        }
+      })
+      queue.startWatermark.mockImplementation((id) => {
+        if (id === 'boom') throw new Error('这个视频正在处理，请等它结束')
+      })
+      const r = await data('remove_watermark', {
+        task_ids: ['ok', 'nope', 'busy', 'bad', 'odd', 'hdr', 'again', 'maybe', 'none', 'boom', 'ok'],
+        method: 'fast'
+      })
+      expect(r.started.map((x: { task_id: string; region_source: string }) => [x.task_id, x.region_source])).toEqual([['ok', 'detected']])
+      expect(r.skipped).toEqual([
+        { task_id: 'nope', reason: '没有这个任务' },
+        { task_id: 'busy', title: 'busy', reason: '正在处理，等它结束' },
+        { task_id: 'bad', title: 'bad', reason: '找不到视频文件，可能已被移动或删除' },
+        { task_id: 'odd', title: 'odd', reason: '读不了' },
+        { task_id: 'hdr', title: 'hdr', reason: '暂不支持 HDR 和杜比视界视频' },
+        { task_id: 'again', title: 'again', reason: '已经去过水印；想换一种方式重新处理（例如快速去除后换成 AI 精修），传 force=true' },
+        {
+          task_id: 'maybe',
+          title: 'maybe',
+          reason: '不确定有没有 B站水印；确认有的话，用 region 指定位置（可以用 suggested_region）',
+          suggested_region: R,
+          size: '1920×1080'
+        },
+        { task_id: 'none', title: 'none', reason: '没认出水印的位置；确认有水印的话，用 region 指定位置（像素坐标）', size: '1920×1080' },
+        { task_id: 'boom', title: 'boom', reason: '这个视频正在处理，请等它结束' }
+      ])
+    })
+
+    it('region：只能配一个任务，收进画面；不在画面里时跳过', async () => {
+      queue.add(done('a'), done('b'))
+      wm.inspect.mockResolvedValue({ width: 1920, height: 1080, duration: 100, found: false, known: false })
+      const r = await data('remove_watermark', { task_ids: ['a'], method: 'fast', region: { x: 1800, y: 0, w: 300, h: 60 } })
+      expect(r.started).toEqual([{ task_id: 'a', title: 'a', region: { x: 1800, y: 1, w: 119, h: 59 }, region_source: 'given', estimate_seconds: [15, 25] }])
+      const out = await data('remove_watermark', { task_ids: ['b'], method: 'fast', region: { x: 5000, y: 0, w: 10, h: 10 } })
+      expect(out.skipped).toEqual([{ task_id: 'b', title: 'b', reason: 'region 不在画面里或太小（视频尺寸 1920×1080）', size: '1920×1080' }])
+      expect(out.hint).toBe('没有可以处理的视频，原因见 skipped')
+      expect(await error('remove_watermark', { task_ids: ['a', 'b'], method: 'fast', region: R })).toMatchObject({
+        code: 'INVALID_ARGS',
+        message: expect.stringContaining('region 只能和一个任务一起用')
+      })
+      expect(await error('remove_watermark', { task_ids: ['a'], method: 'fast', region: { x: 1 } })).toMatchObject({
+        message: 'region 必须是 {x, y, w, h}，单位是视频的像素'
+      })
+      expect(await error('remove_watermark', { task_ids: ['a'], method: 'fast', region: 'top-right' })).toMatchObject({ code: 'INVALID_ARGS' })
+    })
+
+    it('下载时没识别过的每次最多现场识别 10 个；参数检查', async () => {
+      queue.add(...Array.from({ length: 12 }, (_, i) => done(`n${i}`)), done('k', { watermark: found }))
+      const r = await data('remove_watermark', { task_ids: [...queue.tasks.map((t) => t.id)], method: 'fast', dry_run: true })
+      expect(r.would_start).toHaveLength(11)
+      expect(r.would_start.at(-1).task_id).toBe('k')
+      expect(r.skipped.map((x: { task_id: string }) => x.task_id)).toEqual(['n10', 'n11'])
+      expect(r.skipped[0].reason).toContain('每次最多 10 个')
+
+      expect(await error('remove_watermark', { method: 'fast' })).toMatchObject({ message: '需要用 task_ids 或 batch_id 指定要处理的视频' })
+      expect(await error('remove_watermark', { task_ids: ['a'], batch_id: 'b', method: 'fast' })).toMatchObject({ message: 'task_ids 和 batch_id 只能用一个' })
+      expect(await error('remove_watermark', { task_ids: ['a'] })).toMatchObject({ message: 'method 必须是以下之一：fast、ai' })
+      expect(await error('remove_watermark', { task_ids: Array.from({ length: 201 }, (_, i) => `x${i}`), method: 'ai' })).toMatchObject({
+        message: '一次最多处理 200 个任务'
+      })
+    })
+
+    it('control_tasks cancel_watermark：只取消正在去水印的', async () => {
+      queue.add(done('a', { processing: { manual: true, stage: 'refine' } }), done('b'), makeTask('c', { status: 'downloading' }))
+      const r = await data('control_tasks', { action: 'cancel_watermark', task_ids: ['a', 'b', 'c'] })
+      expect(r).toMatchObject({ matched: 3, affected: 1 })
+      expect(r.skipped).toEqual([
+        { id: 'b', status: 'done', reason: '没有在去水印' },
+        { id: 'c', status: 'running', reason: '没有在去水印' }
+      ])
+      expect(queue.cancelWatermark).toHaveBeenCalledWith('a')
+      expect(queue.tasks[0].processing).toBeUndefined()
+    })
   })
 })

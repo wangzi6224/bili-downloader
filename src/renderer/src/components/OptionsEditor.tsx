@@ -1,16 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowUp, Download, X } from 'lucide-react'
 import type { AiModelStatus, AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo, WatermarkMode } from '@shared/types'
-import { modelPct, modelText } from '../aiRefine'
+import { modelPct, modelText, WATERMARK_MODES } from '../aiRefine'
 import { api, sysText } from '../store'
 import { actualCodec, AUDIO_LABEL, moveUp, type EditableOptions } from '../viewLogic'
 import { Button, IconButton, Progress, Segmented, Select } from './ui'
-
-const WATERMARKS: { value: WatermarkMode; label: string; hint: string }[] = [
-  { value: 'off', label: '不处理', hint: '原样保存，不重新编码' },
-  { value: 'auto', label: '快速去除', hint: '用周围的画面填补水印，几分钟内完成，水印处会有些糊' },
-  { value: 'ai', label: 'AI 精修', hint: '用 AI 模型逐帧补出水印下面的画面，清楚得多，但慢' }
-]
 
 /** 选了 AI 精修时：模型下载好没有，没下载可以先下好 */
 function AiModelLine() {
@@ -196,7 +190,7 @@ export function OptionsEditor({
       </Section>
 
       <Section title="水印" dim={audioOnly}>
-        <Segmented<WatermarkMode> fill value={o.watermark} disabled={audioOnly} onChange={(watermark) => set({ watermark })} options={WATERMARKS} />
+        <Segmented<WatermarkMode> fill value={o.watermark} disabled={audioOnly} onChange={(watermark) => set({ watermark })} options={WATERMARK_MODES} />
         {o.watermark === 'auto' && !audioOnly && (
           <div className="mt-1.5 text-xs leading-relaxed text-muted">
             识别到水印才处理，要重新编码视频，比直接下载慢不少；成功后只保留去水印的版本。HDR、杜比视界视频不处理。

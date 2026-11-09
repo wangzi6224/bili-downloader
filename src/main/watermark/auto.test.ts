@@ -11,7 +11,7 @@ import type { Encoder } from './encoder'
 import type { MediaProbe, ProbeVideo } from './probe'
 
 vi.mock('./probe', () => ({ probeMedia: vi.fn() }))
-vi.mock('./locate', () => ({ locateWatermark: vi.fn() }))
+vi.mock('./locate', async (importOriginal) => ({ ...(await importOriginal<typeof import('./locate')>()), locateWatermark: vi.fn() }))
 vi.mock('./transcode', () => ({ encodeWithFallback: vi.fn() }))
 vi.mock('./encoder', () => ({ targetKbps: vi.fn(() => 6000) }))
 vi.mock('./delogo', () => ({ buildVideoOnlyArgs: vi.fn(() => ['args']) }))
@@ -24,7 +24,7 @@ const { encodeWithFallback } = await import('./transcode')
 const { targetKbps } = await import('./encoder')
 const { buildVideoOnlyArgs } = await import('./delogo')
 const { refineVideo } = await import('./ai/refine')
-const { autoRemove } = await import('./auto')
+const { autoRemove, detectOnly } = await import('./auto')
 
 const V: ProbeVideo = { index: 0, codec: 'h264', width: 1920, height: 1080, rotation: 0, fps: 30, hdr: false, dolbyVision: false }
 const R = { x: 1668, y: 18, w: 234, h: 72 }
@@ -90,7 +90,7 @@ describe('跳过', () => {
     ['分数不够自动处理', { score: 0.5 }, R, WM_NOTE.none]
   ])('%s：记下识别结果，保留原视频', async (_name, result, region, note) => {
     vi.mocked(locateWatermark).mockResolvedValueOnce({ result, region })
-    expect(await run()).toEqual({ state: { width: 1920, height: 1080, detected: region }, note })
+    expect(await run()).toEqual({ state: { width: 1920, height: 1080, detected: region, found: false }, note })
     expect(encodeWithFallback).not.toHaveBeenCalled()
   })
 })
@@ -99,7 +99,7 @@ describe('处理', () => {
   it('识别到就转码，写下记录，返回处理好的视频', async () => {
     const r = await run()
     const out = join(tmp, 'video.wm.mp4')
-    const state = { width: 1920, height: 1080, detected: R, applied: R }
+    const state = { width: 1920, height: 1080, detected: R, found: true, applied: R }
     expect(r).toEqual({ video: out, codec: 'hevc', state })
     expect(readFileSync(out, 'utf8')).toBe('clean')
     expect(existsSync(join(tmp, 'video.wm.part'))).toBe(false)
@@ -165,7 +165,7 @@ describe('处理', () => {
       throw new FfmpegError('去水印失败：磁盘空间不足')
     })
     expect(await run()).toEqual({
-      state: { width: 1920, height: 1080, detected: R },
+      state: { width: 1920, height: 1080, detected: R, found: true },
       note: '去水印失败：磁盘空间不足，已保留原视频'
     })
     expect(existsSync(join(tmp, 'video.wm.part'))).toBe(false)
@@ -223,7 +223,7 @@ describe('AI 精修', () => {
   it('模型就绪：用 AI 精修处理视频流，用接口给的码率，进度不带手动标记', async () => {
     const a = ai('ready')
     const r = await run({ method: 'ai', ai: a })
-    expect(r).toEqual({ video: join(tmp, 'video.wm.mp4'), codec: 'h264', state: { width: 1920, height: 1080, detected: R, applied: R } })
+    expect(r).toEqual({ video: join(tmp, 'video.wm.mp4'), codec: 'h264', state: { width: 1920, height: 1080, detected: R, found: true, applied: R } })
     expect(readFileSync(join(tmp, 'video.wm.mp4'), 'utf8')).toBe('ai clean')
     expect(vi.mocked(refineVideo).mock.calls[0][0]).toMatchObject({
       input: source,
@@ -307,5 +307,60 @@ describe('AI 精修', () => {
     vi.mocked(encodeWithFallback).mockClear()
     await run({ method: 'ai' })
     expect(encodeWithFallback).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('只识别（AI 助手提交的下载没选去水印）', () => {
+  const detect = (over: Partial<Parameters<typeof detectOnly>[0]> = {}) =>
+    detectOnly({ source, stream: stream(), durationHint: 50, signal: ac.signal, ...over })
+
+  it('认出 B站水印：记下位置和 found，不转码', async () => {
+    expect(await detect()).toEqual({ width: 1920, height: 1080, detected: R, found: true })
+    expect(locateWatermark).toHaveBeenCalledWith(source, V, 100, ac.signal)
+    expect(encodeWithFallback).not.toHaveBeenCalled()
+  })
+
+  it('分数不够、画面太静：只有可能的位置，found 为 false；没有时长时用提示的时长', async () => {
+    vi.mocked(probeMedia).mockResolvedValueOnce({ video: V, streams: [] })
+    vi.mocked(locateWatermark).mockResolvedValueOnce({ result: { score: 0.5 }, region: R })
+    expect(await detect()).toEqual({ width: 1920, height: 1080, detected: R, found: false })
+    expect(vi.mocked(locateWatermark).mock.calls[0][2]).toBe(50)
+    vi.mocked(locateWatermark).mockResolvedValueOnce({ result: { score: 0.9, reason: 'static' }, region: R })
+    expect((await detect())?.found).toBe(false)
+    vi.mocked(probeMedia).mockResolvedValueOnce({ video: V, streams: [] })
+    vi.mocked(locateWatermark).mockResolvedValueOnce({ result: { score: 0, reason: 'none' } })
+    expect(await detect({ durationHint: undefined })).toEqual({ width: 1920, height: 1080, detected: undefined, found: false })
+    expect(vi.mocked(locateWatermark).mock.calls[2][2]).toBe(0)
+  })
+
+  it('HDR、杜比视界、没有画面：不识别', async () => {
+    expect(await detect({ stream: stream({ id: 125 }) })).toBeUndefined()
+    expect(await detect({ stream: stream({ codecs: 'dvh1.08.07' }) })).toBeUndefined()
+    expect(probeMedia).not.toHaveBeenCalled()
+    vi.mocked(probeMedia).mockResolvedValueOnce({ video: { ...V, hdr: true }, streams: [] })
+    expect(await detect()).toBeUndefined()
+    vi.mocked(probeMedia).mockResolvedValueOnce({ video: { ...V, dolbyVision: true }, streams: [] })
+    expect(await detect()).toBeUndefined()
+    vi.mocked(probeMedia).mockResolvedValueOnce({ streams: [] })
+    expect(await detect()).toBeUndefined()
+  })
+
+  it('出错只记日志，不影响下载；被中止时抛 AbortError', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(probeMedia).mockRejectedValueOnce(new Error('读不了'))
+    expect(await detect()).toBeUndefined()
+    vi.mocked(probeMedia).mockRejectedValueOnce('坏了')
+    expect(await detect()).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith('识别水印失败：', '读不了')
+    expect(warn).toHaveBeenCalledWith('识别水印失败：', '坏了')
+    warn.mockRestore()
+
+    vi.mocked(locateWatermark).mockRejectedValueOnce(new AbortError())
+    await expect(detect()).rejects.toBeInstanceOf(AbortError)
+    vi.mocked(locateWatermark).mockImplementationOnce(async () => {
+      ac.abort()
+      throw new Error('ffmpeg 被结束')
+    })
+    await expect(detect()).rejects.toBeInstanceOf(AbortError)
   })
 })

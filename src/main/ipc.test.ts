@@ -233,7 +233,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(68)
+    expect(h.handlers.size).toBe(69)
   })
 })
 
@@ -664,5 +664,12 @@ describe('去水印', () => {
     expect(h.aiPreview).toHaveBeenCalledWith('t1', '/dl/a.mp4', 3, region)
     await data('wm:ai:release', 't1')
     expect(h.aiRelease).toHaveBeenCalledWith('t1')
+  })
+
+  it('去水印速度：两种方式各自的倍数和依据', async () => {
+    const speed = (await data('wm:speed')) as { fast: { basis: string }; ai: { basis: string; ratio: number[] } }
+    expect(speed.fast.basis).toBe('default')
+    expect(speed.ai.basis).toBe('default')
+    expect(speed.ai.ratio).toHaveLength(2)
   })
 })

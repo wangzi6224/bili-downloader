@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { AiEstimate } from '@shared/types'
-import { estimateHints, estimateText, fmtRange, modelPct, modelSettingsText, modelText } from './aiRefine'
+import type { AiEstimate, WatermarkSpeed } from '@shared/types'
+import {
+  estimateHints,
+  estimateText,
+  fmtRange,
+  modelPct,
+  modelSettingsText,
+  modelText,
+  speedText,
+  WATERMARK_MODES,
+  watermarkModeHint
+} from './aiRefine'
 
 describe('fmtRange', () => {
   it('按量级取整', () => {
@@ -56,5 +66,22 @@ describe('设置页的模型说明', () => {
     expect(modelSettingsText({ state: 'missing', size: 200 * MB, disk: 0 })).toBe('去水印选“AI 精修”时需要，第一次使用时下载（200.0 MB）。')
     expect(modelSettingsText({ state: 'missing', size: 200 * MB, disk: 50 * MB })).toBe('去水印选“AI 精修”时需要，第一次使用时下载（200.0 MB）；没下完的部分占 50.0 MB。')
     expect(modelSettingsText({ state: 'error', size: 200 * MB, message: '连不上' })).toBe('模型下载失败：连不上。去水印选“AI 精修”时需要，第一次使用时下载（200.0 MB）。')
+  })
+})
+
+describe('去水印的速度和总开关的说明', () => {
+  it('倍数：小于 1 保留一位小数，大于 1 去掉多余的 0；写明依据和后端', () => {
+    expect(speedText({ ratio: [0.05, 0.4], basis: 'default' })).toBe('约为视频时长的 0.1～0.4 倍 · 粗估')
+    expect(speedText({ ratio: [2, 3.04], basis: 'measured', backend: 'GPU' })).toBe('约为视频时长的 2～3 倍 · 这台电脑实测 · GPU')
+    expect(speedText({ ratio: [2.5, 2.5], basis: 'calibrated', backend: 'CPU × 6' })).toBe('约为视频时长的 2.5 倍 · 按试跑估算 · CPU × 6')
+  })
+
+  it('每一项下面的小字：效果，加上预计耗时（不处理和还没拿到速度时只有效果）', () => {
+    const speed = { fast: { ratio: [0.1, 0.3], basis: 'measured' }, ai: { ratio: [2, 3], basis: 'default' } } as WatermarkSpeed
+    expect(watermarkModeHint('off', speed)).toBe('保留原视频，不重新编码')
+    expect(watermarkModeHint('auto', null)).toBe('用周围的画面填补，水印处略糊')
+    expect(watermarkModeHint('auto', speed)).toBe('用周围的画面填补，水印处略糊；约为视频时长的 0.1～0.3 倍 · 这台电脑实测')
+    expect(watermarkModeHint('ai', speed)).toBe('用 AI 模型逐帧补出水印下面的画面，清楚得多；约为视频时长的 2～3 倍 · 粗估')
+    expect(WATERMARK_MODES.map((m) => m.value)).toEqual(['off', 'auto', 'ai'])
   })
 })

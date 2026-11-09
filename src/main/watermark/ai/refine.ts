@@ -14,6 +14,7 @@ import { markBroken as markEncoderBroken, pickEncoder, softwareEncoder, targetKb
 import { awakeTimer, ffmpegCapture, heavyTurn } from '../ffmpegJob'
 import { trackJob } from '../orphans'
 import { probeMedia, type MediaProbe } from '../probe'
+import { recordCalibration, recordRun } from '../speed'
 import { HOPELESS } from '../transcode'
 import { analyze, makeCodec, type Analysis } from './analysis'
 import { buildDecodeArgs, buildEncodeArgs, rateValue } from './args'
@@ -322,6 +323,7 @@ export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['cod
     }
     inferencer = new Inferencer(await open(), open, setPool)
     setPool(inferencer.current)
+    recordCalibration(label, inferencer.current.msPerFrame, hosts)
     o.onStage({ ...tag, stage: 'refine', pct: 0, backend: label })
 
     const coverFile = await exportCover(o, probe)
@@ -344,6 +346,7 @@ export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['cod
         }
       })
     let enc = await pickEncoder({ srcCodec: v.codec, width: a.width, height: a.height }, o.signal)
+    let started = Date.now()
     try {
       await pass(enc)
     } catch (e) {
@@ -351,8 +354,11 @@ export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['cod
       if (!(e instanceof EncodeError) || !enc.hw || o.signal.aborted || HOPELESS.test(e.stderr ?? '')) throw e
       if (isEncoderFailure(e.stderr)) markEncoderBroken(enc)
       enc = softwareEncoder({ width: a.width, height: a.height })
+      started = Date.now()
       await pass(enc)
     }
+    // 记下这台机器的速度（只算逐帧处理这一段），供以后估算
+    recordRun('ai', { seconds: (Date.now() - started) / 1000, duration, width: a.width, height: a.height, fps: v.fps, backend: label })
     return { codec: enc.codec, width: v.width, height: v.height, region }
   } finally {
     inferencer?.close()

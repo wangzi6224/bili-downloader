@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
 import { normalizeOptions } from '@shared/options'
-import type { AuthState, MediaItem, ParseResult, Settings } from '@shared/types'
+import type { AuthState, MediaItem, ParseResult, Settings, TaskInfo } from '@shared/types'
 import { lazyVideo } from '../bili/lists'
 import type { BiliLookup } from '../bili/lookup'
 import { toDiskError } from '../download/errors'
@@ -42,6 +42,7 @@ import type { LoginFlow } from './loginFlow'
 import { LOGIN_DEFINITIONS, LoginTools } from './loginTools'
 import { LOOKUP_DEFINITIONS, LookupTools } from './lookupTools'
 import { ParseCache } from './parseCache'
+import { batchWatermark, METHODS, plannedWatermark, removeTargets, removeWatermark, watermarkStatus, type WatermarkDeps } from './watermark'
 
 export interface McpDeps {
   /** 解析链接并翻页，最多 maxItems 条（含登录检查和解析记录） */
@@ -58,6 +59,8 @@ export interface McpDeps {
   /** 搜索、视频详情、评论这些检索接口 */
   lookup: BiliLookup
   login: LoginFlow
+  /** 去水印：估算耗时、AI 模型状态、识别已下载视频的水印 */
+  watermark: WatermarkDeps
 }
 
 export interface ToolDefinition {
@@ -90,7 +93,7 @@ const MAX_TITLE = 100
 /** 剩余空间低于这个值时提醒 */
 const LOW_SPACE = 5 * 1024 ** 3
 
-const ACTIONS = ['pause', 'resume', 'retry', 'redownload', 'remove'] as const
+const ACTIONS = ['pause', 'resume', 'retry', 'redownload', 'remove', 'cancel_watermark'] as const
 type Action = (typeof ACTIONS)[number]
 
 /** 每种操作能作用的任务状态 */
@@ -100,7 +103,9 @@ const ELIGIBLE: Record<Action, McpStatus[]> = {
   retry: ['failed', 'retrying'],
   // 已完成的重新下载会多出一份文件，无法下载的重下也没用
   redownload: ['queued', 'running', 'paused', 'retrying', 'failed', 'waiting_auth'],
-  remove: STATUSES
+  remove: STATUSES,
+  // 去水印时任务仍是 done，另外要看是不是正在去水印
+  cancel_watermark: ['done']
 }
 
 const TASK_FIELDS = [
@@ -117,7 +122,8 @@ const TASK_FIELDS = [
   'error',
   'retry_at',
   'note',
-  'path'
+  'path',
+  'watermark'
 ] as const satisfies readonly (keyof TaskSummary)[]
 
 const STATUS_FILTER = [...STATUSES, 'active', 'all'] as const
@@ -205,7 +211,8 @@ const DEFINITIONS: ToolDefinition[] = [
     title: '批次进度',
     description:
       '查看一个批次的进度：各状态的任务数、已下载字节、速度、预计剩余时间、实际清晰度、失败原因和下一步提示。' +
-      'wait_seconds 大于 0 时会等到批次全部结束、暂停或需要处理时才返回（最多等这么久），比反复查询省事。',
+      'watermark 是去水印的情况：识别到 B站水印的视频数、已去掉的数量、正在处理的进度，以及有水印还没去掉时两种方式各要多久（hint 里有给用户的说法）。' +
+      'wait_seconds 大于 0 时会等到批次全部结束、暂停或需要处理时才返回（最多等这么久），还在去水印时也会等，比反复查询省事。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -254,9 +261,10 @@ const DEFINITIONS: ToolDefinition[] = [
     name: 'control_tasks',
     title: '批量控制任务',
     description:
-      '批量暂停、继续、重试、重新下载或移除任务。用 task_ids、batch_id、status 指定范围（至少一个，可以组合）。' +
+      '批量暂停、继续、重试、重新下载、移除任务，或取消去水印。用 task_ids、batch_id、status 指定范围（至少一个，可以组合）。' +
       '只指定 batch_id（不带 task_ids、status）时对整个批次操作：pause / resume 时之后才加入队列的任务也一起暂停 / 继续，retry 时也重试展开分P失败的条目，remove 时不再加入还没处理的条目。' +
-      'redownload 删掉已下载的部分从头下载；remove 取消未完成的任务并把任务移出列表，已下载好的文件不会删除。',
+      'redownload 删掉已下载的部分从头下载；remove 取消未完成的任务并把任务移出列表，已下载好的文件不会删除；' +
+      'cancel_watermark 取消正在进行的去水印（remove_watermark 发起的），原视频保持不变。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -269,6 +277,34 @@ const DEFINITIONS: ToolDefinition[] = [
       required: ['action']
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
+  },
+  {
+    name: 'remove_watermark',
+    title: '去水印',
+    description:
+      '给已下载的视频去掉画面角落的 B站水印，在后台进行，完成后替换原文件（会重新编码）。只在用户明确要求或同意后调用。' +
+      'method=fast 快速去除：用周围的画面填补，水印处略糊，一般只要视频时长的零点几倍；' +
+      'method=ai AI 精修：逐帧补出水印下面的画面，清楚得多，但慢很多（有显卡时约为视频时长的 2～4 倍），第一次会先下载约 200MB 的模型，下不下来或精修失败时改用快速去除。' +
+      '用 batch_id 时处理这个批次里下载完、识别到水印、还没去掉的视频；用 task_ids 时逐个识别（下载时没识别过的每个要几秒，一次最多识别 10 个）。' +
+      '先带 dry_run=true 拿到每个视频的预计耗时，告诉用户后再正式调用。进度看 get_batch_status 或 list_tasks 的 watermark，取消用 control_tasks action=cancel_watermark。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        method: { type: 'string', enum: METHODS, description: 'fast 快速去除；ai AI 精修' },
+        task_ids: { type: 'array', items: { type: 'string' }, description: '要处理的任务（必须已下载完成）' },
+        batch_id: { type: 'string', description: '处理这个批次里识别到水印、还没去掉的视频' },
+        region: {
+          type: 'object',
+          properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
+          required: ['x', 'y', 'w', 'h'],
+          description: '手动指定水印位置（视频像素坐标），只能和一个 task_id 一起用；没认出位置时 skipped 里会给出视频尺寸和可能的位置'
+        },
+        force: { type: 'boolean', description: '已经去过水印的也重新处理（例如快速去除后想换成 AI 精修）' },
+        dry_run: { type: 'boolean', description: '只识别和估算耗时，不开始处理' }
+      },
+      required: ['method']
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   },
   {
     name: 'get_settings',
@@ -388,6 +424,8 @@ export class McpTools implements ToolSet {
           return result(this.listTasks(args))
         case 'control_tasks':
           return result(this.controlTasks(args))
+        case 'remove_watermark':
+          return result(await this.removeWatermark(args))
         case 'get_settings':
           return result(this.settingsOut(this.deps.settings()))
         case 'update_settings':
@@ -430,6 +468,7 @@ export class McpTools implements ToolSet {
       download_dir: s.downloadDir,
       free_space_bytes: free,
       settings: { concurrency: s.concurrency, threads: s.threads, speed_limit_kbps: s.speedLimit, default_qn: s.defaultQn },
+      watermark: watermarkStatus(s.defaults, tasks, this.deps.watermark),
       hints
     }
   }
@@ -589,7 +628,14 @@ export class McpTools implements ToolSet {
     })
     const notes = [`用 get_batch_status batch_id=${b.id} wait_seconds=30 查看进度`]
     if (rejected.length) notes.unshift(`${rejected.length} 项查不到对应的视频，已忽略，见 rejected`)
-    return { ...this.submitted(b), rejected: rejectedOut, hint: notes.join('；') }
+    // 只有一个视频时知道时长，多个时要展开后才知道
+    const items = only?.duration ? [{ duration: only.duration } as MediaItem] : []
+    return {
+      ...this.submitted(b),
+      rejected: rejectedOut,
+      watermark: plannedWatermark(options, items, this.deps.watermark),
+      hint: notes.join('；')
+    }
   }
 
   private async downloadUrl(url: string, args: Args) {
@@ -670,6 +716,7 @@ export class McpTools implements ToolSet {
       ...this.submitted(b),
       complete: truncated ? false : undefined,
       unknown_ids: unknown.length ? unknown : undefined,
+      watermark: plannedWatermark(options, fresh, this.deps.watermark),
       hint: notes.join('；')
     }
   }
@@ -711,7 +758,7 @@ export class McpTools implements ToolSet {
     const wait = optionalInt(args, 'wait_seconds', 0, 50, 0)
     const include = new Set<ReportPart>(optionalEnums(args, 'include', REPORT_PARTS) ?? ['failed'])
     await this.batches.wait(b, wait * 1000)
-    return this.batches.report(b, include)
+    return { ...this.batches.report(b, include), watermark: batchWatermark(b.options, this.batches.tasksOf(b), b.id, this.deps.watermark) }
   }
 
   private listBatches(args: Args) {
@@ -765,13 +812,19 @@ export class McpTools implements ToolSet {
     )
     const allowed = new Set<McpStatus>(ELIGIBLE[action])
     if (action === 'retry' && optionalBool(args, 'include_unsupported', false)) allowed.add('unsupported')
-    const eligible = matched.filter((t) => allowed.has(mcpStatus(t)))
+    const watermarking = (t: TaskInfo): boolean => Boolean(t.processing?.manual)
+    const can = (t: TaskInfo): boolean => allowed.has(mcpStatus(t)) && (action !== 'cancel_watermark' || watermarking(t))
+    const eligible = matched.filter(can)
     const ids = eligible.map((t) => t.id)
     const skipped = [
       ...(taskIds ?? []).filter((id) => !all.some((t) => t.id === id)).map((id) => ({ id, reason: '没有这个任务' })),
       ...matched
-        .filter((t) => !allowed.has(mcpStatus(t)))
-        .map((t) => ({ id: t.id, status: mcpStatus(t), reason: `${mcpStatus(t)} 状态的任务不能 ${action}` }))
+        .filter((t) => !can(t))
+        .map((t) => ({
+          id: t.id,
+          status: mcpStatus(t),
+          reason: action === 'cancel_watermark' ? '没有在去水印' : `${mcpStatus(t)} 状态的任务不能 ${action}`
+        }))
     ]
     // 只指定了批次（没有点名任务、没有按状态筛选），就是对整个批次操作
     const wholeBatch = batch && !taskIds && !statuses ? batch : undefined
@@ -803,6 +856,9 @@ export class McpTools implements ToolSet {
         // 已下载好的文件一律保留
         q.remove(ids, false)
         break
+      case 'cancel_watermark':
+        for (const id of ids) q.cancelWatermark(id)
+        break
     }
     return {
       action,
@@ -812,6 +868,20 @@ export class McpTools implements ToolSet {
       skipped_total: skipped.length > 50 ? skipped.length : undefined,
       batch: wholeBatch ? batchResult : undefined
     }
+  }
+
+  private removeWatermark(args: Args) {
+    if (args.task_ids !== undefined && args.task_ids !== null && args.batch_id !== undefined && args.batch_id !== null) {
+      throw invalid('task_ids 和 batch_id 只能用一个')
+    }
+    const ids = removeTargets(args, (id) => {
+      const b = this.batches.find(id)
+      if (b) return this.batches.tasksOf(b)
+      // 批次记录已经清理掉时，按任务上记的批次 id 找
+      const tasks = this.deps.queue.list().filter((t) => t.batchId === id)
+      return tasks.length ? tasks : undefined
+    })
+    return removeWatermark(args, ids, this.deps.queue, this.deps.watermark)
   }
 
   /** 批次里的任务（包括算进这个批次的、别处已在下载的同一条目）；没指定批次时不筛选 */

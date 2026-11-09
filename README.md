@@ -50,7 +50,7 @@ A desktop app for Windows, macOS and Linux for downloading from bilibili: paste 
 - Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
 - The chapter markers on bilibili's progress bar, written as real chapters
 - NFO metadata for Kodi / Jellyfin media libraries
-- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download; both the download options and the manual tool offer “AI refine”, which repaints what is under the watermark frame by frame with an AI model — much cleaner than the default fast mode — and shows an estimated time before it starts (GPU-accelerated when available; the ~200 MB model is downloaded on first use)
+- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download; both the download options and the manual tool offer “AI refine”, which repaints what is under the watermark frame by frame with an AI model — much cleaner than the default fast mode — and shows an estimated time before it starts (GPU-accelerated when available; the ~200 MB model is downloaded on first use). A “Remove watermark after download” switch above the download list changes the mode at any time
 
 ### Queue and network
 
@@ -163,10 +163,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_status` | Login and premium (大会员) status, queue summary, free space in the download folder, and anything that needs attention. Call it first |
 | `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…); lists are paged through automatically. Item ids are stable; results can be read in pages and multi-part videos expanded |
 | `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice Pass `videos` to submit several videos, such as search results, as one batch |
-| `get_batch_status` | Batch progress: counts per status, speed, estimated time left, actual quality, failure reasons. `wait_seconds` waits for changes |
+| `get_batch_status` | Batch progress: counts per status, speed, estimated time left, actual quality, failure reasons, plus which videos carry a Bilibili watermark and how long each removal mode would take. `wait_seconds` waits for changes |
 | `list_batches` | Recently submitted batches |
 | `list_tasks` | List tasks page by page, filtered by batch, status or title |
-| `control_tasks` | Pause, resume, retry, redownload or remove tasks in bulk (downloaded files are never deleted) |
+| `control_tasks` | Pause, resume, retry, redownload or remove tasks in bulk (downloaded files are never deleted), or cancel a running watermark removal |
+| `remove_watermark` | Remove the watermark from downloaded videos, fast or with AI refine; can estimate the time first. Re-encodes and replaces the original file |
 | `get_settings` / `update_settings` | Read or change the download folder, concurrency, threads, speed limit, auto-retry, default quality and download options |
 | `search_videos` | Search videos by keyword, with date and duration filters. Results include title, uploader, publish time, duration, play count, category, tags and a short description |
 | `search_users` | Search uploaders by name and return their `mid`, followers, video count and a space link for `parse_link` |

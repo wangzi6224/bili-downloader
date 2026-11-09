@@ -189,8 +189,10 @@ export interface WatermarkState {
   /** 视频显示尺寸，界面换算坐标用 */
   width: number
   height: number
-  /** 自动识别到的位置 */
+  /** 自动识别到的位置（分数够“建议位置”就有） */
   detected?: WatermarkRegion
+  /** 认出了 B站水印（标志和昵称都对上），可以放心提醒用户去水印 */
+  found?: boolean
   /** 当前文件里已经去掉的位置 */
   applied?: WatermarkRegion
 }
@@ -227,6 +229,19 @@ export interface AiModelStatus {
   message?: string
   /** 模型和缓存一共占用的磁盘空间（字节） */
   disk?: number
+}
+
+/** 去水印的速度：处理耗时约为视频时长的几倍；measured 是这台机器实测的，calibrated 按试跑，default 是保守的默认值 */
+export interface WatermarkSpeedInfo {
+  ratio: [number, number]
+  basis: 'measured' | 'calibrated' | 'default'
+  /** AI 精修用的推理方式，例如 GPU、CPU × 6 */
+  backend?: string
+}
+
+export interface WatermarkSpeed {
+  fast: WatermarkSpeedInfo
+  ai: WatermarkSpeedInfo
 }
 
 /** AI 精修开始前的估算 */
@@ -533,6 +548,8 @@ export interface BiliApi {
     aiPreview(taskId: string, time: number, region: WatermarkRegion): Promise<string>
     /** 对话框关掉时释放为预览开的推理进程 */
     aiRelease(taskId: string): Promise<void>
+    /** 两种方式在这台机器上大约是视频时长的几倍 */
+    speed(): Promise<WatermarkSpeed>
   }
   history: {
     /** 已下载过的条目 key */

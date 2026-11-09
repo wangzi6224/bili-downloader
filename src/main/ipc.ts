@@ -40,6 +40,7 @@ import {
 import { quitConfirmed } from './quitGuard'
 import { aiModel, aiSessions } from './watermark/ai'
 import { prepareManual, previewFrame, requireVideoTask } from './watermark/manual'
+import { speedRatio } from './watermark/speed'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
 
@@ -193,6 +194,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
     return aiSessions().preview(id, t.outputPath, time, region)
   })
   handle('wm:ai:release', (id: string) => aiSessions().release(id))
+  handle('wm:speed', () => ({ fast: speedRatio('fast'), ai: speedRatio('ai') }))
   aiModel().on('status', (s) => send('wm:ai:status', s))
 
   handle('settings:get', () => getSettings())

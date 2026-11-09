@@ -27,7 +27,8 @@ import {
 } from 'lucide-react'
 import { itemUrl } from '@shared/parseUrl'
 import { isVideoTask } from '@shared/watermark'
-import type { PowerMode, TaskInfo, TaskStatus } from '@shared/types'
+import type { AiModelStatus, PowerMode, TaskInfo, TaskStatus, WatermarkSpeed } from '@shared/types'
+import { modelPct, modelText, WATERMARK_MODES, watermarkModeHint } from '../aiRefine'
 import { fmtSpeed, thumb } from '../format'
 import { WatermarkOff } from '../icons'
 import { api, sysText, updateSettings, useStore } from '../store'
@@ -387,6 +388,76 @@ function PowerMenu({ running }: { running: boolean }) {
   )
 }
 
+/**
+ * 去水印的总开关：下载后怎么处理水印（不处理 / 快速去除 / AI 精修）。改的就是设置里“默认格式”的水印，
+ * 下载对话框、设置页和 AI 助手的下载（没指定时）都跟着它
+ */
+function WatermarkMenu() {
+  const defaults = useStore((s) => s.settings?.defaults)
+  const mode = defaults?.watermark ?? 'off'
+  const [speed, setSpeed] = useState<WatermarkSpeed | null>(null)
+  const [model, setModel] = useState<AiModelStatus | null>(null)
+  useEffect(() => {
+    void api.watermark.aiStatus().then(setModel)
+    return api.watermark.onAiStatus(setModel)
+  }, [])
+  const label = WATERMARK_MODES.find((m) => m.value === mode)?.label
+  return (
+    <Dropdown
+      className="w-80"
+      button={({ open, toggle }) => (
+        <div className="relative">
+          <IconButton
+            icon={WatermarkOff}
+            label={`下载后去水印：${label}`}
+            active={open || mode !== 'off'}
+            onClick={() => {
+              // 每次打开都取一次最新的速度（刚处理完一个视频，实测值会变）
+              if (!open) void api.watermark.speed().then(setSpeed)
+              toggle()
+            }}
+          />
+          {mode !== 'off' && (
+            <span className={`pointer-events-none absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ${mode === 'ai' ? 'bg-bili' : 'bg-subtle'}`} />
+          )}
+        </div>
+      )}
+    >
+      {(close) => (
+        <>
+          <MenuLabel>下载后去水印</MenuLabel>
+          {WATERMARK_MODES.map((m) => (
+            <MenuItem
+              key={m.value}
+              checked={mode === m.value}
+              onClick={() => {
+                close()
+                if (defaults) void updateSettings({ defaults: { ...defaults, watermark: m.value } })
+              }}
+            >
+              <span className="block">{m.label}</span>
+              <span className="block text-[11px] leading-snug whitespace-normal text-muted">{watermarkModeHint(m.value, speed)}</span>
+            </MenuItem>
+          ))}
+          {mode === 'ai' && model && model.state !== 'ready' && (
+            <div className="mx-1 mt-1 flex items-center gap-2 rounded-lg bg-track px-2.5 py-2 text-[11px] leading-snug text-muted">
+              <div className="min-w-0 flex-1">
+                <div>{modelText(model)}</div>
+                {model.state === 'downloading' && <Progress value={modelPct(model)} className="mt-1" />}
+              </div>
+              {model.state !== 'downloading' && (
+                <Button size="sm" icon={Download} onClick={() => void api.watermark.aiDownload()}>
+                  下载
+                </Button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Dropdown>
+  )
+}
+
 /** 清除已完成：默认只清空任务列表，勾选“同时删除原文件”才会永久删除下载好的文件 */
 function ClearDialog({ onClose }: { onClose: () => void }) {
   const tasks = useStore((s) => s.tasks)
@@ -531,6 +602,7 @@ export function TaskList() {
           className="w-48"
         />
         <div className="flex-1" />
+        <WatermarkMenu />
         <PowerMenu running={running} />
         <IconButton icon={Pause} label="全部暂停" disabled={!canPause} onClick={() => api.download.pauseAll()} />
         <IconButton icon={Play} label="全部继续" disabled={!canResume} onClick={() => api.download.resumeAll()} />

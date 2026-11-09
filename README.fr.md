@@ -50,7 +50,7 @@ Une application de bureau pour Windows, macOS et Linux permettant de télécharg
 - Danmaku (commentaires défilants) en `.ass` et/ou `.xml`, avec taille de police, opacité et durée réglables
 - Les segments de la barre de progression de bilibili, écrits comme de vrais chapitres
 - Métadonnées NFO pour les médiathèques Kodi / Jellyfin
-- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée ; dans les options de téléchargement comme sur une vidéo déjà téléchargée, le mode « Retouche IA » repeint image par image ce qui se trouve sous le filigrane avec un modèle d'IA — bien plus net que le mode rapide par défaut — et affiche une durée estimée avant de commencer (accéléré par la carte graphique si possible ; le modèle d'environ 200 Mo est téléchargé à la première utilisation)
+- Suppression du filigrane : détecte le filigrane dans un coin de l'image et l'efface automatiquement (réencode la vidéo ; HDR et Dolby Vision ne sont pas traités), ou encadrez-le à la main sur une vidéo déjà téléchargée ; dans les options de téléchargement comme sur une vidéo déjà téléchargée, le mode « Retouche IA » repeint image par image ce qui se trouve sous le filigrane avec un modèle d'IA — bien plus net que le mode rapide par défaut — et affiche une durée estimée avant de commencer (accéléré par la carte graphique si possible ; le modèle d'environ 200 Mo est téléchargé à la première utilisation) ; un interrupteur « Retirer le filigrane après le téléchargement » au-dessus de la liste des téléchargements change de mode à tout moment
 
 ### File d'attente et réseau
 
@@ -163,10 +163,11 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_status` | État de connexion et de l'abonnement premium (大会员), résumé de la file, espace libre du dossier de téléchargement et points à surveiller. À appeler en premier |
 | `parse_link` | Analyse un lien bilibili (vidéo, collection, animé, cours, favoris, créateur…) ; les listes sont parcourues page par page automatiquement. Les identifiants des éléments sont stables ; les résultats se lisent par tranches et les vidéos en plusieurs parties peuvent être dépliées |
 | `download_batch` | Ajoute tout un lien ou les éléments choisis en un seul lot et renvoie un `batch_id`. Les éléments déjà téléchargés sont ignorés par défaut, et renvoyer la même demande ne télécharge rien deux fois Avec `videos`, plusieurs vidéos, par exemple des résultats de recherche, forment un seul lot |
-| `get_batch_status` | Avancement d'un lot : nombre de tâches par état, vitesse, temps restant estimé, qualité obtenue, causes d'échec. `wait_seconds` attend les changements |
+| `get_batch_status` | Avancement d'un lot : nombre de tâches par état, vitesse, temps restant estimé, qualité obtenue, causes d'échec, ainsi que les vidéos portant un filigrane Bilibili et la durée de chaque mode de suppression. `wait_seconds` attend les changements |
 | `list_batches` | Lots soumis récemment |
 | `list_tasks` | Liste les tâches par pages, filtrées par lot, état ou titre |
-| `control_tasks` | Met en pause, reprend, relance, retélécharge ou retire des tâches en masse (les fichiers téléchargés ne sont jamais supprimés) |
+| `control_tasks` | Met en pause, reprend, relance, retélécharge ou retire des tâches en masse (les fichiers téléchargés ne sont jamais supprimés), ou annule une suppression de filigrane en cours |
+| `remove_watermark` | Retire le filigrane de vidéos déjà téléchargées, en mode rapide ou retouche IA ; peut d'abord seulement estimer la durée. Réencode et remplace le fichier d'origine |
 | `get_settings` / `update_settings` | Lit ou modifie le dossier de téléchargement, le nombre de téléchargements simultanés, les threads, la limite de débit, les nouvelles tentatives automatiques, la qualité et les options par défaut |
 | `search_videos` | Recherche des vidéos par mot-clé, avec filtres par date et durée. Les résultats indiquent le titre, l'auteur, la date de publication, la durée, le nombre de vues, la catégorie, les tags et un résumé de la description |
 | `search_users` | Recherche des créateurs par nom et renvoie leur `mid`, leurs abonnés, leur nombre de vidéos et un lien d'espace utilisable avec `parse_link` |

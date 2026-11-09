@@ -6,7 +6,7 @@ import { buildCoverExtractArgs, buildReplaceArgs, coverFileName } from './delogo
 import { targetKbps, type Encoder } from './encoder'
 import { ffmpegCapture } from './ffmpegJob'
 import { grabJpeg } from './frames'
-import { locateWatermark } from './locate'
+import { isConfident, locateWatermark } from './locate'
 import { probeMedia, type MediaProbe, type ProbeVideo } from './probe'
 import { encodeWithFallback } from './transcode'
 
@@ -52,6 +52,39 @@ export async function prepareManual(t: DoneVideoTask, signal?: AbortSignal): Pro
     applied: t.watermark?.applied,
     blocker
   }
+}
+
+export interface WatermarkInspection {
+  width: number
+  height: number
+  duration: number
+  fps?: number
+  /** 水印位置：下载时识别过就用那次的，否则现场识别；认不出时没有 */
+  region?: WatermarkRegion
+  /** 认出了 B站水印（不只是“可能在这里”） */
+  found: boolean
+  /** 识别结果是不是下载时记下的 */
+  known: boolean
+  /** 已经去过水印：region 是当时处理的位置 */
+  applied?: boolean
+  /** 不能处理的原因（例如 HDR） */
+  blocker?: string
+}
+
+/** AI 助手发起去水印前：找水印位置（不抽预览图），拿到尺寸、时长、帧率用来估算耗时 */
+export async function inspectWatermark(t: DoneVideoTask, signal?: AbortSignal): Promise<WatermarkInspection> {
+  const { probe, v } = await probeVideo(t.outputPath, signal)
+  const duration = probe.duration ?? t.item.duration ?? 0
+  const base = { width: v.width, height: v.height, duration, fps: v.fps }
+  if (v.hdr || v.dolbyVision) return { ...base, found: false, known: false, blocker: HDR_BLOCKER }
+  const wm = t.watermark
+  const same = wm?.width === v.width && wm.height === v.height
+  // 已经去过一次的文件，原来的水印位置已经糊掉了，再识别也认不出来；还要处理（例如换成 AI 精修）就用当时的位置
+  if (wm?.applied) return { ...base, region: same ? wm.applied : undefined, found: false, known: true, applied: true }
+  // 旧版本记下的识别结果没有 found：只知道“可能在这里”
+  if (same && wm?.detected) return { ...base, region: wm.detected, found: wm.found ?? false, known: true }
+  const l = await locateWatermark(t.outputPath, v, duration, signal)
+  return { ...base, region: l.region, found: isConfident(l), known: false }
 }
 
 /** 换一帧；带 region 时给出去掉水印后的样子。坐标在这里重新收进画面，不信任界面传来的值 */

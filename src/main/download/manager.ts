@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
 import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
-import { stripWatermarkNotes, withWatermarkNote, WM_NOTE } from '@shared/watermark'
+import { withWatermarkNote, WM_NOTE } from '@shared/watermark'
 import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
 import { getAudioStream } from '../bili/audio'
 import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
@@ -13,7 +13,7 @@ import { preferCdn } from '../net/cdn'
 import { readJsonArray, writeJson } from '../store'
 import { aiModel, spawnHost } from '../watermark/ai'
 import { refineVideo } from '../watermark/ai/refine'
-import { autoRemove } from '../watermark/auto'
+import { autoRemove, detectOnly, ensureModel } from '../watermark/auto'
 import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark/manual'
 import { removeQuietly, removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
@@ -357,7 +357,6 @@ export class DownloadManager extends EventEmitter {
     const t = requireVideoTask(this.find(id))
     if (this.running.has(id)) throw new Error('这个视频正在处理，请等它结束')
     if (![region?.x, region?.y, region?.w, region?.h].every(Number.isFinite)) throw new Error('水印区域无效')
-    if (method === 'ai' && !aiModel().ready()) throw new Error('请先下载 AI 模型')
     void this.runPost(t, region, method)
   }
 
@@ -500,7 +499,30 @@ export class DownloadManager extends EventEmitter {
         signal: ac.signal,
         onStage: (p: ProcessingInfo) => this.patch(t, { processing: p })
       }
-      const r = method === 'ai' ? await refineVideo({ ...job, model: aiModel(), spawn: spawnHost }) : await replaceVideo(job)
+      // AI 精修：模型没下载就先下（AI 助手发起的时候可能还没下）；下不下来或精修失败，这次改用快速去除并说明原因
+      let wmNote: string | undefined
+      const fastJob = (): ReturnType<typeof replaceVideo> => replaceVideo(job)
+      let r: Awaited<ReturnType<typeof replaceVideo>>
+      if (method === 'ai') {
+        const model = aiModel()
+        const ai = { model, spawn: spawnHost, threads: this.settings().threads }
+        const missing = model.ready() ? undefined : await ensureModel(ai, ac.signal, (p) => this.patch(t, { processing: { ...p, manual: true } }))
+        if (missing) {
+          wmNote = WM_NOTE.aiFallback(missing)
+          r = await fastJob()
+        } else {
+          try {
+            r = await refineVideo({ ...job, model, spawn: spawnHost })
+          } catch (e) {
+            if (e instanceof AbortError || ac.signal.aborted) throw e
+            wmNote = WM_NOTE.aiFailed(e instanceof Error ? e.message : String(e))
+            removeQuietly(tmpOut)
+            r = await fastJob()
+          }
+        }
+      } else {
+        r = await fastJob()
+      }
       if (ac.signal.aborted) throw new AbortError()
       // 处理期间原视频被删掉或移走了：不能再在原位置把它“变”回来
       if (!existsSync(out)) {
@@ -517,7 +539,7 @@ export class DownloadManager extends EventEmitter {
       this.patch(t, {
         downloaded: size,
         total: size,
-        note: stripWatermarkNotes(t.note),
+        note: withWatermarkNote(t.note, wmNote),
         qualityLabel: swapCodec(t.qualityLabel, r.codec),
         watermark: { ...t.watermark, width: r.width, height: r.height, applied: r.region }
       })
@@ -633,6 +655,12 @@ export class DownloadManager extends EventEmitter {
         }
         wmNote = r.note
         this.patch(t, { watermark: r.state, processing: undefined })
+      } else if (plan.video && video && t.batchId) {
+        // AI 助手（MCP）提交的下载没选去水印：顺便识别有没有 B站水印，让它知道要不要提醒用户
+        check()
+        this.patch(t, { status: 'processing', processing: { stage: 'detect' } })
+        const state = await detectOnly({ source: video, stream: plan.video, durationHint: t.item.duration, signal: ac.signal })
+        this.patch(t, { watermark: state, processing: undefined })
       }
 
       check()

@@ -1,6 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import type { DownloadOptions, EnqueueRequest, MediaItem, MediaKind, MediaMeta, TaskInfo } from '@shared/types'
+import type {
+  DownloadOptions,
+  EnqueueRequest,
+  MediaItem,
+  MediaKind,
+  MediaMeta,
+  TaskInfo,
+  WatermarkMethod,
+  WatermarkRegion
+} from '@shared/types'
 import type { EnqueueResult } from '../download/manager'
 import { readJsonArray, writeJson } from '../store'
 import { countStatuses, describeError, LOGIN_HINT, mcpStatus, stopsBatch, summarizeTask, totalSpeed, type McpStatus } from './format'
@@ -14,6 +23,10 @@ export interface TaskQueue {
   resumeMany(ids: string[]): void
   redownload(id: string): void
   remove(ids: string[], deleteFiles: boolean): void
+  /** 给已下载的视频去水印（在后台进行，完成后替换原文件） */
+  startWatermark(id: string, region: WatermarkRegion, method: WatermarkMethod): void
+  /** 取消去水印，原视频不变 */
+  cancelWatermark(id: string): void
   on(event: 'update', fn: () => void): unknown
   off(event: 'update', fn: () => void): unknown
 }
@@ -207,9 +220,9 @@ export class BatchManager extends EventEmitter {
     return 'done'
   }
 
-  /** 等到批次不再自己往前走（全部结束、暂停、等待登录、中断）或超时 */
+  /** 等到批次不再自己往前走（全部结束、暂停、等待登录、中断）或超时；下载完了但还在去水印的也算在往前走 */
   async wait(b: Batch, ms: number): Promise<void> {
-    const moving = (): boolean => MOVING.has(this.state(b))
+    const moving = (): boolean => MOVING.has(this.state(b)) || this.tasksOf(b).some((t) => t.processing?.manual)
     if (ms <= 0 || !moving()) return
     await new Promise<void>((resolve) => {
       const check = (): void => {

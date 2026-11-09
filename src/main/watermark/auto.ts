@@ -8,10 +8,9 @@ import { AbortError } from '../download/errors'
 import type { AiModel } from './ai/model'
 import type { SpawnHost } from './ai/pool'
 import { refineVideo } from './ai/refine'
-import { AUTO_MIN_SCORE } from './detect'
 import { buildVideoOnlyArgs } from './delogo'
 import { targetKbps, type Encoder } from './encoder'
-import { locateWatermark } from './locate'
+import { isConfident, locateWatermark } from './locate'
 import { probeMedia } from './probe'
 import { encodeWithFallback } from './transcode'
 
@@ -75,7 +74,7 @@ function cached(tmp: string, source: string, method: WatermarkMethod): AutoRemov
  * AI 精修要用的模型还没下载：先下载，进度报成 model 阶段。下载是共用的，取消这个任务只是不再等它，
  * 下载照样继续（下次就不用再下）。返回没能下好的原因，下好了返回 undefined
  */
-async function ensureModel(ai: NonNullable<AutoRemoveInput['ai']>, signal: AbortSignal, onStage: (p: ProcessingInfo) => void): Promise<string | undefined> {
+export async function ensureModel(ai: NonNullable<AutoRemoveInput['ai']>, signal: AbortSignal, onStage: (p: ProcessingInfo) => void): Promise<string | undefined> {
   const listener = (s: AiModelStatus): void => {
     if (s.state === 'downloading') onStage({ stage: 'model', pct: s.size ? Math.min(99.9, Math.round(((s.done ?? 0) / s.size) * 1000) / 10) : 0 })
   }
@@ -93,6 +92,25 @@ async function ensureModel(ai: NonNullable<AutoRemoveInput['ai']>, signal: Abort
   } finally {
     ai.model.off('status', listener)
     signal.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
+ * 只识别、不处理：MCP 提交的下载没选去水印时，合并前顺便看看有没有 B站水印，让 AI 助手知道要不要提醒用户。
+ * 只抽十几帧小图，出错也不影响下载（返回 undefined）；被中止时抛 AbortError
+ */
+export async function detectOnly(i: Pick<AutoRemoveInput, 'source' | 'stream' | 'durationHint' | 'signal'>): Promise<WatermarkState | undefined> {
+  if (HDR_QN.has(i.stream.id) || isDolbyVision(i.stream)) return undefined
+  try {
+    const probe = await probeMedia(i.source, i.signal)
+    const v = probe.video
+    if (!v || v.hdr || v.dolbyVision) return undefined
+    const l = await locateWatermark(i.source, v, probe.duration ?? i.durationHint ?? 0, i.signal)
+    return { width: v.width, height: v.height, detected: l.region, found: isConfident(l) }
+  } catch (e) {
+    if (e instanceof AbortError || i.signal.aborted) throw new AbortError()
+    console.warn('识别水印失败：', e instanceof Error ? e.message : String(e))
+    return undefined
   }
 }
 
@@ -115,11 +133,12 @@ export async function autoRemove(i: AutoRemoveInput): Promise<AutoRemoveResult> 
     if (!v) return { note: WM_NOTE.failed('没找到视频画面') }
     if (v.hdr || v.dolbyVision) return { note: WM_NOTE.hdr }
     const duration = probe.duration ?? i.durationHint ?? 0
-    const { result, region } = await locateWatermark(i.source, v, duration, i.signal)
-    state = { width: v.width, height: v.height, detected: region }
-    if (result.reason === 'few-frames') return { state, note: WM_NOTE.fewFrames }
-    if (result.reason === 'static') return { state, note: WM_NOTE.static }
-    if (!region || result.score < AUTO_MIN_SCORE) return { state, note: WM_NOTE.none }
+    const l = await locateWatermark(i.source, v, duration, i.signal)
+    state = { width: v.width, height: v.height, detected: l.region, found: isConfident(l) }
+    if (l.result.reason === 'few-frames') return { state, note: WM_NOTE.fewFrames }
+    if (l.result.reason === 'static') return { state, note: WM_NOTE.static }
+    if (!isConfident(l)) return { state, note: WM_NOTE.none }
+    const region = l.region
 
     // 先删掉上次崩溃留下的半成品：没退出的旧 ffmpeg 可能还在写它，不能和这次写进同一个文件
     removeQuietly(part)
