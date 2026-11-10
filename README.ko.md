@@ -19,8 +19,6 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | **한국어** | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
-<a href="https://trendshift.io/repositories/347631" target="_blank"><img src="https://trendshift.io/api/badge/repositories/347631" alt="wangzi6224/bili-downloader | Trendshift" width="250" height="55"/></a>
-
 <sub>현재 앱 UI는 중국어 간체만 지원합니다. 이 README에서는 화면의 중국어 표기마다 괄호 안에 한국어 번역을 덧붙였습니다.</sub>
 
 </div>

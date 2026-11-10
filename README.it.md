@@ -19,8 +19,6 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | **Italiano** | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
-<a href="https://trendshift.io/repositories/347631" target="_blank"><img src="https://trendshift.io/api/badge/repositories/347631" alt="wangzi6224/bili-downloader | Trendshift" width="250" height="55"/></a>
-
 <sub>Al momento l'interfaccia dell'app è disponibile solo in cinese semplificato. Questo README riporta ogni voce in cinese con la traduzione italiana.</sub>
 
 </div>
