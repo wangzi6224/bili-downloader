@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "test": "node --test scripts/release.test.mjs scripts/deployment-changes.test.mjs",
+    "test": "node --test scripts/release.test.mjs scripts/deployment-changes.test.mjs scripts/locale.test.mjs",
     "build": "next build",
     "release": "node scripts/release.mjs"
   },

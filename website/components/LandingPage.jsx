@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import BranchExplorer from './BranchExplorer';
 import HeroEffects from './HeroEffects';
+import LanguageToggle from './LanguageToggle';
 import PlatformMark from './PlatformMark';
 import PlatformDownloadLink from './PlatformDownloadLink';
 import SiteIcon from './SiteIcon';
@@ -12,10 +13,12 @@ const RELEASES = REPOSITORY + '/releases/latest';
 const README_ZH = REPOSITORY + '/blob/main/README.zh-CN.md';
 const README_EN = REPOSITORY + '/blob/main/README.md';
 const ASSET_ROOT = '/bili-downloader/media/';
+const DEMO_SOURCE = 'https://www.bilibili.com/video/BV1vU446BEiU';
+const ISSUES = REPOSITORY + '/issues';
 
 function Brand({ locale }) {
   return (
-    <Link className="brand" href={locale === 'zh' ? '/' : '/en/'} aria-label={locale === 'zh' ? 'B站下载器首页' : 'Bili Downloader home'}>
+    <Link className="brand" href={locale === 'zh' ? '/zh/' : '/'} aria-label={locale === 'zh' ? 'B站下载器首页' : 'Bili Downloader home'}>
       <Image src={ASSET_ROOT + 'app-icon.png'} alt="" width={48} height={48} priority unoptimized />
       <span className="brand-text">
         <strong>{locale === 'zh' ? 'B站下载器' : 'Bili Downloader'}</strong>
@@ -46,9 +49,9 @@ export default function LandingPage({ locale }) {
             <a href="#platforms">{copy.navPlatforms}</a>
           </nav>
           <div className="header-actions">
-            <Link className="language-toggle" href={english ? '/' : '/en/'} lang={english ? 'zh-CN' : 'en'}>
+            <LanguageToggle className="language-toggle" to={english ? 'zh' : 'en'}>
               {english ? '中文' : 'EN'}
-            </Link>
+            </LanguageToggle>
             <a className="github-mark-link" href={REPOSITORY} aria-label={english ? 'GitHub repository' : 'GitHub 源代码'} title="GitHub" rel="noreferrer" target="_blank">
               <SiteIcon name="github" size={22} />
             </a>
@@ -200,7 +203,7 @@ export default function LandingPage({ locale }) {
           </div>
         </section>
 
-        <section className="watermark-section" aria-labelledby="watermark-title">
+        <section className="watermark-section" id="watermark" aria-labelledby="watermark-title">
           <div className="watermark-grid shell">
             <div className="watermark-art" role="img" aria-label={copy.watermarkIllustration}>
               <div className="watermark-preview" aria-hidden="true">
@@ -221,6 +224,16 @@ export default function LandingPage({ locale }) {
               <div className="watermark-modes"><span><i className="mode-fast" />{copy.watermarkFast}</span><span><i className="mode-ai" />{copy.watermarkAI}</span></div>
             </div>
           </div>
+          <figure className="watermark-demo shell">
+            <video src={ASSET_ROOT + 'watermark-demo.mp4'} poster={ASSET_ROOT + 'watermark-demo.jpg'} width={1920} height={540} muted autoPlay loop playsInline controls preload="metadata" aria-label={copy.watermarkDemoAlt} />
+            <figcaption>
+              <span>{copy.watermarkDemoCaption}</span>
+              <small>
+                {copy.watermarkDemoSourceLead}<a href={DEMO_SOURCE} rel="noreferrer" target="_blank">{copy.watermarkDemoSourceTitle}</a>{copy.watermarkDemoSourceTail}
+              </small>
+              <small><a href={ISSUES} rel="noreferrer" target="_blank">{copy.watermarkDemoNotice}</a></small>
+            </figcaption>
+          </figure>
         </section>
 
         <section className="platform-section section-pad" id="platforms" aria-labelledby="platform-title">
@@ -260,7 +273,7 @@ export default function LandingPage({ locale }) {
         <div className="shell footer-grid">
           <div className="footer-brand"><Brand locale={locale} /><p>{copy.footerMade}</p></div>
           <div className="footer-notes"><p>{copy.footerDisclaimer}</p><p>{copy.footerInterface}</p><a href={REPOSITORY} rel="noreferrer" target="_blank">wangzi6224 / bili-downloader</a></div>
-          <div className="footer-bottom"><span>© 2026 BILI DOWNLOADER</span><Link href={english ? '/' : '/en/'} lang={english ? 'zh-CN' : 'en'}>{english ? '简体中文' : 'English'}</Link><span>MADE FOR LOCAL USE</span></div>
+          <div className="footer-bottom"><span>© 2026 BILI DOWNLOADER</span><LanguageToggle to={english ? 'zh' : 'en'}>{english ? '简体中文' : 'English'}</LanguageToggle><span>MADE FOR LOCAL USE</span></div>
         </div>
       </footer>
     </>

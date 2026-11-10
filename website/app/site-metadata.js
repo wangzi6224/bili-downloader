@@ -1,3 +1,5 @@
+import { localeUrl, SITE_ORIGIN } from '../lib/locale.mjs';
+
 const metadata = {
   zh: {
     title: 'B站下载器 — 一条链接，长成一座内容树',
@@ -11,17 +13,29 @@ const metadata = {
 
 export function pageMetadata(locale) {
   const copy = metadata[locale];
+  const url = localeUrl(locale);
   return {
+    metadataBase: new URL(SITE_ORIGIN),
     title: copy.title,
     description: copy.description,
     icons: {
       icon: '/bili-downloader/media/app-icon.png',
     },
+    alternates: {
+      canonical: url,
+      languages: {
+        en: localeUrl('en'),
+        'zh-CN': localeUrl('zh'),
+        'x-default': localeUrl('en'),
+      },
+    },
     openGraph: {
       title: copy.title,
       description: copy.description,
+      url,
       type: 'website',
       locale: locale === 'zh' ? 'zh_CN' : 'en_US',
+      alternateLocale: locale === 'zh' ? ['en_US'] : ['zh_CN'],
     },
   };
 }

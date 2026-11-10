@@ -1,6 +1,12 @@
 # Bili Downloader website
 
-The bilingual product site is a static Next.js App Router project. The Chinese page is `/`, and the English page is `/en/`.
+The bilingual product site is a static Next.js App Router project. The English page is `/` (the default) and the Chinese page is `/zh/`; the old `/en/` address redirects to `/`.
+
+Language selection runs in an inline `<head>` script built from `lib/locale.mjs`:
+
+- A language the visitor picked with the header or footer toggle is saved in `localStorage` (`bili-downloader-site-locale`) and always wins.
+- Otherwise `/` reads the browser's primary language: any `zh*` (Simplified or Traditional) goes to `/zh/`, everything else stays in English. The result is cached the same way.
+- `/zh/` only redirects to `/` when English was saved, so search engines (which have no storage) can index both pages.
 
 ```sh
 npm ci
