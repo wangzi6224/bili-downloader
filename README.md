@@ -4,80 +4,73 @@
 
 # Bili Downloader
 
-A desktop app for Windows, macOS and Linux for downloading from bilibili: paste a link to get videos, multi-part videos, collections, anime and movies.
+**Your favorite bilibili videos, saved to your own drive.** Copy a link, paste it, hit download: videos, collections, anime and courses come down in one go, in up to 8K / Dolby Vision, with subtitles, danmaku and chapters saved alongside. Wipe watermarks with AI while you're at it, or let an AI agent do the legwork. Free and open source for Windows, macOS and Linux.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
-![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
-![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
-![Windows x64](https://img.shields.io/badge/Windows-x64-black?logo=windows)
-![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
+[![Stars](https://img.shields.io/github/stars/wangzi6224/bili-downloader?style=flat)](https://github.com/wangzi6224/bili-downloader/stargazers)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
+
+[![Download for macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+[![Download for Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+[![Download for Linux](https://img.shields.io/badge/Linux-AppImage%20%7C%20deb-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+
+**[Website](https://wangzi6224.github.io/bili-downloader/)** · **[Download](https://github.com/wangzi6224/bili-downloader/releases/latest)** · **[Get started](#get-started-in-four-steps)** · **[Let AI do it (MCP)](#let-ai-do-the-downloading-mcp)** · **[FAQ](#faq)**
 
 **English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
+<a href="https://trendshift.io/repositories/347631" target="_blank"><img src="https://trendshift.io/api/badge/repositories/347631" alt="wangzi6224/bili-downloader | Trendshift" width="250" height="55"/></a>
+
+<sub>The app's interface is currently in Simplified Chinese only. This README gives each Chinese label with an English translation.</sub>
+
 </div>
+
+## See it first
+
+**AI watermark removal, before and after**: the original download on the left, AI refine on the right.
+
+https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
+
+<sub>Source: “陈翔六点半：一念贪虚妄，半生困赌局” by the bilibili creator 陈翔六点半. Original video: [https://www.bilibili.com/video/BV1vU446BEiU](https://www.bilibili.com/video/BV1vU446BEiU). All rights belong to the original creator; we encourage you to watch the original on bilibili.<br>This excerpt is used solely to demonstrate the software’s features, for personal study only, and may not be redistributed. If you believe it infringes your rights, please contact us via [Issues](https://github.com/wangzi6224/bili-downloader/issues) and it will be removed promptly.</sub>
 
 <p align="center">
   <img src="docs/screenshots/queue.png" width="49%" alt="Download queue">
   <img src="docs/screenshots/select.png" width="49%" alt="Choosing episodes, quality and extras">
 </p>
 
+## What you get
+
+| | |
+| --- | --- |
+| **Max out the quality** <br> 8K, Dolby Vision, HDR: if your account can watch it, you can download it. Pick AVC / HEVC / AV1, get audio up to Dolby Atmos and Hi-Res FLAC, and keep the original streams with no re-encoding by default. | **Just drop a link** <br> Single videos, multi-part videos, collections, anime, movies, courses, favorites, Watch Later, uploader pages, audio, rankings… whole lists parse in one go, and b23.tv short links and share text work too. |
+| **AI watermark removal** <br> Corner watermarks get spotted automatically, or draw a box yourself; turn on “AI refine” and it repaints what's underneath, frame by frame. | **Subtitles, danmaku, the lot** <br> CC subtitles as `.srt` or embedded in the video, danmaku as `.ass` / `.xml`, plus chapters, covers and NFO for Kodi / Jellyfin. |
+| **Queue it and walk away** <br> Resumable, multi-threaded downloads with speed limits, auto-retry and naming templates; subscribe to uploaders, favorites or collections and new uploads download themselves. | **Let AI do it for you** <br> A built-in local MCP server lets Claude and other AI clients search, parse links, queue downloads, remove watermarks and keep an eye on progress. |
+
 > [!NOTE]
 > This is an unofficial project and is not affiliated with or endorsed by bilibili. Only download content your own account is allowed to watch, for personal use, and respect the rights of creators and bilibili's terms of service.
 
-## Features
+## Get started in four steps
 
-### Supported links
+1. **Download** the installer for your system from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest):
 
-- Videos (BV / av), multi-part videos, collections, anime and movies (ep / ss / md), and paid courses
-- Favorites folders, Watch Later, an uploader's videos, collections and series (with keyword filtering)
-- Audio tracks and audio playlists (au / am), Weekly Must-Watch, and the popularity rankings by category
-- Short links (b23.tv and others) and share text that has the title mixed in with the link
-- Parse several links at once, and load paged lists (favorites, uploader pages) page by page
+   | System | File |
+   | --- | --- |
+   | macOS, Apple Silicon (M1 and later) | `bili-downloader-<version>-arm64.dmg` |
+   | macOS, Intel | `bili-downloader-<version>-x64.dmg` |
+   | Windows x64 | `bili-downloader-<version>-x64.exe` |
+   | Linux x64 | `bili-downloader-<version>-x86_64.AppImage` or `bili-downloader-<version>-amd64.deb` |
 
-### Quality and formats
+2. **Sign in** to your bilibili account (see [Signing in](#signing-in-and-privacy)). The app needs an account to parse links.
+3. **Paste a link.** The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> on Windows and Linux) in the input box and click **解析** (Parse).
+4. **Pick and download.** Choose the items (select all, invert, <kbd>Shift</kbd>-click a range, or filter by title or index such as `1-5,7`), set the quality, output type and extras, then click **下载** (Download).
 
-- The quality list comes from the API (8K / Dolby Vision / HDR / 4K / 1080P60 / …), with premium-only (大会员) tiers marked
-- Codec priority AVC / HEVC / AV1, with audio up to Dolby Atmos and Hi-Res lossless FLAC
-- Full video, audio only, or video only; MP4 or MKV
-- By default ffmpeg copies the streams straight into the output file with no re-encoding; the video is re-encoded only when watermark removal is on
-
-### Extras
-
-- Cover: save it as an image and/or embed it in the file
-- CC subtitles: save them as `.srt` and/or embed them in the video
-- Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
-- The chapter markers on bilibili's progress bar, written as real chapters
-- NFO metadata for Kodi / Jellyfin media libraries
-- Watermark removal: detect the watermark in a corner of the frame and remove it automatically (re-encodes the video; HDR and Dolby Vision are skipped), or drag a box over it on a finished download; both the download options and the manual tool offer “AI refine”, which repaints what is under the watermark frame by frame with an AI model — much cleaner than the default fast mode — and shows an estimated time before it starts (GPU-accelerated when available; the ~200 MB model is downloaded on first use). A “Remove watermark after download” switch above the download list changes the mode at any time
-
-### Queue and network
-
-- Adjustable concurrency, multi-threaded segmented downloads, speed limit, automatic retry on network errors
-- Pause, resume, and resume after a restart; clear notes for tasks that cannot be downloaded
-- Proxy: direct, system, or manual; pick the fastest bilibili CDN node with a built-in latency test
-- Optionally keep the computer (or the display) awake while downloading, and send a notification when the queue finishes
-
-### Organizing and automation
-
-- Naming templates with variables (`{title}`, `{series}`, `{index:03}`, `{pubdate:YYYY-MM-DD}`, …), optional segments and folder levels, set separately for single videos, collections and anime
-- Spots items you have already downloaded, and asks / skips / downloads again
-- Subscriptions: check favorites, collections or uploaders on a schedule and download new items automatically
-- Parse history, clipboard watching, light / dark theme, run in the background, import / export settings
-- In-app updates from GitHub Releases, with release notes and an option to skip a version
-
-### AI integration
-
-- A local [MCP](https://modelcontextprotocol.io) server lets AI clients such as Claude sign in, search videos, read their details, parse links, queue downloads and check progress (see **MCP server** below)
+You can also type these keywords instead of a link: `稍后再看` or `watchlater` (Watch Later), `每周必看` (Weekly Must-Watch), `排行榜` (rankings).
 
 ## Installation
 
 ### macOS
 
-1. Download the latest `.dmg` from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest):
-   - Apple Silicon (M1 and later): `bili-downloader-<version>-arm64.dmg`
-   - Intel: `bili-downloader-<version>-x64.dmg`
+1. Download the latest `.dmg` from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest): `arm64` for Apple Silicon, `x64` for Intel.
 2. Open the dmg and drag **B站下载器** into **Applications**.
 3. The app is ad-hoc signed but not notarized, so macOS blocks it the first time. Try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. (Since macOS 15, right-click → Open no longer works.) Alternatively, run:
 
@@ -93,7 +86,8 @@ Download `bili-downloader-<version>-x64.exe` from [Releases](https://github.com/
 
 ### Linux
 
-Download one of these from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) (64-bit x86 only):
+<details>
+<summary>AppImage or deb (64-bit x86 only)</summary>
 
 - **AppImage** (any distribution, updates itself): `bili-downloader-<version>-x86_64.AppImage`. Make it executable and run it:
 
@@ -107,37 +101,39 @@ Download one of these from [Releases](https://github.com/wangzi6224/bili-downloa
 
 When the window is closed to the background, click the tray icon to bring it back. On GNOME this needs the AppIndicator extension (Ubuntu ships it by default). The menu bar is hidden; press <kbd>Alt</kbd> to show it.
 
+</details>
+
 ### Updates
 
 Once installed, the app checks for updates itself. The macOS app, Windows installer and Linux AppImage install updates in place; the deb version shows the release notes and points you to the download page.
 
-The interface is currently available in Simplified Chinese only; the labels mentioned below are given in Chinese with an English translation.
+## AI watermark removal
 
-## Quick start
+Uploader watermark stuck in the corner? There are two ways to get rid of it:
 
-1. Sign in to your bilibili account (see **Signing in** below). The app needs an account to parse links.
-2. Copy a bilibili link. The app picks it up from the clipboard when you switch back to it, or press <kbd>⌘</kbd><kbd>V</kbd> (<kbd>Ctrl</kbd><kbd>V</kbd> on Windows and Linux) in the input box and click **解析** (Parse).
-3. Choose the items to download. Select all, invert the selection, <kbd>Shift</kbd>-click to select a range, or filter by title or by index (e.g. `1-5,7`).
-4. Pick the quality, output type and extras, then click **下载** (Download).
+| Mode | How it works | Best for |
+| --- | --- | --- |
+| **Fast** (default) | Finds the watermark in a corner and fills it in from the surrounding pixels with ffmpeg's `delogo` | Quick results, static backgrounds |
+| **AI refine** (AI 精修) | Repaints what is under the watermark frame by frame with the [LaMa](https://github.com/advimman/lama) inpainting model | Much cleaner results, moving scenes |
 
-You can also type these keywords instead of a link: `稍后再看` or `watchlater` (Watch Later), `每周必看` (Weekly Must-Watch), `排行榜` (rankings).
+- Turn it on in the download options, or with the **下载后去水印** (Remove watermark after download) switch above the download list, which you can change at any time.
+- For a finished download, drag a box over the watermark and remove it by hand.
+- AI refine shows an estimated time before it starts and uses the GPU when one is available. The model (~200 MB) is not in the installer; it is downloaded the first time you use AI refine and checked against its SHA-256.
+- Removing a watermark re-encodes the video. HDR and Dolby Vision videos are skipped.
 
-## Signing in
+## Let AI do the downloading (MCP)
 
-Logging in gives you the qualities and content your own account has access to (1080P and above, premium content). There are three ways to do it:
+Switch on the app's local [Model Context Protocol](https://modelcontextprotocol.io) server and AI clients like Claude can search bilibili, queue downloads and track progress for you. Once it's set up, just say what you want:
 
-- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Opera, Chromium, Firefox or Safari (macOS only).
-  - macOS protects the data of Chrome, Edge, Brave and Safari, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
-  - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
-  - On Windows, Chromium-based browsers lock their cookie database while running, so quit the browser completely (including any background process) before importing. Cookies written by Chrome 127 or later use app-bound encryption and cannot be imported; if the login cookie is one of them, use in-app sign-in or paste a cookie string instead.
-- **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
-- **手动粘贴 Cookie** (Paste cookies): a semicolon-separated cookie string, or the JSON exported by a browser extension.
+> Search bilibili for “Blender tutorial” videos between 30 and 60 minutes long, pick the five with the most plays, and download them as one batch.
 
-The app checks the login state on launch, when you return to the window, while parsing, and whenever the API reports an expired session. If the login has expired, it asks you to sign in again, pauses fetching new streams, and resumes the queue once you are back. Signing out only clears the app's own cookies. It does not sign you out of your browser.
+The agent calls `search_videos` to find candidates, `download_batch` with the five videos to queue them as one batch, and `get_batch_status` to follow the progress until it is done.
 
-## MCP server
+> Download every video in this collection that I don't have yet, then remove the watermarks with AI refine: https://space.bilibili.com/…
 
-The app can run a local [Model Context Protocol](https://modelcontextprotocol.io) server so that AI clients can work with your download queue.
+Here the agent uses `parse_link` to expand the collection, `download_batch` (already-downloaded items are skipped), `get_batch_status` to see which files carry a watermark and how long removal would take, and `remove_watermark` to clean them.
+
+### Setup
 
 1. Go to **设置 → 网络与高级 → MCP 服务** (Settings → Network & Advanced → MCP server) and turn it on.
 2. Use the buttons in the same section to copy the client configuration (JSON) or the Claude Code command, which already include your access token.
@@ -158,11 +154,14 @@ The app can run a local [Model Context Protocol](https://modelcontextprotocol.io
 claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --header "Authorization: Bearer <your-token>"
 ```
 
+<details>
+<summary>All MCP tools</summary>
+
 | Tool | Description |
 | --- | --- |
 | `get_status` | Login and premium (大会员) status, queue summary, free space in the download folder, and anything that needs attention. Call it first |
 | `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…); lists are paged through automatically. Item ids are stable; results can be read in pages and multi-part videos expanded |
-| `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice Pass `videos` to submit several videos, such as search results, as one batch |
+| `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice. Pass `videos` to submit several videos, such as search results, as one batch |
 | `get_batch_status` | Batch progress: counts per status, speed, estimated time left, actual quality, failure reasons, plus which videos carry a Bilibili watermark and how long each removal mode would take. `wait_seconds` waits for changes |
 | `list_batches` | Recently submitted batches |
 | `list_tasks` | List tasks page by page, filtered by batch, status or title |
@@ -177,9 +176,136 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | Sign in when the app is not logged in: imports the login from the user's browser (Chrome first, using whichever browser is readable), or opens the login window for a QR scan with `method=qr` |
 | `get_login_status` | Follows the login, or lists the browsers on this computer. With `wait_seconds` it returns the moment the login succeeds, which is how the agent learns the scan is done |
 
-Cookies stay inside the app and are never returned to the AI client. `start_login` does nothing if the app is already logged in, so an agent cannot switch accounts. If a browser must be closed first (Windows locks the cookie database while the browser runs), the app asks you in a dialog and only you can approve it.
+</details>
 
 The server listens only on `127.0.0.1` (the port is configurable), requires the Bearer token, and checks the `Host` / `Origin` headers to prevent DNS rebinding. You can regenerate the token at any time.
+
+## Full feature list
+
+<details>
+<summary>Supported links</summary>
+
+- Videos (BV / av), multi-part videos, collections, anime and movies (ep / ss / md), and paid courses
+- Favorites folders, Watch Later, an uploader's videos, collections and series (with keyword filtering)
+- Audio tracks and audio playlists (au / am), Weekly Must-Watch, and the popularity rankings by category
+- Short links (b23.tv and others) and share text that has the title mixed in with the link
+- Parse several links at once, and load paged lists (favorites, uploader pages) page by page
+
+</details>
+
+<details>
+<summary>Quality and formats</summary>
+
+- The quality list comes from the API (8K / Dolby Vision / HDR / 4K / 1080P60 / …), with premium-only (大会员) tiers marked
+- Codec priority AVC / HEVC / AV1, with audio up to Dolby Atmos and Hi-Res lossless FLAC
+- Full video, audio only, or video only; MP4 or MKV
+- By default ffmpeg copies the streams straight into the output file with no re-encoding; the video is re-encoded only when watermark removal is on
+
+</details>
+
+<details>
+<summary>Extras</summary>
+
+- Cover: save it as an image and/or embed it in the file
+- CC subtitles: save them as `.srt` and/or embed them in the video
+- Danmaku (bullet comments) as `.ass` and/or `.xml`, with adjustable font size, opacity and duration
+- The chapter markers on bilibili's progress bar, written as real chapters
+- NFO metadata for Kodi / Jellyfin media libraries
+- Watermark removal, fast or with AI refine (see [AI watermark removal](#ai-watermark-removal))
+
+</details>
+
+<details>
+<summary>Queue and network</summary>
+
+- Adjustable concurrency, multi-threaded segmented downloads, speed limit, automatic retry on network errors
+- Pause, resume, and resume after a restart; clear notes for tasks that cannot be downloaded
+- Proxy: direct, system, or manual; pick the fastest bilibili CDN node with a built-in latency test
+- Optionally keep the computer (or the display) awake while downloading, and send a notification when the queue finishes
+
+</details>
+
+<details>
+<summary>Organizing and automation</summary>
+
+- Naming templates with variables (`{title}`, `{series}`, `{index:03}`, `{pubdate:YYYY-MM-DD}`, …), optional segments and folder levels, set separately for single videos, collections and anime
+- Spots items you have already downloaded, and asks / skips / downloads again
+- Subscriptions: check favorites, collections or uploaders on a schedule and download new items automatically
+- Parse history, clipboard watching, light / dark theme, run in the background, import / export settings
+- In-app updates from GitHub Releases, with release notes and an option to skip a version
+
+</details>
+
+## Signing in and privacy
+
+Sign in and you can download every quality and video your account can watch, including 1080P and above and premium content. Pick whichever of the three ways suits you:
+
+- **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Opera, Chromium, Firefox or Safari (macOS only).
+  - macOS protects the data of Chrome, Edge, Brave and Safari, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
+  - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
+  - On Windows, Chromium-based browsers lock their cookie database while running, so quit the browser completely (including any background process) before importing. Cookies written by Chrome 127 or later use app-bound encryption and cannot be imported; if the login cookie is one of them, use in-app sign-in or paste a cookie string instead.
+- **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
+- **手动粘贴 Cookie** (Paste cookies): a semicolon-separated cookie string, or the JSON exported by a browser extension.
+
+The app checks the login state on launch, when you return to the window, while parsing, and whenever the API reports an expired session. If the login has expired, it asks you to sign in again, pauses fetching new streams, and resumes the queue once you are back. Signing out only clears the app's own cookies. It does not sign you out of your browser.
+
+**Where your data goes**
+
+- Your bilibili cookies are kept in the app's own data folder and are only sent to bilibili. They are never returned to AI clients over MCP.
+- Downloads, merging and watermark removal all run locally. There is no sign-up, no telemetry and no server of ours in between.
+- Besides bilibili, the app only contacts GitHub (to check for updates) and ModelScope or Hugging Face (to download the AI refine model once).
+- Over MCP, `start_login` does nothing if the app is already logged in, so an agent cannot switch accounts. If a browser must be closed first (Windows locks the cookie database while the browser runs), the app asks you in a dialog and only you can approve it.
+
+## FAQ
+
+<details>
+<summary>Can I use it without signing in?</summary>
+
+No. The app needs you to sign in before it can parse links, and the qualities you get are the ones your account can watch.
+
+</details>
+
+<details>
+<summary>Why can't I choose 1080P / 4K / 8K?</summary>
+
+The quality list comes straight from bilibili for your account. Higher tiers (1080P+ high bitrate, 4K, 8K, HDR, Dolby Vision) usually need a premium (大会员) account, and not every video is uploaded in every quality.
+
+</details>
+
+<details>
+<summary>macOS says the app can't be opened. Now what?</summary>
+
+The app is not notarized by Apple. Open it once, then click **Open Anyway** in **System Settings → Privacy & Security**, or run the `xattr` command in [Installation](#macos).
+
+</details>
+
+<details>
+<summary>Windows says “Windows protected your PC”. What do I do?</summary>
+
+The installer is not code-signed. Click **More info → Run anyway**.
+
+</details>
+
+<details>
+<summary>Why does a task say 无法下载 (cannot be downloaded)?</summary>
+
+DRM-protected content, region-locked content, and content your account is not allowed to watch cannot be downloaded. The task shows the reason.
+
+</details>
+
+<details>
+<summary>Why is watermark removal so slow?</summary>
+
+AI refine repaints every frame, so it is much slower than the fast mode, especially without a GPU. The app shows an estimated time before it starts; use the fast mode when speed matters more than quality.
+
+</details>
+
+<details>
+<summary>Is the app available in English?</summary>
+
+Not yet. The interface is currently in Simplified Chinese only; this README translates every label it mentions.
+
+</details>
 
 ## Limitations
 
@@ -218,11 +344,12 @@ src/main/subscriptions.ts   Subscriptions
 src/shared                  Types, link parsing and naming templates shared by all processes
 src/renderer                User interface (React + Tailwind CSS + zustand)
 scripts                     Fetch ffmpeg, generate icons, publish releases
+website                     Product website (Next.js, deployed to GitHub Pages)
 ```
 
 ## Contributing
 
-Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. Enjoying it? Drop a ⭐ so more people can find it.
 
 ## Acknowledgements
 

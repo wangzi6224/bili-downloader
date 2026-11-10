@@ -4,80 +4,71 @@
 
 # B站下载器
 
-粘贴 B站链接，就能下载视频、分P、合集、番剧和电影的桌面应用，支持 Windows、macOS 和 Linux。
+**喜欢的 B站内容，存进自己的硬盘。** 复制链接、粘贴、下载：视频、合集、番剧、课程一把带走，最高 8K / 杜比视界，字幕、弹幕、章节也能一起存。顺手 AI 去个水印，或者干脆让 AI Agent 替你跑腿。免费开源，Windows、macOS、Linux 都能用。
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
-![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black?logo=apple)
-![Apple Silicon | Intel](https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-blue)
-![Windows x64](https://img.shields.io/badge/Windows-x64-black?logo=windows)
-![Linux x64](https://img.shields.io/badge/Linux-x64-black?logo=linux)
+[![Stars](https://img.shields.io/github/stars/wangzi6224/bili-downloader?style=flat)](https://github.com/wangzi6224/bili-downloader/stargazers)
 [![License: MIT](https://img.shields.io/github/license/wangzi6224/bili-downloader)](LICENSE)
+
+[![下载 macOS 版](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+[![下载 Windows 版](https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+[![下载 Linux 版](https://img.shields.io/badge/Linux-AppImage%20%7C%20deb-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/wangzi6224/bili-downloader/releases/latest)
+
+**[官网](https://wangzi6224.github.io/bili-downloader/zh/)** · **[下载](https://github.com/wangzi6224/bili-downloader/releases/latest)** · **[四步开下](#四步开下)** · **[让 AI 帮你下](#让-ai-帮你下mcp)** · **[常见问题](#常见问题)**
 
 [English](README.md) | **简体中文** | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
+<a href="https://trendshift.io/repositories/347631" target="_blank"><img src="https://trendshift.io/api/badge/repositories/347631" alt="wangzi6224/bili-downloader | Trendshift" width="250" height="55"/></a>
+
 </div>
+
+## 先看效果
+
+**AI 去水印前后对比**：左边是刚下下来的原片，右边是 AI 精修之后。
+
+https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
+
+<sub>素材来源：哔哩哔哩 UP 主「陈翔六点半」作品《陈翔六点半：一念贪虚妄，半生困赌局》，原视频地址：[https://www.bilibili.com/video/BV1vU446BEiU](https://www.bilibili.com/video/BV1vU446BEiU)。版权归原作者所有，欢迎前往观看正版。<br>本片段仅用于演示软件功能，仅供个人学习交流，禁止传播。如有侵权，请通过 [Issues](https://github.com/wangzi6224/bili-downloader/issues) 与我们联系，我们将及时删除。</sub>
 
 <p align="center">
   <img src="docs/screenshots/queue.png" width="49%" alt="下载队列">
   <img src="docs/screenshots/select.png" width="49%" alt="选择剧集、清晰度和附加内容">
 </p>
 
+## 它能帮你做什么
+
+| | |
+| --- | --- |
+| **画质拉满** <br> 8K、杜比视界、HDR，账号能看什么就能下什么。AVC / HEVC / AV1 随你挑，音轨最高杜比全景声和 Hi-Res 无损 FLAC，默认原样封装、不重新编码。 | **丢个链接就行** <br> 单个视频、分P、合集、番剧、电影、课程、收藏夹、稍后再看、UP 主投稿、音频、排行榜……整个列表一次解析，b23.tv 短链和分享文案也认。 |
+| **AI 去水印** <br> 角落水印自动识别，也能自己框；打开“AI 精修”，逐帧把水印下面的画面补回来。 | **字幕弹幕全都要** <br> CC 字幕存成 `.srt` 或直接写进视频，弹幕存成 `.ass` / `.xml`，还有章节、封面，以及给 Kodi / Jellyfin 用的 NFO。 |
+| **挂着就能下完** <br> 断点续传、多线程分段、限速、自动重试、命名模板；订阅喜欢的 UP 主、收藏夹或合集，有新投稿自动下。 | **让 AI 替你下** <br> 内置本地 MCP 服务，Claude 等 AI 客户端可以帮你搜视频、解析链接、排队下载、去水印、盯进度。 |
+
 > [!NOTE]
 > 本项目是非官方工具，与哔哩哔哩无关，也未获其认可。请只下载你本人账号有权观看的内容，仅用于个人用途，并尊重创作者的权益和 B站的用户协议。
 
-## 功能
+## 四步开下
 
-### 支持的链接
+1. **下载**：从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载对应系统的安装包：
 
-- 普通视频（BV / av）、分P、合集、番剧和电影（ep / ss / md）、付费课程
-- 收藏夹、稍后再看、UP 主的投稿、合集和系列（可按关键词筛选）
-- 音频和歌单（au / am）、每周必看、各分区排行榜
-- b23.tv 等短链，以及夹带标题的分享文案
-- 一次解析多个链接；收藏夹、UP 主投稿等分页列表可以逐页加载
+   | 系统 | 文件 |
+   | --- | --- |
+   | macOS，Apple 芯片（M1 及以后） | `bili-downloader-<version>-arm64.dmg` |
+   | macOS，Intel 芯片 | `bili-downloader-<version>-x64.dmg` |
+   | Windows x64 | `bili-downloader-<version>-x64.exe` |
+   | Linux x64 | `bili-downloader-<version>-x86_64.AppImage` 或 `bili-downloader-<version>-amd64.deb` |
 
-### 清晰度与格式
+2. **登录** B站账号（见下文 [登录与隐私](#登录与隐私)）。应用要登录后才能解析链接。
+3. **粘贴链接**：切回应用时会自动识别剪贴板，也可以在输入框里按 <kbd>⌘</kbd><kbd>V</kbd>（Windows 和 Linux 上为 <kbd>Ctrl</kbd><kbd>V</kbd>）粘贴后点 **解析**。
+4. **选择并下载**：勾选要下载的条目（支持全选、反选、<kbd>Shift</kbd> 连选，以及按标题或序号如 `1-5,7` 筛选），选好清晰度、下载内容和附加内容，点 **下载**。
 
-- 清晰度列表来自接口（8K / 杜比视界 / HDR / 4K / 1080P60 …），标出需要大会员的档位
-- 编码优先级可选 AVC / HEVC / AV1；音轨最高支持杜比全景声和 Hi-Res 无损 FLAC
-- 完整视频、仅音频或仅视频；封装为 MP4 或 MKV
-- 默认用 ffmpeg 直接复制流合并，不重新编码；只有开启去水印时才重新编码视频
-
-### 附加内容
-
-- 封面：另存为图片，或写入文件
-- CC 字幕：另存为 `.srt`，或写入视频
-- 弹幕：`.ass` 和 / 或 `.xml`，字号、不透明度、停留时间可调
-- 把 B站进度条上的分段写成真正的章节
-- 为 Kodi / Jellyfin 媒体库生成 NFO 元数据
-- 去水印：自动识别画面角落的水印并去掉（会重新编码视频，HDR 和杜比视界不处理），也可以在下载好的视频上手动框选；下载选项和手动处理时都可以选“AI 精修”，用 AI 模型逐帧补出水印下面的画面，比默认的快速方式清楚得多，开始前会给出预计耗时（有显卡时用显卡加速，模型约 200 MB，第一次使用时下载）；下载列表上方有“下载后去水印”的开关，可以随时切换
-
-### 下载队列与网络
-
-- 并发数、单文件分段多线程、限速、网络错误自动重试均可调
-- 暂停、继续、断点续传（重启后仍可续传）；无法下载的任务写明原因
-- 代理：直连、系统代理或手动设置；内置测速，可选择最快的 B站 CDN 节点
-- 下载期间可以阻止系统睡眠或保持屏幕常亮，队列全部完成后发系统通知
-
-### 整理与自动化
-
-- 命名模板：支持变量（`{title}`、`{series}`、`{index:03}`、`{pubdate:YYYY-MM-DD}` …）、可选段和目录层级，单个视频、合集和番剧分别设置
-- 识别已经下载过的内容，可选询问、跳过或重新下载
-- 订阅：定期检查收藏夹、合集、UP 主等来源，有新内容就自动下载
-- 解析记录、剪贴板监听、浅色 / 深色主题、后台运行、设置导入导出
-- 应用内更新：从 GitHub Releases 获取新版本，显示更新说明，可以跳过某个版本
-
-### AI 集成
-
-- 本地 [MCP](https://modelcontextprotocol.io) 服务，让 Claude 等 AI 客户端登录、搜索视频、查看视频信息、解析链接、创建下载、查看进度（见下文 **MCP 服务**）
+也可以直接输入这些关键词代替链接：`稍后再看` 或 `watchlater`、`每周必看`、`排行榜`。
 
 ## 安装
 
 ### macOS
 
-1. 从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载最新的 `.dmg`：
-   - Apple 芯片（M1 及以后）：`bili-downloader-<version>-arm64.dmg`
-   - Intel 芯片：`bili-downloader-<version>-x64.dmg`
+1. 从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载最新的 `.dmg`：Apple 芯片选 `arm64`，Intel 芯片选 `x64`。
 2. 打开 dmg，把 **B站下载器** 拖到 **应用程序**。
 3. 应用使用 ad-hoc 签名、没有公证，第一次打开会被 macOS 拦截。先尝试打开一次，再到 **系统设置 → 隐私与安全性** 里点 **仍要打开**（macOS 15 起右键 →“打开”已不再有效）。也可以在终端运行：
 
@@ -93,7 +84,8 @@
 
 ### Linux
 
-从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载以下任意一种（仅支持 64 位 x86）：
+<details>
+<summary>AppImage 或 deb（仅支持 64 位 x86）</summary>
 
 - **AppImage**（各发行版通用，可自动更新）：`bili-downloader-<version>-x86_64.AppImage`。添加可执行权限后运行：
 
@@ -107,37 +99,39 @@
 
 关闭窗口转入后台运行后，点击托盘图标即可重新打开。GNOME 桌面需要 AppIndicator 扩展才能显示托盘图标（Ubuntu 默认已自带）。菜单栏默认隐藏，按 <kbd>Alt</kbd> 键显示。
 
+</details>
+
 ### 更新
 
 安装后应用会自动检查更新。macOS 版、Windows 安装器和 Linux 的 AppImage 版可以直接下载安装新版本；deb 版会显示更新说明，并引导你前往下载页面。
 
-界面目前只有简体中文。
+## AI 去水印
 
-## 快速上手
+视频角落挂着 UP 主水印，看着碍眼？两种去法任你选：
 
-1. 登录 B站账号（见下文 **登录**）。应用需要登录后才能解析链接。
-2. 复制 B站链接。切回应用时会自动识别剪贴板，也可以在输入框里按 <kbd>⌘</kbd><kbd>V</kbd>（Windows 和 Linux 上为 <kbd>Ctrl</kbd><kbd>V</kbd>）粘贴后点 **解析**。
-3. 勾选要下载的条目：支持全选、反选、<kbd>Shift</kbd> 连选，以及按标题或序号（如 `1-5,7`）筛选。
-4. 选择清晰度、下载内容和附加内容，点 **下载**。
+| 模式 | 原理 | 适合 |
+| --- | --- | --- |
+| **快速**（默认） | 识别角落的水印，用 ffmpeg 的 `delogo` 按周围像素填补 | 要快、背景比较静止 |
+| **AI 精修** | 用 [LaMa](https://github.com/advimman/lama) 修补模型逐帧补出水印下面的画面 | 效果干净得多，画面运动多 |
 
-也可以直接输入这些关键词代替链接：`稍后再看` 或 `watchlater`、`每周必看`、`排行榜`。
+- 在下载选项里开启，或者用下载列表上方的 **下载后去水印** 开关，随时切换。
+- 已经下载好的视频，可以手动框选水印位置再去除。
+- AI 精修开始前会给出预计耗时，有显卡时用显卡加速。模型约 200 MB，不随安装包分发，第一次使用时下载并校验 SHA-256。
+- 去水印会重新编码视频；HDR 和杜比视界视频不处理。
 
-## 登录
+## 让 AI 帮你下（MCP）
 
-登录后才能拿到你自己账号可以观看的清晰度和内容（1080P 及以上、大会员内容）。有三种方式：
+打开应用里的本地 [Model Context Protocol](https://modelcontextprotocol.io) 服务，Claude 等 AI 客户端就能替你搜视频、排队下载、盯进度。配好之后，跟 AI 说一句话就行，比如：
 
-- **从浏览器导入**：复用 Chrome、Edge、Brave、Arc（仅 macOS）、Vivaldi、Opera、Chromium、Firefox 或 Safari（仅 macOS）里的登录 cookie。
-  - Chrome、Edge、Brave、Safari 的数据受 macOS 隐私保护，需要先在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里打开本应用并重启应用；导入 Chromium 系浏览器时还会弹出钥匙串授权。
-  - 在 Linux 上，Chromium 系浏览器把 cookie 加密密钥存放在系统密钥环（GNOME Keyring / libsecret）里。应用通过 `secret-tool` 读取密钥（用 `sudo apt install libsecret-tools` 安装），密钥环可能会弹窗要求解锁。也支持 Snap 和 Flatpak 安装的 Firefox，以及 Snap 版 Chromium。
-  - 在 Windows 上，Chrome 系浏览器运行时会锁住 Cookie 数据库，导入前请完全退出浏览器（包括后台运行的）。Chrome 127 起新写入的 Cookie 使用应用绑定加密，无法导入；登录 Cookie 也是这种时，请改用应用内登录或手动粘贴 Cookie。
-- **在应用内登录**：打开 B站官方登录页，支持扫码、密码和短信登录。
-- **手动粘贴 Cookie**：分号分隔的 cookie 字符串，或浏览器插件导出的 JSON。
+> 在 B站搜索时长 30～60 分钟的“Blender 教程”，挑播放量最高的 5 个，作为一个批次下载。
 
-启动、切回窗口、解析链接以及接口返回登录失效时，应用都会检查登录状态。登录过期后会弹出登录对话框，下载队列暂停取流，重新登录后自动继续。退出登录只清除应用自己的 cookie，不会把浏览器里的登录一起退出。
+Agent 会先用 `search_videos` 找到候选视频，再用 `download_batch` 把这 5 个视频作为一个批次加入下载，最后用 `get_batch_status` 跟踪进度直到完成。
 
-## MCP 服务
+> 把这个合集里我还没下载的视频都下载下来，下完用 AI 精修去水印：https://space.bilibili.com/…
 
-应用可以开启一个本地 [Model Context Protocol](https://modelcontextprotocol.io) 服务，让 AI 客户端操作下载队列。
+这里 Agent 会用 `parse_link` 展开合集，用 `download_batch` 加入下载（已下载的自动跳过），用 `get_batch_status` 查看哪些文件有水印、去水印要多久，再用 `remove_watermark` 去除。
+
+### 怎么配置
 
 1. 在 **设置 → 网络与高级 → MCP 服务** 里打开 **开启 MCP 服务**。
 2. 用同一区域的按钮复制客户端配置（JSON）或 Claude Code 命令，里面已经带好访问令牌。
@@ -158,6 +152,9 @@
 claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --header "Authorization: Bearer <your-token>"
 ```
 
+<details>
+<summary>全部 MCP 工具</summary>
+
 | 工具 | 说明 |
 | --- | --- |
 | `get_status` | 登录和大会员状态、队列汇总、下载目录剩余空间和需要注意的提示，建议第一个调用 |
@@ -177,9 +174,136 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | 应用没有登录时用它登录：导入用户浏览器里的登录信息（Chrome 优先，先用能直接读到的），或用 `method=qr` 弹出登录窗口扫码 |
 | `get_login_status` | 跟踪登录进度，或列出本机的浏览器。带 `wait_seconds` 时登录成功的那一刻立即返回，Agent 由此知道扫码完成 |
 
-Cookie 只保存在应用里，不会返回给 AI 客户端。已经登录时 `start_login` 什么都不做，Agent 不能切换账号。需要先关闭浏览器时（Windows 上浏览器运行时会锁住 Cookie 数据库），应用会弹窗询问，只有你本人能同意。
+</details>
 
 服务只监听 `127.0.0.1`（端口可改），必须带 Bearer 令牌，并校验 `Host` / `Origin` 以防 DNS 重绑定。令牌可以随时重新生成。
+
+## 完整功能清单
+
+<details>
+<summary>支持的链接</summary>
+
+- 普通视频（BV / av）、分P、合集、番剧和电影（ep / ss / md）、付费课程
+- 收藏夹、稍后再看、UP 主的投稿、合集和系列（可按关键词筛选）
+- 音频和歌单（au / am）、每周必看、各分区排行榜
+- b23.tv 等短链，以及夹带标题的分享文案
+- 一次解析多个链接；收藏夹、UP 主投稿等分页列表可以逐页加载
+
+</details>
+
+<details>
+<summary>清晰度与格式</summary>
+
+- 清晰度列表来自接口（8K / 杜比视界 / HDR / 4K / 1080P60 …），标出需要大会员的档位
+- 编码优先级可选 AVC / HEVC / AV1；音轨最高支持杜比全景声和 Hi-Res 无损 FLAC
+- 完整视频、仅音频或仅视频；封装为 MP4 或 MKV
+- 默认用 ffmpeg 直接复制流合并，不重新编码；只有开启去水印时才重新编码视频
+
+</details>
+
+<details>
+<summary>附加内容</summary>
+
+- 封面：另存为图片，或写入文件
+- CC 字幕：另存为 `.srt`，或写入视频
+- 弹幕：`.ass` 和 / 或 `.xml`，字号、不透明度、停留时间可调
+- 把 B站进度条上的分段写成真正的章节
+- 为 Kodi / Jellyfin 媒体库生成 NFO 元数据
+- 去水印：快速去除或 AI 精修（见 [AI 去水印](#ai-去水印)）
+
+</details>
+
+<details>
+<summary>下载队列与网络</summary>
+
+- 并发数、单文件分段多线程、限速、网络错误自动重试均可调
+- 暂停、继续、断点续传（重启后仍可续传）；无法下载的任务写明原因
+- 代理：直连、系统代理或手动设置；内置测速，可选择最快的 B站 CDN 节点
+- 下载期间可以阻止系统睡眠或保持屏幕常亮，队列全部完成后发系统通知
+
+</details>
+
+<details>
+<summary>整理与自动化</summary>
+
+- 命名模板：支持变量（`{title}`、`{series}`、`{index:03}`、`{pubdate:YYYY-MM-DD}` …）、可选段和目录层级，单个视频、合集和番剧分别设置
+- 识别已经下载过的内容，可选询问、跳过或重新下载
+- 订阅：定期检查收藏夹、合集、UP 主等来源，有新内容就自动下载
+- 解析记录、剪贴板监听、浅色 / 深色主题、后台运行、设置导入导出
+- 应用内更新：从 GitHub Releases 获取新版本，显示更新说明，可以跳过某个版本
+
+</details>
+
+## 登录与隐私
+
+登录之后，你的账号能看的清晰度和内容（1080P 及以上、大会员内容）都能下。三种登录方式，挑顺手的：
+
+- **从浏览器导入**：复用 Chrome、Edge、Brave、Arc（仅 macOS）、Vivaldi、Opera、Chromium、Firefox 或 Safari（仅 macOS）里的登录 cookie。
+  - Chrome、Edge、Brave、Safari 的数据受 macOS 隐私保护，需要先在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里打开本应用并重启应用；导入 Chromium 系浏览器时还会弹出钥匙串授权。
+  - 在 Linux 上，Chromium 系浏览器把 cookie 加密密钥存放在系统密钥环（GNOME Keyring / libsecret）里。应用通过 `secret-tool` 读取密钥（用 `sudo apt install libsecret-tools` 安装），密钥环可能会弹窗要求解锁。也支持 Snap 和 Flatpak 安装的 Firefox，以及 Snap 版 Chromium。
+  - 在 Windows 上，Chrome 系浏览器运行时会锁住 Cookie 数据库，导入前请完全退出浏览器（包括后台运行的）。Chrome 127 起新写入的 Cookie 使用应用绑定加密，无法导入；登录 Cookie 也是这种时，请改用应用内登录或手动粘贴 Cookie。
+- **在应用内登录**：打开 B站官方登录页，支持扫码、密码和短信登录。
+- **手动粘贴 Cookie**：分号分隔的 cookie 字符串，或浏览器插件导出的 JSON。
+
+启动、切回窗口、解析链接以及接口返回登录失效时，应用都会检查登录状态。登录过期后会弹出登录对话框，下载队列暂停取流，重新登录后自动继续。退出登录只清除应用自己的 cookie，不会把浏览器里的登录一起退出。
+
+**你的数据去了哪**
+
+- B站 cookie 保存在应用自己的数据目录里，只发给 B站，通过 MCP 也不会返回给 AI 客户端。
+- 下载、合并、去水印全在本地跑。不用注册，没有遥测，中间也没有我们的服务器。
+- 除了 B站，应用只会访问 GitHub（检查更新）和 ModelScope 或 Hugging Face（第一次使用 AI 精修时下载模型）。
+- 通过 MCP 调用时，已经登录的情况下 `start_login` 什么都不做，Agent 不能切换账号。需要先关闭浏览器时（Windows 上浏览器运行时会锁住 Cookie 数据库），应用会弹窗询问，只有你本人能同意。
+
+## 常见问题
+
+<details>
+<summary>不登录能用吗？</summary>
+
+不行。应用要登录后才能解析链接，能下的清晰度就是你账号能看的清晰度。
+
+</details>
+
+<details>
+<summary>为什么选不了 1080P / 4K / 8K？</summary>
+
+清晰度列表直接来自 B站对你账号返回的结果。更高的档位（1080P 高码率、4K、8K、HDR、杜比视界）通常需要大会员，而且不是每个视频都上传了所有清晰度。
+
+</details>
+
+<details>
+<summary>macOS 说“无法打开”，怎么办？</summary>
+
+应用没有经过 Apple 公证。先尝试打开一次，再到 **系统设置 → 隐私与安全性** 里点 **仍要打开**，或者运行 [安装](#macos) 里的 `xattr` 命令。
+
+</details>
+
+<details>
+<summary>Windows 弹出“Windows 已保护你的电脑”，怎么办？</summary>
+
+安装器没有代码签名。点 **更多信息 → 仍要运行**。
+
+</details>
+
+<details>
+<summary>任务显示“无法下载”是怎么回事？</summary>
+
+带 DRM 加密的片源、地区限制的内容，以及账号没有权限观看的内容都无法下载，任务上会写明原因。
+
+</details>
+
+<details>
+<summary>去水印怎么这么慢？</summary>
+
+AI 精修要逐帧重绘，比快速模式慢很多，没有显卡时更明显。开始前应用会给出预计耗时；更看重速度时请用快速模式。
+
+</details>
+
+<details>
+<summary>有英文界面吗？</summary>
+
+暂时没有，界面目前只有简体中文。
+
+</details>
 
 ## 限制
 
@@ -218,11 +342,12 @@ src/main/subscriptions.ts   订阅
 src/shared                  各进程共用的类型、链接识别和命名模板
 src/renderer                界面（React + Tailwind CSS + zustand）
 scripts                     下载 ffmpeg、生成图标、发布新版本
+website                     产品官网（Next.js，部署到 GitHub Pages）
 ```
 
 ## 参与贡献
 
-欢迎提交 Issue 和 Pull Request，提交前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎提交 Issue 和 Pull Request，提交前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。用着顺手的话，点个 ⭐，让更多人刷到它。
 
 ## 致谢
 
