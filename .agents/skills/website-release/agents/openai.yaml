@@ -1,0 +1,3 @@
+interface:
+  display_name: 发布官网
+  short_description: 独立测试并部署官网到 GitHub Pages

@@ -109,6 +109,9 @@ jobs:
 
   publish:
     needs: build
+    concurrency:
+      group: ${{ github.event_name == 'push' && format('publish-{0}', github.repository) || format('release-validation-{0}', github.run_id) }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -38,14 +38,22 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 1. 改版本号：`npm version 0.5.0 --no-git-tag-version`（同时改 `package.json` 和 `package-lock.json`）
 2. 在 `CHANGELOG.md` 里把“未发布”改成 `## 新版本号 - 日期`，这段会显示在应用的更新弹窗和 Release 页面上
-3. 提交、推送，再打 tag 推送：
+3. 在本机先运行完整预检和当前系统安装包构建：
+
+   ```bash
+   npm run release:preflight
+   ```
+
+   此命令离线检查版本与 CHANGELOG，然后运行当前系统对应的 `build:mac`、`build:linux` 或 `build:win`。任何一步失败都停止发布；无需在本地预检时请求 GitHub。GitHub Actions 随后仍会在三个系统重新测试和打包，通过后才创建 Release。
+
+4. 预检通过后提交、推送，再打 tag 推送：
 
    ```bash
    git commit -am "chore: 发布 0.5.0" && git push
    git tag v0.5.0 && git push origin v0.5.0
    ```
 
-4. 在仓库的 Actions 页面看进度，完成后 Release 页面就有新版本了
+5. 在仓库的 Actions 页面看进度，完成后 Release 页面就有新版本了
 
 工作流第一步会检查 tag 和 `package.json` 的版本是否一致、`CHANGELOG.md` 里有没有这个版本、这个版本是不是已经发布过，不对就直接失败，不会打包。tag 打错了先删掉（`git push origin :refs/tags/v0.5.0 && git tag -d v0.5.0`），改好再重新打。网络之类的偶发失败在 Actions 页面点 “Re-run jobs” 即可。
 
@@ -53,9 +61,11 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 改了打包相关的配置，想先确认能打出包：在 Actions 页面手动运行“发布”工作流（Run workflow），它只打包不发布，三个系统的全部安装包和 `update.json` 作为这次运行的产物上传，保留 7 天。Windows 包打好后还会在 runner 上静默安装一遍，确认安装目录里有卸载程序、装进去的 ffmpeg 和应用都能启动。
 
-用 AI 编程助手发布时，直接说“发布新版本”即可：项目里的 `release` skill 写了上面整套步骤，推送 tag 前会先请你确认。它放在 `.agents/skills/release/`（Codex 和 GitHub Copilot 读这里），`.claude/skills/release` 是指向它的软链接（Claude Code 读这里），改流程时只改 `.agents/skills/release/SKILL.md` 一处。
+桌面应用版本保存在根目录 `package.json`，官网版本单独保存在 `website/package.json`。Pages 工作流只由单独的手动派发部署，不随桌面应用 tag 运行；发布官网见 [官网发布说明](../website/README.md) 和 `.agents/skills/website-release/`。两个发布各自测试和构建，不共用版本号或产物；最终发布 job 共用并发锁，避免同时发布。
 
-Actions 不可用时，也可以在本机（macOS）发布：先在 Linux 上运行 `npm run build:linux`、在 Windows 上运行 `npm run build:win`，把生成的包拷到 mac 的 `dist/` 里，再在 mac 上提交并推送后运行 `npm run release`。它会先做同样的检查，再打 mac 包，用 `gh` 创建 `v版本号` 的 Release（tag 不存在会自动创建）并上传；`dist/` 里缺任何一个安装包都会停下。
+项目里的应用 `release` skill 放在 `.agents/skills/release/`；`.claude/skills/release` 是指向它的软链接。官网另有 `.agents/skills/website-release/` skill；`.claude/skills/website-release` 同样指向官网 skill。修改各自流程时只改对应 `.agents/skills/` 下的文件。
+
+Actions 不可用时，也可以在本机发布：先在其他系统上运行对应的 `npm run build:linux`、`npm run build:win`，把生成的包拷到发布机器的 `dist/` 里；然后在发布机器上运行 `npm run release`。它会先离线预检并打当前系统包，随后用 `gh` 创建 `v版本号` 的 Release 并上传；`dist/` 里缺任何一个安装包都会停下。只在 Actions 确实不可用时这样做，不能和 tag 工作流同时发布。
 
 ## 在本地测试更新流程
 

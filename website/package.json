@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build"
+    "test": "node --test scripts/release.test.mjs scripts/deployment-changes.test.mjs",
+    "build": "next build",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@primer/octicons-react": "^19.42.0",

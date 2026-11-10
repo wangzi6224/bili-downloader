@@ -2,17 +2,20 @@
 // 再用 gh 创建 Release，上传 macOS、Linux 和 Windows 安装包，以及应用内更新清单。
 // 平时由 GitHub Actions 在推送 v版本号 的 tag 后运行（.github/workflows/release.yml），各系统包分别在对应 runner 上打好再汇总；
 // 也可以在本机 npm run release（检查、打 mac 包、发布），但 dist/ 里要先放好在 Linux 和 Windows 上打的包
-// 参数：--check 只检查版本号、tag 和更新日志，不用先打包；--dry-run 只生成 update.json 不上传
+// 参数：--check 只检查版本号、tag 和更新日志，不用先打包；--offline 跳过远端 Release 查询；--dry-run 只生成 update.json 不上传
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { MAX_NOTES, PACKAGES, assetName, buildManifest, isPrerelease, manifestAsset, parseChangelog } from './lib/release.mjs'
+import { assertReleaseMode, createGithubRelease, releaseExists } from './lib/release-cli.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
 const dryRun = process.argv.includes('--dry-run')
 const checkOnly = process.argv.includes('--check')
+// 本地预检不访问 GitHub；正式发布流程仍用 gh 检查版本是否已发布。
+const offline = process.argv.includes('--offline')
 const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const tag = `v${version}`
 /** 在 GitHub Actions 里由推送 tag 触发时，是推送的那个 tag */
@@ -25,11 +28,23 @@ function fail(msg) {
   process.exit(1)
 }
 
+try {
+  assertReleaseMode({ offline, checkOnly, dryRun })
+} catch (error) {
+  fail(error.message)
+}
+
 const notes = parseChangelog(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).slice(0, MAX_NOTES)
 const current = notes.find((n) => n.version === version)
 if (!current?.body) fail(`CHANGELOG.md 里没有 ${version} 的说明，先加上一段 “## ${version} - YYYY-MM-DD”`)
 if (pushedTag && pushedTag !== tag) fail(`推送的 tag ${pushedTag} 和 package.json 里的版本 ${version} 不一致`)
-if (!dryRun && spawnSync('gh', ['release', 'view', tag], { cwd: root, stdio: 'ignore' }).status === 0) {
+if (!dryRun && releaseExists(tag, {
+  offline,
+  runCommand(command, args, options) {
+    const result = spawnSync(command, args, { cwd: root, ...options })
+    return result.error ? { status: null, error: result.error } : result
+  }
+})) {
   fail(`${tag} 已经发布过了，先改 package.json 里的版本号`)
 }
 if (checkOnly) {
@@ -62,10 +77,21 @@ const head = sh('git', ['rev-parse', 'HEAD'])
 // Actions 里检出的就是已推送的 tag，而且只拉了这一个提交，查不到远端分支
 if (!pushedTag && !sh('git', ['branch', '-r', '--contains', head])) fail('当前提交还没有推送到 GitHub，先 git push')
 
-const pre = isPrerelease(version) ? ['--prerelease'] : []
-execFileSync(
-  'gh',
-  ['release', 'create', tag, '--target', head, '--title', tag, '--notes-file', notesFile, ...pre, ...assets, manifestFile],
-  { cwd: root, stdio: 'inherit' }
-)
+try {
+  createGithubRelease({
+    tag,
+    head,
+    notesFile,
+    prerelease: isPrerelease(version),
+    assets,
+    manifestFile,
+    cwd: root,
+    runCommand(command, args, options) {
+      const result = spawnSync(command, args, { ...options })
+      return result.error ? { status: null, error: result.error } : result
+    }
+  })
+} catch (error) {
+  fail(error.message)
+}
 console.log(`✓ 已发布 ${tag}：${manifest.page}`)

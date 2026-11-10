@@ -15,7 +15,7 @@ description: 发布 B站下载器（bili-downloader）的新版本：定版本�
 git switch main && git pull --ff-only
 git status --porcelain                          # 必须没有输出
 gh run list --workflow release.yml --limit 3    # 不能有正在跑的发布
-npm run verify                                  # 类型检查 + 单元测试 + 覆盖率门槛
+gh run list --workflow deploy-pages.yml --limit 3 # 不能有正在跑的官网部署
 ```
 
 有未提交的改动、本地和 origin/main 不一致、或者测试没过，先停下来告诉用户，不要自行处理。
@@ -41,13 +41,13 @@ npm version <版本> --no-git-tag-version   # 同时改 package.json 和 package
 
 起草的日志先给用户看，确认后再继续。
 
-## 4. 本地预检
+## 4. 本地测试构建（必须通过）
 
 ```bash
-node scripts/release.mjs --check
+npm run release:preflight
 ```
 
-输出 `✓ v<版本> 可以发布` 才继续。它检查更新日志里有没有这个版本、这个版本是否已经发布过，和工作流第一步做的检查一样。
+预检先离线检查版本和 CHANGELOG，再在本机当前系统运行完整的 `build:mac`、`build:linux` 或 `build:win`。这些构建会运行类型检查、单元测试、覆盖率门槛并生成当前系统安装包；任何一步失败都不能提交发布 tag。离线检查不请求 GitHub，tag 工作流仍会在构建前用 `gh` 检查版本是否已发布，并在 macOS、Linux、Windows 上分别重新构建。
 
 ## 5. 提交并推送 main
 
@@ -109,10 +109,11 @@ gh workflow run release.yml --ref main
 
 ## Actions 不可用时
 
-在本机（macOS）运行 `npm run release`：同样先检查，再打 mac 包，用 `gh` 创建 Release（tag 不存在会自动创建）。Linux 包和 Windows 包不能在 mac 上打，要先分别在 Linux 上运行 `npm run build:linux`、Windows 上运行 `npm run build:win`，把 AppImage、deb 和 exe 拷到 mac 的 `dist/` 里，缺任何一个包脚本都会停下。推送前同样要用户确认。只在 Actions 确实不可用时这样做，不要和工作流同时发同一个版本。
+在本机运行 `npm run release`：它先执行同一个离线预检并打当前系统安装包，然后才用 `gh` 检查并创建 Release。`dist/` 必须已经包含 macOS、Linux 和 Windows 全部安装包；缺任何一个包脚本都会停下。只在 Actions 确实不可用时这样做，不要和工作流同时发同一个版本。
 
 ## 不要做
 
 - 不要在用户确认前推送 tag，不要强推或移动已经有 Release 的 tag
+- 不要在官网部署运行或等待时开始应用发布；最终发布 job 共用并发锁，一次只启动一个待发布操作
 - 不要手动替换已发布 Release 里的文件：`update.json` 里记录了所有自动更新包的 sha512，对不上应用会拒绝更新
 - 不要跳过 `CHANGELOG.md`：没有这个版本的说明，工作流第一步就会失败

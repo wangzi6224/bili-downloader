@@ -20,24 +20,46 @@ on:
         default: false
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
   group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  validate-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require confirmed deployment from main
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CONFIRM_WEBSITE_CHANGES: ${{ inputs.confirm_website_changes }}
+          CONFIRM_SEPARATE_RELEASE: ${{ inputs.confirm_separate_release }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Website deployment must run from main."
+            exit 1
+          fi
+          if [[ "$CONFIRM_WEBSITE_CHANGES" != "true" || "$CONFIRM_SEPARATE_RELEASE" != "true" ]]; then
+            echo "::error::Both website deployment confirmations are required."
+            exit 1
+          fi
+
   build:
+    needs: validate-dispatch
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
+      actions: read
       pages: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -46,13 +68,28 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
 
+      - name: Require website changes since the last deployment
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node website/scripts/check-deployment-changes.mjs
+
       - name: Install website dependencies
         working-directory: website
         run: npm ci
 
+      - name: Test website release gate
+        working-directory: website
+        run: npm test
+
       - name: Build static website
         working-directory: website
         run: npm run build
+
+      - name: Write Pages deployment marker
+        if: github.event_name == 'workflow_dispatch'
+        run: node website/scripts/write-deployment-marker.mjs
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
@@ -69,6 +106,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    concurrency:
+      group: publish-${{ github.repository }}
+      cancel-in-progress: false
     timeout-minutes: 10
     permissions:
       pages: write
