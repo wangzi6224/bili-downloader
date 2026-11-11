@@ -19,7 +19,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | **Italiano** | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
-<sub>Al momento l'interfaccia dell'app è disponibile solo in cinese semplificato. Questo README riporta ogni voce in cinese con la traduzione italiana.</sub>
+<sub>Dalla v0.13.0 l'interfaccia è disponibile in italiano, inglese, cinese semplificato, giapponese, coreano, francese, russo e hindi. Per impostazione predefinita segue la lingua del sistema e può essere cambiata nelle impostazioni.</sub>
 
 </div>
 
@@ -301,7 +301,7 @@ Il ritocco IA ricostruisce ogni fotogramma, quindi è molto più lento della mod
 <details>
 <summary>L'app è disponibile in italiano?</summary>
 
-Non ancora. Al momento l'interfaccia è disponibile solo in cinese semplificato; questo README traduce ogni voce che cita.
+Sì. Dalla v0.13.0 l'interfaccia supporta l'italiano e altre sette lingue. Segue la lingua del sistema per impostazione predefinita e può essere cambiata nelle impostazioni.
 
 </details>
 

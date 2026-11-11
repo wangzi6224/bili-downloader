@@ -19,7 +19,7 @@
 
 **English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
-<sub>The app's interface is currently in Simplified Chinese only. This README gives each Chinese label with an English translation.</sub>
+<sub>The interface supports English, Simplified Chinese, Japanese, Korean, French, Italian, Russian and Hindi. It follows your system language by default, and you can change it in Settings → General → Language.</sub>
 
 </div>
 
@@ -301,7 +301,7 @@ AI refine repaints every frame, so it is much slower than the fast mode, especia
 <details>
 <summary>Is the app available in English?</summary>
 
-Not yet. The interface is currently in Simplified Chinese only; this README translates every label it mentions.
+Yes. Since v0.13.0, the interface supports English, Simplified Chinese, Japanese, Korean, French, Italian, Russian and Hindi. It follows your system language by default, and you can change it in Settings → General → Language.
 
 </details>
 

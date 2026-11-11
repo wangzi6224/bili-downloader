@@ -19,7 +19,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | **Français** | [Italiano](README.it.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md)
 
-<sub>L'interface de l'application n'existe pour l'instant qu'en chinois simplifié. Ce README donne chaque libellé en chinois avec sa traduction française.</sub>
+<sub>Depuis la v0.13.0, l'interface est disponible en français, anglais, chinois simplifié, japonais, coréen, italien, russe et hindi. Elle suit la langue du système par défaut et peut être modifiée dans les paramètres.</sub>
 
 </div>
 
@@ -301,7 +301,7 @@ La retouche IA repeint chaque image, elle est donc bien plus lente que le mode r
 <details>
 <summary>L'application existe en français ?</summary>
 
-Pas encore. L'interface n'existe pour l'instant qu'en chinois simplifié ; ce README traduit chaque libellé qu'il mentionne.
+Oui. Depuis la v0.13.0, l'interface prend en charge le français et sept autres langues. Elle suit la langue du système par défaut et peut être modifiée dans les paramètres.
 
 </details>
 
