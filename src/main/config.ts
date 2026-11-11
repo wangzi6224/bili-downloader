@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { dialog, type BrowserWindow } from 'electron'
 import { t } from '@shared/i18n'
 import type { Settings, Subscription } from '@shared/types'
@@ -50,7 +51,15 @@ export async function importConfig(win: BrowserWindow | null, subs: Subscription
   updateSettings({ ...data.settings, mcp: { ...data.settings.mcp, token: current.mcp.token } })
   // 同一来源以导入的为准，其余保留
   const imported = Array.isArray(data.subscriptions) ? data.subscriptions : []
-  const inputs = new Set(imported.map((s) => s.input))
-  subs.replaceAll([...subs.list().filter((s) => !inputs.has(s.input)), ...imported])
+  const key = (s: Subscription): string => JSON.stringify([s.input, s.accountMid])
+  const inputs = new Set(imported.map(key))
+  const retained = subs.list().filter((s) => !inputs.has(key(s)))
+  const ids = new Set(retained.map((s) => s.id))
+  for (const sub of imported) {
+    const entry = sub.id && ids.has(sub.id) ? { ...sub, id: randomUUID() } : sub
+    ids.add(entry.id)
+    retained.push(entry)
+  }
+  subs.replaceAll(retained)
   return t('config.imported', { count: imported.length, app: t('common.appName'), date: data.exportedAt?.slice(0, 10) ?? '' })
 }

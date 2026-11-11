@@ -42,6 +42,18 @@ describe('下载历史', () => {
     expect(saved('downloads.json')).toEqual([])
   })
 
+  it('在写入、删除和清空后通知明细重新读取下载记录', () => {
+    const snapshots: string[][] = []
+    const off = history.onDownloadsChanged(() => snapshots.push(history.downloadedKeys()))
+    history.recordDownload(entry('pgc:1'))
+    history.recordDownload(entry('pgc:2'))
+    history.removeDownloads(['pgc:1'])
+    history.clearDownloads()
+    off()
+    history.recordDownload(entry('pgc:3'))
+    expect(snapshots).toEqual([['pgc:1'], ['pgc:1', 'pgc:2'], ['pgc:2'], []])
+  })
+
   it('第一次用到时读取已有的文件，坏文件当作空', () => {
     writeFileSync(join(h.userData, 'downloads.json'), JSON.stringify([entry('old')]))
     expect(history.downloadedKeys()).toEqual(['old'])

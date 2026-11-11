@@ -2,7 +2,7 @@ import type { Messages } from '../types'
 
 export default {
   downloads: '다운로드',
-  subs: '구독',
+  subs: '구독 및 즐겨찾기',
   history: '분석 기록',
   settings: '설정',
   checkingLogin: '로그인 확인 중…',

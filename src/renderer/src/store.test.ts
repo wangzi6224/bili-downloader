@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ParseResult, Settings } from '@shared/types'
+import type { AuthState, ParseResult, Settings, SourceDetails, SourceRef } from '@shared/types'
+import { api, openSource, parseBatch, parseLink, updateAuth, updateSettings, useStore } from './store'
 
-// store 在导入时读取 window.api，必须先装好假的再动态导入；之后只改 vi.fn 的行为，不替换对象
-const fakeApi = {
-  settings: { set: vi.fn() },
-  parse: vi.fn(),
-  parseBatch: vi.fn()
-}
-vi.stubGlobal('window', { api: fakeApi })
-const { api, parseBatch, parseLink, updateSettings, useStore } = await import('./store')
+// store 在导入时读取 window.api，只在加载模块期间模拟 window。
+const fakeApi = vi.hoisted(() => {
+  const api = {
+    settings: { set: vi.fn() },
+    sources: { open: vi.fn() },
+    parse: vi.fn(),
+    parseBatch: vi.fn()
+  }
+  vi.stubGlobal('window', { api })
+  return api
+})
+vi.unstubAllGlobals()
 
 const initial = useStore.getState()
 
@@ -85,6 +90,69 @@ describe('updateSettings', () => {
     await updateSettings({ concurrency: 3 })
     expect(useStore.getState().error).toBe('写入失败')
     expect(useStore.getState().settings).toBe(before)
+  })
+})
+
+describe('打开来源', () => {
+  const loggedIn = (mid: number): AuthState => ({
+    loggedIn: true,
+    user: { mid, uname: 'u', face: '', vipActive: false, vipLabel: '' }
+  })
+  const subscription: SourceRef = { type: 'subscription', id: 'legacy' }
+  const account: SourceRef = { type: 'account', mid: 7, target: { type: 'pgc', seasonId: 1 } }
+
+  it('点击旧订阅后直接打开明细，单集也不默认勾选', async () => {
+    useStore.setState({ view: 'subs' })
+    fakeApi.sources.open.mockResolvedValue({ result: result({ kind: 'pgc', defaultSelected: ['pgc:5'] }) })
+    await openSource(subscription, () => true)
+    expect(fakeApi.sources.open).toHaveBeenCalledWith(subscription)
+    expect(useStore.getState()).toMatchObject({ source: subscription, parse: { defaultSelected: [] } })
+    expect(fakeApi.parse).not.toHaveBeenCalled()
+    updateAuth({ loggedIn: false, expired: true })
+    expect(useStore.getState().source).toBe(subscription)
+  })
+
+  it('切换账号后丢弃未完成的读取，并关闭上个账号已经打开的明细', async () => {
+    useStore.setState({ view: 'subs', auth: loggedIn(7) })
+    const pending = deferred<SourceDetails>()
+    fakeApi.sources.open.mockReturnValueOnce(pending.promise)
+    const opening = openSource(account, () => true)
+    updateAuth(loggedIn(8))
+    pending.resolve({ result: result(), accountMid: 7 })
+    await opening
+    expect(useStore.getState().parse).toBeNull()
+
+    updateAuth(loggedIn(7))
+    fakeApi.sources.open.mockResolvedValue({ result: result(), accountMid: 7 })
+    await openSource(account, () => true)
+    expect(useStore.getState().source).toBe(account)
+    updateAuth(loggedIn(7))
+    expect(useStore.getState().source).toBe(account)
+    updateAuth({ loggedIn: false, expired: true })
+    expect(useStore.getState()).toMatchObject({ source: null, parse: null })
+  })
+
+  it('应用内订阅的稍后再看明细在切号时关闭，过期响应也不会重新打开', async () => {
+    useStore.setState({ view: 'subs', auth: loggedIn(7) })
+    const bound = { result: result(), accountMid: 7 }
+    fakeApi.sources.open.mockResolvedValue(bound)
+    await openSource(subscription, () => true)
+    expect(useStore.getState()).toMatchObject({ source: subscription, sourceAccountMid: 7 })
+    updateAuth(loggedIn(8))
+    expect(useStore.getState()).toMatchObject({ parse: null, source: null })
+    await openSource(subscription, () => true)
+    expect(useStore.getState().parse).toBeNull()
+  })
+
+  it.each([
+    { view: 'subs' as const, current: false },
+    { view: 'downloads' as const, current: true },
+    { view: 'subs' as const, current: true, parsing: true }
+  ])('不会弹出过期请求或覆盖正在进行的解析', async ({ view, current, parsing }) => {
+    useStore.setState({ view, parsing: parsing ?? false })
+    fakeApi.sources.open.mockResolvedValue({ result: result() })
+    await openSource(subscription, () => current)
+    expect(useStore.getState().parse).toBeNull()
   })
 })
 

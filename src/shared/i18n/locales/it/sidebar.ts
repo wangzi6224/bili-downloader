@@ -2,7 +2,7 @@ import type { Messages } from '../types'
 
 export default {
   downloads: 'Download',
-  subs: 'Iscrizioni',
+  subs: 'Iscrizioni e preferiti',
   history: 'Link analizzati',
   settings: 'Impostazioni',
   checkingLogin: 'Verifica accesso…',

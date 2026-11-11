@@ -2,7 +2,7 @@ import type { Messages } from '../types'
 
 export default {
   downloads: 'Загрузки',
-  subs: 'Подписки',
+  subs: 'Подписки и избранное',
   history: 'История ссылок',
   settings: 'Настройки',
   checkingLogin: 'Проверка входа…',

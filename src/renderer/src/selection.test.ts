@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { downloadStatusMatcher } from '@shared/downloaded'
 import type { NamingTemplates } from '@shared/naming'
 import type { MediaGroup, MediaItem, ParseResult, QualityOption } from '@shared/types'
 import {
@@ -13,6 +14,7 @@ import {
   resolveDuplicates,
   selectable,
   selectedItems,
+  selectionSummary,
   setMany,
   subscribable,
   toggleSelection,
@@ -86,6 +88,29 @@ describe('downloadedMatcher', () => {
   })
 })
 
+describe('来源详情的下载状态', () => {
+  it('按单集或分 P 的 key 匹配，尚未展开的视频只显示已有分 P 记录', () => {
+    const status = downloadStatusMatcher(['pgc:42', 'ugc:BV1:100', 'ugc:BV2', 'pgc:BV3:100'])
+    expect(status(item('pgc:42', { kind: 'pgc' }))).toBe('downloaded')
+    expect(status(item('pgc:43', { kind: 'pgc' }))).toBe('missing')
+    expect(status(item('ugc:BV1:100'))).toBe('downloaded')
+    expect(status(item('ugc:BV1:101'))).toBe('missing')
+    expect(status(item('ugc:BV1', { bvid: 'BV1', lazy: true }))).toBe('parts')
+    expect(status(item('ugc:BV2', { bvid: 'BV2', lazy: true }))).toBe('missing')
+    expect(status(item('ugc:BV3', { bvid: 'BV3', lazy: true }))).toBe('missing')
+    expect(status(item('ugc:unknown', { lazy: true }))).toBe('missing')
+  })
+
+  it('展开后跳过已下载分 P，其余分 P 可以继续入队', () => {
+    const expanded = [item('ugc:BV1:100'), item('ugc:BV1:101')]
+    const downloaded = new Set(['ugc:BV1:100'])
+    const exact = (entry: MediaItem) => downloaded.has(entry.key)
+    expect(resolveDuplicates(expanded, exact, 'skip')).toEqual({ enqueue: [expanded[1]] })
+    expect(resolveDuplicates(expanded, exact, 'ask')).toEqual({ ask: [expanded[0]] })
+    expect(resolveDuplicates(expanded, exact, 'download')).toEqual({ enqueue: expanded })
+  })
+})
+
 describe('bestQuality', () => {
   const list = [q(120, { needVip: true }), q(116, { codecs: [] }), q(80), q(64), q(32)]
 
@@ -117,6 +142,12 @@ describe('appendToFirst', () => {
     expect(keys(next[0].items)).toEqual(['a', 'b', 'c', 'd'])
     expect(next[1]).toBe(second)
     expect(keys(groups[0].items)).toEqual(['a', 'b'])
+  })
+
+  it('不会把同一页的重复条目或其他组已有的条目再加进列表', () => {
+    const groups = [group('g1', [item('a')]), group('g2', [item('b')])]
+    const next = appendToFirst(groups, [item('b'), item('c'), item('c')])
+    expect(keys(next.flatMap((group) => group.items))).toEqual(['a', 'c', 'b'])
   })
 })
 
@@ -155,11 +186,10 @@ describe('toggleSelection', () => {
   const sel = (...ks: string[]): Set<string> => new Set(ks)
   const sorted = (s: Set<string>): string[] => [...s].sort()
 
-  it('普通点击切换这一项，并记下位置', () => {
+  it('普通点击只切换这一项', () => {
     const r = toggleSelection(sel('a'), list, list[1], null, false)
-    expect(sorted(r!.selected)).toEqual(['a', 'b'])
-    expect(r!.anchor).toBe(1)
-    expect(sorted(toggleSelection(sel('a', 'b'), list, list[0], 1, false)!.selected)).toEqual(['b'])
+    expect(sorted(r!)).toEqual(['a', 'b'])
+    expect(sorted(toggleSelection(sel('a', 'b'), list, list[0], list[1], false)!)).toEqual(['b'])
   })
 
   it('不修改传入的集合', () => {
@@ -169,28 +199,32 @@ describe('toggleSelection', () => {
   })
 
   it('点到失效条目返回 null', () => {
-    expect(toggleSelection(sel(), list, list[2], 0, true)).toBeNull()
+    expect(toggleSelection(sel(), list, list[2], list[0], true)).toBeNull()
   })
 
   it('Shift 点击：区间内都设成选中，跳过失效条目', () => {
-    const r = toggleSelection(sel(), list, list[4], 0, true)
-    expect(sorted(r!.selected)).toEqual(['a', 'b', 'c', 'd'])
-    expect(r!.anchor).toBe(4)
+    const r = toggleSelection(sel(), list, list[4], list[0], true)
+    expect(sorted(r!)).toEqual(['a', 'b', 'c', 'd'])
   })
 
   it('Shift 点击已选中的一项：区间内都取消选中', () => {
-    const r = toggleSelection(sel('a', 'b', 'c', 'd'), list, list[1], 3, true)
-    expect(sorted(r!.selected)).toEqual(['a', 'd'])
+    const r = toggleSelection(sel('a', 'b', 'c', 'd'), list, list[1], list[3], true)
+    expect(sorted(r!)).toEqual(['a', 'd'])
   })
 
   it('Shift 往上选也可以', () => {
-    const r = toggleSelection(sel('d'), list, list[0], 3, true)
-    expect(sorted(r!.selected)).toEqual(['a', 'b', 'c', 'd'])
+    const r = toggleSelection(sel('d'), list, list[0], list[3], true)
+    expect(sorted(r!)).toEqual(['a', 'b', 'c', 'd'])
   })
 
   it('没有上次点击的位置时，Shift 点击只切换这一项', () => {
     const r = toggleSelection(sel(), list, list[3], null, true)
-    expect(sorted(r!.selected)).toEqual(['c'])
+    expect(sorted(r!)).toEqual(['c'])
+  })
+
+  it('筛选后起点不可见时，Shift 点击只切换当前条目', () => {
+    const r = toggleSelection(sel('a'), list.slice(1), list[3], list[0], true)
+    expect(sorted(r!)).toEqual(['a', 'c'])
   })
 })
 
@@ -203,6 +237,19 @@ describe('setMany', () => {
 
   it('批量取消，不在列表里的保持不变', () => {
     expect([...setMany(new Set(['a', 'b', 'c']), list, false)]).toEqual(['c'])
+  })
+
+  it('反选当前筛选结果时保留隐藏的选择，并跳过失效条目', () => {
+    const selected = new Set(['a', 'hidden'])
+    const inverted = setMany(selected, list, 'invert')
+    expect([...inverted].sort()).toEqual(['b', 'hidden'])
+    expect(setMany(inverted, list, 'invert')).toEqual(selected)
+  })
+
+  it('表头和分组的勾选状态只统计范围内可下载的条目', () => {
+    expect(selectionSummary(list, new Set(['a', 'x', 'hidden']))).toEqual({ count: 1, total: 2 })
+    expect(selectionSummary(list, new Set(['a', 'b']))).toEqual({ count: 2, total: 2 })
+    expect(selectionSummary([list[1]], new Set(['x']))).toEqual({ count: 0, total: 0 })
   })
 })
 

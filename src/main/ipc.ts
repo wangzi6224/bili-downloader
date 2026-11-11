@@ -1,6 +1,7 @@
 import { clipboard, dialog, ipcMain, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
 import type {
+  AccountSourceCategory,
   CloseAction,
   EnqueueRequest,
   MediaItem,
@@ -8,6 +9,8 @@ import type {
   PagedSource,
   ParseResult,
   Settings,
+  SourceDetails,
+  SourceRef,
   Subscription,
   WatermarkMethod,
   WatermarkRegion
@@ -18,12 +21,14 @@ import { importCookieText } from './auth/cookieImport'
 import { FULL_DISK_ACCESS_URL } from './auth/importError'
 import { openLoginWindow } from './auth/loginWindow'
 import { biliSession } from './auth/session'
+import { accountSourceInput, listAccountSources } from './bili/accountSources'
 import { audioStreamInfo } from './bili/audio'
 import { expandLazy, loadPage, myFavFolders } from './bili/lists'
 import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
 import { resolveBatch, resolveInput } from './bili/resolve'
 import { exportConfig, importConfig } from './config'
 import type { DownloadManager } from './download/manager'
+import { prepareEnqueueItems } from './enqueue'
 import type { McpServer } from './mcp/server'
 import { cdnHosts, pingHost } from './net/cdn'
 import { networkStatus } from './net/network'
@@ -42,10 +47,27 @@ import { aiModel, aiSessions } from './watermark/ai'
 import { prepareManual, previewFrame, requireVideoTask } from './watermark/manual'
 import { speedRatio } from './watermark/speed'
 import { getLanguage, t } from '@shared/i18n'
+import { normalizeOptions } from '@shared/options'
+import { parseInput } from '@shared/parseUrl'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
 
 const progress = (done: number, total: number, title?: string): void => send('parse:progress', { done, total, title })
+
+function requireAccount(mid: number): void {
+  const state = getAuthState()
+  if (!state.loggedIn || state.user.mid !== mid) throw new Error(t('subs.accountChanged'))
+}
+
+function currentAccount(): number {
+  const state = getAuthState()
+  if (!state.loggedIn) throw new Error(t('authErr.loginRequiredAccount'))
+  return state.user.mid
+}
+
+function subscriptionAccount(sub: Subscription): number | undefined {
+  return sub.accountMid ?? (parseInput(sub.input)?.type === 'watchlater' ? currentAccount() : undefined)
+}
 
 const FAKE_SESSDATA = 'expired-for-testing'
 let stashedSessdata: Electron.Cookie | undefined
@@ -112,11 +134,16 @@ export interface IpcDeps {
   manager: DownloadManager
   subs: SubscriptionManager
   mcp: McpServer
-  enqueue: (req: EnqueueRequest) => Promise<string | undefined>
+  enqueue: (req: EnqueueRequest, beforeQueue?: () => void) => Promise<string | undefined>
   updater: Updater
 }
 
 export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): void {
+  const getSubscription = (id: string): Subscription => {
+    const sub = subs.list().find((item) => item.id === id)
+    if (!sub) throw new Error(t('subs.sourceUnavailable'))
+    return sub
+  }
   handle('auth:check', async () => checkAuth().catch(() => getAuthState()))
   handle('auth:login', () => openLoginWindow())
   handle('auth:listBrowsers', () => listBrowserProfiles())
@@ -147,13 +174,67 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
     return myFavFolders(s.user.mid)
   })
 
+  handle('sources:listAccount', async (mid: number, category: AccountSourceCategory, page: number) => {
+    await ensureLoggedIn()
+    requireAccount(mid)
+    const result = await listAccountSources(mid, category, page)
+    requireAccount(mid)
+    return result
+  })
+  handle('sources:open', async (source: SourceRef): Promise<SourceDetails> => {
+    await ensureLoggedIn()
+    if (source.type === 'subscription') {
+      const sub = getSubscription(source.id)
+      const accountMid = subscriptionAccount(sub)
+      if (accountMid !== undefined) requireAccount(accountMid)
+      const result = await resolveInput(sub.input)
+      if (accountMid !== undefined) requireAccount(accountMid)
+      return { result, accountMid }
+    }
+    if (source.type === 'account') {
+      requireAccount(source.mid)
+      const result = await resolveInput(accountSourceInput(source.target))
+      requireAccount(source.mid)
+      return { result, accountMid: source.mid }
+    }
+    throw new Error(t('subs.sourceUnavailable'))
+  })
+  handle('sources:prepareItems', async (items: MediaItem[], accountMid?: number) => {
+    await ensureLoggedIn()
+    if (accountMid !== undefined) requireAccount(accountMid)
+    const prepared = await prepareEnqueueItems(items)
+    if (accountMid !== undefined) requireAccount(accountMid)
+    return { items: prepared.items, note: prepared.note }
+  })
+  handle('sources:subscribeDownload', async (source: SourceRef) => {
+    await ensureLoggedIn()
+    const subscription = source.type === 'subscription' ? getSubscription(source.id) : undefined
+    const boundMid = subscription ? subscriptionAccount(subscription) : undefined
+    const mid = source.type === 'account' ? source.mid : boundMid
+    const verifyAccount = (): void => {
+      if (mid !== undefined) requireAccount(mid)
+    }
+    verifyAccount()
+    const input = source.type === 'account' ? accountSourceInput(source.target) : subscription?.input
+    if (!input) throw new Error(t('subs.sourceUnavailable'))
+    const settings = getSettings()
+    return subs.downloadSource({
+      input, subscription, defaults: normalizeOptions(settings.defaults, settings.defaultQn), verifyAccount,
+      accountMid: source.type === 'account' && source.target.type === 'watchlater' ? mid : boundMid
+    })
+  })
+
   handle('history:downloadedKeys', () => downloadedKeys())
   handle('history:clearDownloads', () => clearDownloads())
   handle('history:parses', () => parseRecords())
   handle('history:removeParse', (input: string) => removeParse(input))
   handle('history:clearParses', () => clearParses())
 
-  handle('dl:enqueue', (req: EnqueueRequest) => enqueue(req))
+  handle('dl:enqueue', (req: EnqueueRequest, accountMid?: number) => {
+    if (accountMid === undefined) return enqueue(req)
+    requireAccount(accountMid)
+    return enqueue(req, () => requireAccount(accountMid))
+  })
   handle('dl:list', () => manager.list())
   handle('dl:pause', (id: string) => manager.pause(id))
   handle('dl:pauseMany', (ids: string[]) => manager.pauseMany(ids))
@@ -213,7 +294,11 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   })
 
   handle('subs:list', () => subs.list())
-  handle('subs:add', (req: NewSubscription) => subs.add(req))
+  handle('subs:add', async (req: NewSubscription) => {
+    if (parseInput(req.input)?.type !== 'watchlater') return subs.add(req)
+    await ensureLoggedIn()
+    return subs.add(req, currentAccount())
+  })
   handle('subs:update', (id: string, patch: Partial<Pick<Subscription, 'enabled' | 'intervalMin' | 'options'>>) =>
     subs.update(id, patch)
   )

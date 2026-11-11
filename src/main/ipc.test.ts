@@ -102,6 +102,7 @@ vi.mock('./auth/session', () => ({
   biliSession: () => ({ cookies: { get: h.cookiesGet, set: h.cookiesSet } })
 }))
 vi.mock('./bili/audio', () => ({ audioStreamInfo: () => h.AUDIO }))
+vi.mock('./bili/http', () => ({ api: vi.fn() }))
 vi.mock('./bili/lists', () => ({ expandLazy: h.expandLazy, loadPage: h.loadPage, myFavFolders: h.myFavFolders }))
 vi.mock('./bili/playurl', () => ({ getPlayInfo: h.getPlayInfo, streamInfoFromPlay: h.streamInfoFromPlay }))
 vi.mock('./bili/resolve', () => ({ resolveBatch: h.resolveBatch, resolveInput: h.resolveInput }))
@@ -130,6 +131,7 @@ vi.mock('./watermark/manual', () => ({
 }))
 
 const manager = {
+  enqueue: vi.fn(),
   list: vi.fn(),
   pause: vi.fn(),
   pauseMany: vi.fn(),
@@ -143,7 +145,7 @@ const manager = {
   startWatermark: vi.fn(),
   cancelWatermark: vi.fn()
 }
-const subs = { list: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), check: vi.fn() }
+const subs = { list: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), check: vi.fn(), downloadSource: vi.fn() }
 const mcp = { status: vi.fn() }
 const updater = {
   getState: vi.fn(),
@@ -233,7 +235,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(70)
+    expect(h.handlers.size).toBe(74)
   })
 })
 
@@ -381,6 +383,123 @@ describe('myFavFolders', () => {
     h.getAuthState.mockReturnValue(loggedIn(42))
     await data('myFavFolders')
     expect(h.myFavFolders).toHaveBeenCalledWith(42)
+  })
+})
+
+describe('sources', () => {
+  const season = {
+    kind: 'pgc',
+    title: '电影',
+    groups: [{ id: 'main', items: [{ key: 'pgc:10' }] }],
+    defaultSelected: ['pgc:10']
+  }
+  const account = { type: 'account', mid: 7, target: { type: 'pgc', seasonId: 3 } }
+
+  it('旧订阅只需 ID 就能打开，浏览期间不记录解析、不检查更新也不下载', async () => {
+    const input = 'https://b23.tv/old'
+    subs.list.mockReturnValue([{ id: 'legacy', input, seen: ['pgc:10'], enabled: false }])
+    h.resolveInput.mockResolvedValue(season)
+    expect(await data('sources:open', { type: 'subscription', id: 'legacy' })).toMatchObject({ result: season })
+    expect(h.resolveInput).toHaveBeenCalledWith(input)
+    expect(subs.check).not.toHaveBeenCalled()
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(h.recordParse).not.toHaveBeenCalled()
+    expect(await invoke('sources:open', { type: 'subscription', id: 'removed' }))
+      .toEqual({ ok: false, error: '此来源已不可用。' })
+  })
+
+  it('按当前登录账号读取收藏夹和剧集', async () => {
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    h.myFavFolders.mockResolvedValue([{ id: 9, title: '默认收藏夹' }])
+    h.resolveInput.mockResolvedValue(season)
+    expect(await data('sources:listAccount', 7, 'folders', 1)).toEqual({
+      items: [{ key: 'fav:9', title: '默认收藏夹', cover: undefined, target: { type: 'fav', mediaId: 9 } }],
+      hasMore: false
+    })
+    expect(await data('sources:open', account)).toEqual({ result: season, accountMid: 7 })
+    expect(h.resolveInput).toHaveBeenCalledWith('https://www.bilibili.com/bangumi/play/ss3')
+  })
+
+  it('登录过期时转发登录错误，旧账号或在途请求切换账号时丢弃结果', async () => {
+    h.ensureLoggedIn.mockRejectedValueOnce(new Error('登录已过期'))
+    expect(await invoke('sources:listAccount', 7, 'folders', 1)).toEqual({ ok: false, error: '登录已过期' })
+    h.getAuthState.mockReturnValue(loggedIn(8))
+    expect(await invoke('sources:open', account)).toMatchObject({ ok: false })
+    expect(h.resolveInput).not.toHaveBeenCalled()
+
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    h.resolveInput.mockImplementation(async () => {
+      h.getAuthState.mockReturnValue(loggedIn(8))
+      return season
+    })
+    expect(await invoke('sources:open', account)).toEqual({ ok: false, error: '账号已切换，请重新打开来源。' })
+
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    h.myFavFolders.mockImplementation(async () => {
+      h.getAuthState.mockReturnValue(loggedIn(8))
+      return []
+    })
+    expect(await invoke('sources:listAccount', 7, 'folders', 1)).toMatchObject({ ok: false })
+  })
+
+  it('提交准备展开分 P 并返回失效条目的提示，供选择窗口按分 P 去重', async () => {
+    const selected = [{ key: 'ugc:BV1', lazy: true }]
+    const expanded = [{ key: 'ugc:BV1:1' }, { key: 'ugc:BV1:2' }]
+    h.expandLazy.mockResolvedValue([...expanded, { key: 'ugc:BV2', unavailable: '已失效' }])
+    expect(await data('sources:prepareItems', selected)).toEqual({
+      items: expanded,
+      note: '1 个视频无法获取（已失效）'
+    })
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('旧版和新版稍后再看详情都带有账号，切号后拒绝准备和提交', async () => {
+    subs.list.mockReturnValue([
+      { id: 'legacy', input: 'watchlater' },
+      { id: 'bound', input: 'watchlater', accountMid: 7 }
+    ])
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    h.resolveInput.mockResolvedValue(season)
+    for (const id of ['legacy', 'bound']) {
+      expect(await data('sources:open', { type: 'subscription', id })).toEqual({ result: season, accountMid: 7 })
+    }
+
+    h.getAuthState.mockReturnValue(loggedIn(8))
+    expect(await invoke('sources:open', { type: 'subscription', id: 'bound' })).toMatchObject({ ok: false })
+    expect(await invoke('sources:prepareItems', [], 7)).toMatchObject({ ok: false })
+    expect(await invoke('dl:enqueue', { items: [] }, 7)).toMatchObject({ ok: false })
+    expect(h.expandLazy).not.toHaveBeenCalled()
+    expect(enqueue).not.toHaveBeenCalled()
+
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    enqueue.mockImplementation(async (_req, beforeQueue) => {
+      h.getAuthState.mockReturnValue(loggedIn(8))
+      beforeQueue()
+    })
+    expect(await invoke('dl:enqueue', { items: [] }, 7)).toEqual({ ok: false, error: '账号已切换，请重新打开来源。' })
+  })
+
+  it('一键操作使用主进程下载设置和当前账号', async () => {
+    h.getSettings.mockReturnValue({ ...SETTINGS, defaultQn: 80, defaults: {} })
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    subs.downloadSource.mockImplementation(async ({ verifyAccount }) => {
+      verifyAccount()
+      return { count: 1 }
+    })
+    expect(await data('sources:subscribeDownload', { type: 'account', mid: 7, target: { type: 'watchlater' } })).toEqual({ count: 1 })
+    expect(subs.downloadSource).toHaveBeenCalledWith(expect.objectContaining({
+      input: 'https://www.bilibili.com/watchlater', accountMid: 7, defaults: expect.objectContaining({ qn: 80 })
+    }))
+    h.getAuthState.mockReturnValue(loggedIn(8))
+    expect(await invoke('sources:subscribeDownload', account)).toMatchObject({ ok: false })
+    expect(subs.downloadSource).toHaveBeenCalledOnce()
+  })
+
+  it('为普通订阅入口添加的稍后再看绑定当前账号', async () => {
+    h.getAuthState.mockReturnValue(loggedIn(7))
+    const request = { input: '稍后再看', includeExisting: true }
+    await data('subs:add', request)
+    expect(subs.add).toHaveBeenCalledWith(request, 7)
   })
 })
 

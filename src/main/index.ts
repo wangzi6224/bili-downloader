@@ -10,7 +10,7 @@ import { expandLazy, loadAllPages } from './bili/lists'
 import { biliLookup } from './bili/lookup'
 import { DownloadManager } from './download/manager'
 import { makeEnqueue } from './enqueue'
-import { downloadedKeys, recordDownload, removeDownloads } from './history'
+import { downloadedKeys, onDownloadsChanged, recordDownload, removeDownloads } from './history'
 import { limiter } from './download/rateLimiter'
 import { parseAndRecord, registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
@@ -276,6 +276,7 @@ async function start(): Promise<void> {
     getSettings
   )
   manager.on('update', (tasks) => send('dl:update', tasks))
+  onDownloadsChanged(() => send('history:downloadsChanged'))
   manager.on('done', (t: TaskInfo) =>
     recordDownload({ key: t.item.key, title: t.title, groupTitle: t.groupTitle, path: t.outputPath ?? '', at: Date.now() })
   )
@@ -288,7 +289,7 @@ async function start(): Promise<void> {
   )
 
   const enqueue = makeEnqueue(manager)
-  const subs = new SubscriptionManager(enqueue)
+  const subs = new SubscriptionManager((request) => manager.enqueue(request).created.length)
   subs.on('update', (list) => send('subs:update', list))
   subs.on('found', ({ title, count }: { title: string; count: number }) =>
     notify(t('misc.notifySubsTitle'), t('misc.notifySubsBody', { title, count }))

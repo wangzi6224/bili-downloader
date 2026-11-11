@@ -31,9 +31,16 @@ export function bestQuality(qualities: QualityOption[], isVip: boolean, defaultQ
   return usable.find((q) => q.qn <= defaultQn) ?? usable[usable.length - 1] ?? qualities[0]
 }
 
-/** 翻页加载的条目接到第一组后面，已有的不重复加 */
-export const appendToFirst = (groups: MediaGroup[], items: MediaItem[]): MediaGroup[] =>
-  groups.map((g, i) => (i === 0 ? { ...g, items: [...g.items, ...items.filter((it) => !g.items.some((x) => x.key === it.key))] } : g))
+/** 翻页加载的条目接到第一组后面，已有的和本页重复的不再添加 */
+export function appendToFirst(groups: MediaGroup[], items: MediaItem[]): MediaGroup[] {
+  const seen = new Set(groups.flatMap((group) => group.items.map((item) => item.key)))
+  const added = items.filter((item) => {
+    if (seen.has(item.key)) return false
+    seen.add(item.key)
+    return true
+  })
+  return groups.map((group, index) => index === 0 ? { ...group, items: [...group.items, ...added] } : group)
+}
 
 /** 按标题或 UP 主筛选，筛完没有条目的组不显示 */
 export function filterGroups(groups: MediaGroup[], filter: string): MediaGroup[] {
@@ -51,34 +58,49 @@ export const selectable = (i: MediaItem): boolean => !i.unavailable
 export const selectedItems = (all: MediaItem[], selected: Set<string>): MediaItem[] =>
   all.filter((i) => selected.has(i.key) && selectable(i))
 
+export function selectionSummary(items: MediaItem[], selected: Set<string>): { count: number; total: number } {
+  let count = 0
+  let total = 0
+  for (const item of items) {
+    if (!selectable(item)) continue
+    total++
+    if (selected.has(item.key)) count++
+  }
+  return { count, total }
+}
+
 /**
- * 点击一个条目。shift 且有上次点击的位置（anchor，visibleItems 里的下标）时，
+ * 点击一个条目。按住 Shift 且上次点击的条目仍可见时，
  * 把区间内能选的都设成和这一项切换后相同的状态。点到失效条目返回 null，什么都不变
  */
 export function toggleSelection(
   selected: Set<string>,
   visibleItems: MediaItem[],
   item: MediaItem,
-  anchor: number | null,
+  anchor: MediaItem | null,
   shift: boolean
-): { selected: Set<string>; anchor: number } | null {
+): Set<string> | null {
   if (!selectable(item)) return null
-  const idx = visibleItems.indexOf(item)
-  const next = new Set(selected)
-  const on = !next.has(item.key)
-  if (shift && anchor !== null) {
-    const [a, b] = [anchor, idx].sort((x, y) => x - y)
-    for (const i of visibleItems.slice(a, b + 1)) if (selectable(i)) on ? next.add(i.key) : next.delete(i.key)
-  } else {
-    on ? next.add(item.key) : next.delete(item.key)
+  const on = !selected.has(item.key)
+  if (shift && anchor) {
+    const from = visibleItems.indexOf(anchor)
+    const to = visibleItems.indexOf(item)
+    if (from >= 0 && to >= 0) {
+      return setMany(selected, visibleItems.slice(Math.min(from, to), Math.max(from, to) + 1), on)
+    }
   }
-  return { selected: next, anchor: idx }
+  return setMany(selected, [item], on)
 }
 
-/** 全选、全不选、整组勾选等：失效的条目跳过 */
-export function setMany(selected: Set<string>, items: MediaItem[], on: boolean): Set<string> {
+/** 批量勾选只改变给定范围内可下载的条目。 */
+export function setMany(selected: Set<string>, items: MediaItem[], on: boolean | 'invert'): Set<string> {
   const next = new Set(selected)
-  for (const i of items) if (selectable(i)) on ? next.add(i.key) : next.delete(i.key)
+  for (const item of items) {
+    if (!selectable(item)) continue
+    const checked = on === 'invert' ? !selected.has(item.key) : on
+    if (checked) next.add(item.key)
+    else next.delete(item.key)
+  }
   return next
 }
 

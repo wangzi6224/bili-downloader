@@ -85,6 +85,19 @@ describe('importConfig', () => {
     expect(subs.replaceAll).toHaveBeenCalledWith(list)
   })
 
+  it('合并同账号的稍后再看，保留其他账号的记录和独立 ID', async () => {
+    const account7 = { ...sub('watchlater', '账号 7'), accountMid: 7, id: 'id-7' }
+    const account8 = { ...sub('watchlater', '账号 8'), accountMid: 8, id: 'id-8' }
+    const imported7 = { ...account7, id: 'id-8', title: '备份账号 7' }
+    list = [account7, account8]
+    file({ app: 'bili-downloader', settings: SETTINGS, subscriptions: [imported7] })
+    await importConfig(null, manager)
+    const [retained, imported] = subs.replaceAll.mock.calls[0][0] as Subscription[]
+    expect(retained).toBe(account8)
+    expect(imported).toMatchObject({ accountMid: 7, title: imported7.title })
+    expect(imported.id).not.toBe(retained.id)
+  })
+
   it('取消时什么都不做', async () => {
     h.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
     expect(await importConfig(win, manager)).toBeNull()

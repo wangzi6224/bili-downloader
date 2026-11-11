@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { t, type Lang } from '@shared/i18n'
-import type { AuthState, ParseResult, Settings, TaskInfo, UpdateState } from '@shared/types'
+import type { AuthState, ParseResult, Settings, SourceRef, TaskInfo, UpdateState } from '@shared/types'
 import { platformText } from './platform'
 
 export type View = 'downloads' | 'subs' | 'history' | 'settings'
@@ -21,6 +21,8 @@ interface State {
   lang: Lang | null
   tasks: TaskInfo[]
   parse: ParseResult | null
+  source: SourceRef | null
+  sourceAccountMid?: number
   parsing: boolean
   /** 批量解析、展开分P时的进度 */
   progress: { done: number; total: number; title?: string } | null
@@ -43,6 +45,8 @@ export const useStore = create<State>((set) => ({
   lang: null,
   tasks: [],
   parse: null,
+  source: null,
+  sourceAccountMid: undefined,
   parsing: false,
   progress: null,
   error: null,
@@ -54,6 +58,24 @@ export const useStore = create<State>((set) => ({
 export const api = window.api
 /** 和系统有关的文案（访达 / 文件管理器、⌘ / Ctrl 等）；文字是 getter，每次读取都按当前语言取 */
 export const sysText = platformText(api.platform)
+
+export function updateAuth(auth: AuthState): void {
+  const { sourceAccountMid, set } = useStore.getState()
+  const stale = sourceAccountMid !== undefined && (!auth.loggedIn || sourceAccountMid !== auth.user.mid)
+  set({
+    auth,
+    ...(auth.loggedIn ? { loginOpen: false } : {}),
+    ...(stale ? { parse: null, source: null, sourceAccountMid: undefined } : {})
+  })
+}
+
+export async function openSource(source: SourceRef, isCurrent: () => boolean): Promise<void> {
+  const { result, accountMid } = await api.sources.open(source)
+  const { auth, view, parse, parsing, set } = useStore.getState()
+  if (!isCurrent() || view !== 'subs' || parse || parsing) return
+  if (accountMid !== undefined && (!auth?.loggedIn || auth.user.mid !== accountMid)) return
+  set({ parse: { ...result, defaultSelected: [] }, source, sourceAccountMid: accountMid, error: null, notice: null, progress: null })
+}
 
 export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   try {
@@ -68,7 +90,7 @@ async function runParse(fn: () => Promise<ParseResult>): Promise<void> {
   set({ parsing: true, error: null, notice: null, progress: null })
   try {
     const result = await fn()
-    set({ parse: result })
+    set({ parse: result, source: null, sourceAccountMid: undefined })
     if (result.failures?.length) {
       const errors = result.failures.map((f) => f.error).join(t('input.separator'))
       set({ notice: t('input.parseFailures', { count: result.failures.length, errors }) })

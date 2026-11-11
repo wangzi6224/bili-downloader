@@ -10,6 +10,7 @@ const parsesFile = (): string => join(app.getPath('userData'), 'parses.json')
 
 let downloads: Map<string, HistoryEntry> | undefined
 let parses: ParseRecord[] | undefined
+const downloadListeners = new Set<() => void>()
 
 function loadDownloads(): Map<string, HistoryEntry> {
   downloads ??= new Map(readJsonArray<HistoryEntry>(downloadsFile()).map((e) => [e.key, e]))
@@ -21,11 +22,21 @@ function loadParses(): ParseRecord[] {
   return parses
 }
 
+export function onDownloadsChanged(listener: () => void): () => void {
+  downloadListeners.add(listener)
+  return () => { downloadListeners.delete(listener) }
+}
+
+function saveDownloads(): void {
+  writeJson(downloadsFile(), [...loadDownloads().values()])
+  for (const listener of downloadListeners) listener()
+}
+
 /** 下载历史：用条目 key 判断是否下载过 */
 export function recordDownload(entry: HistoryEntry): void {
   const map = loadDownloads()
   map.set(entry.key, entry)
-  writeJson(downloadsFile(), [...map.values()])
+  saveDownloads()
 }
 
 export const downloadedKeys = (): string[] => [...loadDownloads().keys()]
@@ -34,12 +45,12 @@ export const downloadedKeys = (): string[] => [...loadDownloads().keys()]
 export function removeDownloads(keys: string[]): void {
   const map = loadDownloads()
   for (const k of keys) map.delete(k)
-  writeJson(downloadsFile(), [...map.values()])
+  saveDownloads()
 }
 
 export function clearDownloads(): void {
   downloads = new Map()
-  writeJson(downloadsFile(), [])
+  saveDownloads()
 }
 
 /** 解析记录：同一个链接只保留最新一条，最多 300 条 */

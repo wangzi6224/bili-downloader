@@ -267,7 +267,7 @@ export async function loadPage(source: PagedSource, page: number): Promise<PageR
  */
 export async function loadAllPages(
   result: ParseResult,
-  { maxItems = Infinity, interval = 1000 }: { maxItems?: number; interval?: number } = {}
+  { maxItems = Infinity, interval = 1000, beforePage }: { maxItems?: number; interval?: number; beforePage?: () => void } = {}
 ): Promise<{ result: ParseResult; complete: boolean; error?: string }> {
   let paging = result.paging
   if (!paging?.hasMore) return { result, complete: true }
@@ -279,6 +279,7 @@ export async function loadAllPages(
     await sleep(interval)
     let p: PageResult
     try {
+      beforePage?.()
       p = await loadPage(paging.source, paging.page + 1)
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
@@ -298,6 +299,24 @@ export async function loadAllPages(
 
 /** UP 主空间里的合集、系列按时间正序排，超过一页后新内容在最后几页 */
 export const isAscending = (source: PagedSource): boolean => source.type === 'spaceSeason' || source.type === 'spaceSeries'
+
+/** 倒序来源从首页往后查，到遇到上次已见的条目为止。 */
+export async function loadHeadPages(paging: Paging, isSeen: (item: MediaItem) => boolean, interval = 1000): Promise<MediaItem[]> {
+  const items: MediaItem[] = []
+  for (let page = paging.page + 1, more = paging.hasMore; more; page++) {
+    await sleep(interval)
+    const next = await loadPage(paging.source, page)
+    const boundary = next.items.findIndex(isSeen)
+    if (boundary !== -1) {
+      items.push(...next.items.slice(0, boundary))
+      break
+    }
+    if (!next.items.length && next.hasMore) throw new Error(t('subs.sourceIncomplete'))
+    items.push(...next.items)
+    more = next.hasMore
+  }
+  return items
+}
 
 /**
  * 正序的来源从最后一页往前翻（不含第一页），直到某一页里出现 isKnown 的条目；返回按正序排好的条目

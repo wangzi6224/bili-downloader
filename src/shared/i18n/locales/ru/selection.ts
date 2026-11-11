@@ -36,17 +36,20 @@ export default {
   close: 'Закрыть',
   selectAllFiltered: 'Выбрать все найденные',
   selectAll: 'Выбрать все',
-  selectNone: 'Снять выбор',
-  invert: 'Инвертировать',
+  selectAllLoaded: 'Выбрать все загруженные',
+  selectionActions: 'Действия с выбором',
+  hiddenSelected: 'Выбрано вне фильтра: {count}',
+  selectNone: 'Очистить выбор',
+  invert: 'Инвертировать выбор в результатах',
   deselectDownloaded: 'Снять скачанные',
   filterPlaceholder: 'Фильтр по названию / автору',
   rangePlaceholder: 'Номера, напр. 1-5,7',
   rangeTitle: 'Выбор по номерам, Enter — применить',
   selectedCount: {
-    one: 'Shift — выбор диапазона · выбран {count}',
-    few: 'Shift — выбор диапазона · выбрано {count}',
-    many: 'Shift — выбор диапазона · выбрано {count}',
-    other: 'Shift — выбор диапазона · выбрано {count}'
+    one: 'выбран {count}',
+    few: 'выбрано {count}',
+    many: 'выбрано {count}',
+    other: 'выбрано {count}'
   },
   groupLoaded: {
     one: 'Загружено {count} из {total}',

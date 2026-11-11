@@ -109,6 +109,54 @@ summary:focus-visible {
   outline-offset: 1px;
 }
 
+@media (forced-colors: none) {
+  input[type='checkbox'].accent-bili {
+    appearance: none;
+    display: inline-grid;
+    place-items: center;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    vertical-align: middle;
+    border: 1px solid var(--subtle);
+    border-radius: 3px;
+    background-color: var(--field);
+  }
+
+  input[type='checkbox'].accent-bili:is(:checked, :indeterminate) {
+    border-color: var(--color-bili-dark);
+    background-color: var(--color-bili-dark);
+  }
+
+  input[type='checkbox'].accent-bili:checked::before {
+    content: '';
+    width: 7px;
+    height: 4px;
+    border-bottom: 2px solid #fff;
+    border-left: 2px solid #fff;
+    transform: translateY(-0.5px) rotate(-45deg);
+  }
+
+  input[type='checkbox'].accent-bili:indeterminate::before {
+    content: '';
+    width: 7px;
+    height: 2px;
+    border: 0;
+    border-radius: 1px;
+    background-color: #fff;
+    transform: none;
+  }
+
+  input[type='checkbox'].accent-bili:focus-visible {
+    outline: 2px solid var(--color-bili-dark);
+    outline-offset: 2px;
+  }
+
+  input[type='checkbox'].accent-bili:disabled {
+    opacity: 0.5;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 11px;
   height: 11px;

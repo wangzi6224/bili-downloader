@@ -10,3 +10,18 @@ export function downloadedMatcher(keys: Iterable<string>): (i: MediaItem) => boo
   const bvids = new Set([...set].map((k) => k.split(':')[1]))
   return (i) => set.has(i.key) || Boolean(i.lazy && i.bvid && bvids.has(i.bvid))
 }
+
+export function downloadStatusMatcher(keys: Iterable<string>): (item: MediaItem) => 'downloaded' | 'parts' | 'missing' {
+  const exact = new Set(keys)
+  const withParts = new Set<string>()
+  for (const key of exact) {
+    const [kind, bvid, cid] = key.split(':')
+    if (kind === 'ugc' && cid) withParts.add(bvid)
+  }
+  return (item) => {
+    if (item.kind === 'ugc' && item.lazy) {
+      return item.bvid && withParts.has(item.bvid) ? 'parts' : 'missing'
+    }
+    return exact.has(item.key) ? 'downloaded' : 'missing'
+  }
+}

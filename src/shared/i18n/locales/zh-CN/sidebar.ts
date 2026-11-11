@@ -1,6 +1,6 @@
 export default {
   downloads: '下载',
-  subs: '订阅',
+  subs: '订阅与收藏',
   history: '解析记录',
   settings: '设置',
   checkingLogin: '检查登录…',

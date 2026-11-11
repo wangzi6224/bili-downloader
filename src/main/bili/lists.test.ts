@@ -380,6 +380,32 @@ describe('loadAllPages', () => {
   })
 })
 
+describe('loadHeadPages', () => {
+  const paging = { source: { type: 'fav' as const, mediaId: 1 }, page: 1, total: 80, hasMore: true }
+  const media = (id: number) => ({ ...archive(id), id, type: 2 })
+  const info = { id: 1, title: '我的收藏', cover: '', media_count: 80 }
+
+  it('跨过多页新收藏，遇到上一轮已见边界后不加载更早的内容', async () => {
+    route({
+      fav: ({ pn }) => ({
+        info,
+        has_more: true,
+        medias: pn === 2 ? Array.from({ length: 20 }, (_, i) => media(i + 21)) : [media(41), media(42), media(43)]
+      })
+    })
+    const items = await lists.loadHeadPages(paging, (item) => item.key === 'ugc:BV42', 0)
+    expect(items.map((item) => item.index)).toEqual(Array.from({ length: 21 }, (_, i) => i + 21))
+    expect(api.mock.calls.map(([, params]) => params?.pn)).toEqual([2, 3])
+  })
+
+  it('正常末页会返回，宣称还有下一页的空页会报错以保留原基线', async () => {
+    route({ fav: () => ({ info, has_more: false, medias: [media(21)] }) })
+    expect(await lists.loadHeadPages(paging, () => false, 0)).toMatchObject([{ key: 'ugc:BV21' }])
+    route({ fav: () => ({ info, has_more: true, medias: [] }) })
+    await expect(lists.loadHeadPages(paging, () => false, 0)).rejects.toThrow('未能读完所有条目')
+  })
+})
+
 describe('loadTailPages', () => {
   const seasonPage = (total: number) => (p: Params) => {
     const page = Number(p.page_num)

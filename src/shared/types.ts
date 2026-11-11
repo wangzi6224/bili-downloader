@@ -383,8 +383,12 @@ export interface Subscription {
   intervalMin: number
   enabled: boolean
   options: DownloadOptions
+  /** 稍后再看属于登录账号 */
+  accountMid?: number
   /** 已经见过的条目 key，只有之后新增的才会下载 */
   seen: string[]
+  /** 已发现但尚未成功展开分 P 的条目 */
+  pending?: MediaItem[]
   createdAt: number
   lastCheck?: number
   lastNew?: number
@@ -405,6 +409,42 @@ export interface NewSubscription {
   /** 现在已有的内容也下载 */
   includeExisting: boolean
   currentKeys: string[]
+}
+
+export type AccountSourceCategory = 'anime' | 'cinema' | 'collected' | 'folders'
+
+export type AccountSourceTarget =
+  | { type: 'pgc'; seasonId: number }
+  | { type: 'spaceSeason'; ownerMid: number; seasonId: number }
+  | { type: 'fav'; mediaId: number }
+  | { type: 'watchlater' }
+
+export type SourceRef =
+  | { type: 'subscription'; id: string }
+  | { type: 'account'; mid: number; target: AccountSourceTarget }
+
+export interface SourceDetails {
+  result: ParseResult
+  accountMid?: number
+}
+
+export interface AccountSource {
+  key: string
+  title: string
+  cover?: string
+  target: AccountSourceTarget
+}
+
+export interface AccountSourcePage {
+  items: AccountSource[]
+  hasMore: boolean
+}
+
+export interface SourceDownloadResult {
+  title: string
+  subscribed: boolean
+  count: number
+  note?: string
 }
 
 export interface Settings {
@@ -522,9 +562,15 @@ export interface BiliApi {
   streamInfo(item: MediaItem): Promise<StreamInfo>
   /** 当前账号创建的收藏夹 */
   myFavFolders(): Promise<{ id: number; title: string; count: number }[]>
+  sources: {
+    listAccount(mid: number, category: AccountSourceCategory, page: number): Promise<AccountSourcePage>
+    open(source: SourceRef): Promise<SourceDetails>
+    prepareItems(items: MediaItem[], accountMid?: number): Promise<{ items: MediaItem[]; note?: string }>
+    subscribeDownload(source: SourceRef): Promise<SourceDownloadResult>
+  }
   download: {
     /** 返回无法加入队列的提示（例如列表里有失效视频） */
-    enqueue(req: EnqueueRequest): Promise<string | undefined>
+    enqueue(req: EnqueueRequest, accountMid?: number): Promise<string | undefined>
     list(): Promise<TaskInfo[]>
     pause(id: string): Promise<void>
     pauseMany(ids: string[]): Promise<void>
@@ -567,6 +613,7 @@ export interface BiliApi {
   history: {
     /** 已下载过的条目 key */
     downloadedKeys(): Promise<string[]>
+    onDownloadsChanged(cb: () => void): () => void
     clearDownloads(): Promise<void>
     parses(): Promise<ParseRecord[]>
     removeParse(input: string): Promise<ParseRecord[]>

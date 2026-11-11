@@ -194,6 +194,7 @@ export function Segmented<T extends string>({
           type="button"
           title={hint}
           disabled={disabled}
+          aria-pressed={value === v}
           onClick={() => onChange(v)}
           className={`flex min-w-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors ${size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-2.5 text-xs'} ${value === v ? 'bg-thumb text-fg shadow-sm shadow-black/10' : 'text-muted hover:text-fg'}`}
         >
@@ -273,13 +274,15 @@ export function Dropdown({
       if (!box.current?.contains(e.target as Node)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      setOpen(false)
     }
     window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
     return () => {
       window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onKey, true)
     }
   }, [open])
 
@@ -412,7 +415,7 @@ export function Modal({
   useEffect(() => {
     if (!onClose) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

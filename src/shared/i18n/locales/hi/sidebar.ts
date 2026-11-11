@@ -2,7 +2,7 @@ import type { Messages } from '../types'
 
 export default {
   downloads: 'डाउनलोड',
-  subs: 'सब्सक्रिप्शन',
+  subs: 'सब्सक्रिप्शन और पसंदीदा',
   history: 'पार्स रिकॉर्ड',
   settings: 'सेटिंग्स',
   checkingLogin: 'लॉग इन जाँचा जा रहा है…',

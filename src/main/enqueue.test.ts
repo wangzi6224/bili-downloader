@@ -52,4 +52,10 @@ describe('makeEnqueue', () => {
     await expect(enqueue(REQ)).rejects.toThrow('网络请求失败')
     expect(manager.enqueue).not.toHaveBeenCalled()
   })
+
+  it('展开后、真正入队前重新验证账号', async () => {
+    h.expandLazy.mockResolvedValue([item('ugc:BV1:1')])
+    await expect(enqueue(REQ, () => { throw new Error('账号已切换') })).rejects.toThrow('账号已切换')
+    expect(manager.enqueue).not.toHaveBeenCalled()
+  })
 })

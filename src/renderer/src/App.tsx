@@ -11,7 +11,7 @@ import { UpdateDialog } from './components/UpdateDialog'
 import { UrlInput } from './components/UrlInput'
 import { applyLanguage } from './i18n'
 import { isSettingsShortcut } from './platform'
-import { api, useStore } from './store'
+import { api, updateAuth, useStore } from './store'
 
 export default function App() {
   const s = useStore()
@@ -21,11 +21,13 @@ export default function App() {
     void api.settings.get().then((settings) => set({ settings }))
     void api.i18n.get().then(applyLanguage)
     void api.download.list().then((tasks) => set({ tasks: [...tasks] }))
-    void api.auth.check().then((auth) => set({ auth }))
+    void api.auth.check().then((auth) => {
+      if (useStore.getState().auth === null) updateAuth(auth)
+    })
     void api.update.state().then((update) => set({ update }))
     const offs = [
       api.auth.onRequired(() => set({ loginOpen: true })),
-      api.auth.onChanged((auth) => set(auth.loggedIn ? { auth, loginOpen: false } : { auth })),
+      api.auth.onChanged(updateAuth),
       api.download.onUpdate((tasks) => set({ tasks: [...tasks] })),
       // MCP 改了设置时同步过来，免得界面之后用旧值写回去
       api.settings.onChanged((settings) => set({ settings })),
@@ -65,7 +67,7 @@ export default function App() {
         {s.view === 'history' && <HistoryPage />}
         {s.view === 'settings' && <SettingsPage />}
       </main>
-      {s.parse && <SelectionDialog result={s.parse} />}
+      {s.parse && <SelectionDialog result={s.parse} fromSource={s.source !== null} />}
       {s.loginOpen && <LoginDialog />}
       {s.closeAsk && <CloseDialog />}
       {/* 不打断正在进行的登录、选择和关闭询问，等它们结束再弹 */}

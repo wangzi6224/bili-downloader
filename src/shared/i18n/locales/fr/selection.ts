@@ -16,15 +16,18 @@ export default {
   close: 'Fermer',
   selectAllFiltered: 'Sélectionner les résultats filtrés',
   selectAll: 'Tout sélectionner',
-  selectNone: 'Tout désélectionner',
-  invert: 'Inverser la sélection',
+  selectAllLoaded: 'Sélectionner les éléments chargés',
+  selectionActions: 'Actions de sélection',
+  hiddenSelected: '{count} hors filtre',
+  selectNone: 'Effacer la sélection',
+  invert: 'Inverser les résultats affichés',
   deselectDownloaded: 'Désélectionner les éléments téléchargés',
   filterPlaceholder: 'Filtrer par titre / créateur',
   rangePlaceholder: 'Numéros, ex. 1-5,7',
   rangeTitle: 'Sélectionner par numéro, valider avec Entrée',
   selectedCount: {
-    one: 'Maj pour une sélection continue · {count} sélectionné',
-    other: 'Maj pour une sélection continue · {count} sélectionnés'
+    one: '{count} sélectionné',
+    other: '{count} sélectionnés'
   },
   groupLoaded: '{count} / {total} chargés',
   downloadedTitle: 'Cet élément figure dans l’historique des téléchargements',

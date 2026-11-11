@@ -3,18 +3,29 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeOptions } from '@shared/options'
-import type { MediaItem, NewSubscription, ParseResult, Subscription } from '@shared/types'
+import type { EnqueueRequest, MediaItem, NewSubscription, ParseResult, Subscription } from '@shared/types'
 
 const h = vi.hoisted(() => ({
   userData: '',
   resolveInput: vi.fn(),
   downloadedKeys: vi.fn((): string[] => []),
+  loadAllPages: vi.fn(),
+  loadHeadPages: vi.fn(),
+  prepare: vi.fn(),
+  auth: vi.fn(),
   loadTailPages: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => [])
 }))
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }))
 vi.mock('./bili/resolve', () => ({ resolveInput: h.resolveInput }))
-vi.mock('./bili/lists', async (orig) => ({ isAscending: (await orig<typeof import('./bili/lists')>()).isAscending, loadTailPages: h.loadTailPages }))
+vi.mock('./bili/lists', async (orig) => ({
+  isAscending: (await orig<typeof import('./bili/lists')>()).isAscending,
+  loadAllPages: h.loadAllPages,
+  loadHeadPages: h.loadHeadPages,
+  loadTailPages: h.loadTailPages
+}))
 vi.mock('./history', () => ({ downloadedKeys: h.downloadedKeys }))
+vi.mock('./enqueue', () => ({ prepareEnqueueItems: h.prepare }))
+vi.mock('./auth/authGuard', () => ({ getAuthState: h.auth }))
 const { SubscriptionManager } = await import('./subscriptions')
 const { AuthExpiredError } = await import('./bili/http')
 
@@ -51,7 +62,7 @@ const sub = (o: Partial<Subscription>): Subscription => ({
   ...o
 })
 
-let enqueue: ReturnType<typeof vi.fn<(req: unknown) => Promise<string | undefined>>>
+let enqueue: ReturnType<typeof vi.fn<(req: EnqueueRequest) => number>>
 let m: InstanceType<typeof SubscriptionManager>
 const saved = (): Subscription[] => JSON.parse(readFileSync(join(h.userData, 'subscriptions.json'), 'utf8'))
 
@@ -60,13 +71,150 @@ beforeEach(() => {
   h.userData = mkdtempSync(join(tmpdir(), 'subs-'))
   h.downloadedKeys.mockReturnValue([])
   h.loadTailPages.mockResolvedValue([])
-  enqueue = vi.fn(async () => undefined)
+  h.loadHeadPages.mockResolvedValue([])
+  h.loadAllPages.mockImplementation(async (result) => ({ result, complete: true }))
+  h.prepare.mockImplementation(async (items) => ({ items, failed: [] }))
+  h.auth.mockReturnValue({ loggedIn: false })
+  enqueue = vi.fn((request) => request.items.length)
   m = new SubscriptionManager(enqueue)
 })
 afterEach(() => {
   m.stop()
   vi.useRealTimers()
   rmSync(h.userData, { recursive: true, force: true })
+})
+
+describe('一键订阅并下载', () => {
+  const input = 'https://www.bilibili.com/medialist/detail/ml2'
+  const verifyAccount = vi.fn()
+  const request = { input, defaults: OPTIONS, verifyAccount }
+
+  it('加载后续分页并只加入缺失分 P，用所有原始条目建立订阅基线', async () => {
+    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1' })
+    const existing = item('ugc:BV2:20')
+    const unavailable = item('ugc:BV3', { unavailable: '失效' })
+    const first = result([existing])
+    const all = result([existing, lazy, unavailable])
+    h.resolveInput.mockResolvedValue(first)
+    h.loadAllPages.mockResolvedValue({ result: all, complete: true })
+    h.downloadedKeys.mockReturnValue([existing.key, 'ugc:BV1:10'])
+    h.prepare.mockResolvedValueOnce({ items: [item('ugc:BV1:10'), item('ugc:BV1:11')], failed: [] })
+    expect(await m.downloadSource(request)).toMatchObject({ subscribed: true, count: 1 })
+    expect(h.loadAllPages).toHaveBeenCalledWith(first, { beforePage: verifyAccount })
+    expect(h.prepare).toHaveBeenCalledWith([lazy])
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [item('ugc:BV1:11')], options: OPTIONS }))
+    expect(saved()[0]).toMatchObject({ enabled: true, intervalMin: 360, seen: [existing.key, lazy.key, unavailable.key], lastNew: 1 })
+  })
+
+  it('复用从单集链接添加的订阅及其选项和暂停状态', async () => {
+    const original = sub({ input: 'ep55', kind: 'pgc', enabled: false, options: normalizeOptions({}, 64) })
+    m.replaceAll([original])
+    h.resolveInput.mockResolvedValue({
+      ...result([item('pgc:55', { kind: 'pgc', epId: 55 })]),
+      kind: 'pgc'
+    })
+    expect(await m.downloadSource({ ...request, input: 'ss12' })).toMatchObject({ subscribed: false, count: 1 })
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ options: original.options }))
+    expect(saved()).toMatchObject([{ id: original.id, enabled: false, seen: ['pgc:55'] }])
+  })
+
+  it('分页失败保留原状，操作结束后可以重试', async () => {
+    const first = result([])
+    h.resolveInput.mockResolvedValue(first)
+    h.loadAllPages.mockResolvedValueOnce({ result: first, complete: false, error: '请求失败' })
+    await expect(m.downloadSource(request)).rejects.toThrow('请求失败')
+    expect(m.list()).toEqual([])
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(await m.downloadSource(request)).toMatchObject({ subscribed: true, count: 0 })
+  })
+
+  it('重复点击只执行一次，在准备期间切换账号则取消入队', async () => {
+    let resolve!: (value: ParseResult) => void
+    h.resolveInput.mockReturnValue(new Promise<ParseResult>((done) => { resolve = done }))
+    const run = m.downloadSource({
+      ...request,
+      verifyAccount: vi.fn().mockImplementationOnce(() => {}).mockImplementationOnce(() => {}).mockImplementation(() => { throw new Error('账号切换') })
+    })
+    await expect(m.downloadSource(request)).rejects.toThrow('此来源正在检查或准备下载')
+    resolve(result([item('new')]))
+    await expect(run).rejects.toThrow('账号切换')
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(m.list()).toEqual([])
+  })
+
+  it('展开失败的条目不记为已见，重启后即使移出首页也能补下缺失分 P', async () => {
+    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1' })
+    const nextPart = item('ugc:BV1:11')
+    const other = item('known')
+    h.resolveInput.mockResolvedValueOnce(result([other, lazy]))
+    h.downloadedKeys.mockReturnValue(['ugc:BV1:10'])
+    h.prepare.mockResolvedValueOnce({ items: [other], failed: [{ ...lazy, unavailable: '风控' }], note: '风控' })
+    expect(await m.downloadSource(request)).toMatchObject({ subscribed: true, count: 1, note: '风控' })
+    const [subscription] = saved()
+    expect(subscription.seen).toEqual(['known'])
+    expect(subscription.pending).toEqual([lazy])
+    const restarted = new SubscriptionManager(enqueue)
+    h.resolveInput.mockResolvedValueOnce({
+      ...result([other]),
+      paging: { source: { type: 'fav', mediaId: 2 }, page: 1, total: 21, hasMore: true }
+    })
+    h.prepare.mockResolvedValueOnce({ items: [item('ugc:BV1:10'), nextPart], failed: [] })
+    await restarted.check(subscription.id)
+    expect(h.prepare).toHaveBeenLastCalledWith([lazy])
+    expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ items: [nextPart] }))
+    expect(saved()[0]).toMatchObject({ seen: ['known', lazy.key], lastNew: 1 })
+    expect(saved()[0].pending).toBeUndefined()
+    expect(saved()[0].lastError).toBeUndefined()
+  })
+
+  it('下载缺失内容时丢弃完整列表中已不存在的待重试条目', async () => {
+    const removed = item('ugc:BVremoved', { lazy: true, bvid: 'BVremoved' })
+    const present = item('ugc:BVpresent', { lazy: true, bvid: 'BVpresent' })
+    const part = item('ugc:BVpresent:4')
+    const existing = sub({ input, pending: [removed, present] })
+    m.replaceAll([existing])
+    h.resolveInput.mockResolvedValueOnce(result([present]))
+    h.prepare.mockImplementationOnce(async (items: MediaItem[]) => ({
+      items: items.map((entry) => entry.key === present.key ? part : item('ugc:BVremoved:4')),
+      failed: []
+    }))
+    expect(await m.downloadSource({ ...request, subscription: existing })).toMatchObject({ subscribed: false, count: 1 })
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [part] }))
+    expect(saved()[0].seen).toEqual([present.key])
+    expect(saved()[0].pending).toBeUndefined()
+  })
+
+  it('复用旧的稍后再看时将它绑定到当前账号，并保留原来的订阅设置', async () => {
+    const legacy = sub({
+      input: 'watchlater',
+      options: normalizeOptions({}, 64),
+      seen: ['unknown-owner'],
+      pending: [item('unknown-owner-pending')]
+    })
+    m.replaceAll([legacy])
+    h.resolveInput.mockResolvedValue(result([]))
+    const requestA = { ...request, input: 'https://www.bilibili.com/watchlater', accountMid: 7 }
+    expect(await m.downloadSource(requestA)).toMatchObject({ subscribed: false })
+    expect(saved()).toMatchObject([{ id: legacy.id, accountMid: 7, options: legacy.options, seen: [] }])
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(await m.downloadSource({ ...requestA, accountMid: 8 })).toMatchObject({ subscribed: true })
+    expect(saved().map((s) => s.accountMid)).toEqual([7, 8])
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 8 } })
+    h.resolveInput.mockClear()
+    await m.check(legacy.id)
+    expect(h.resolveInput).not.toHaveBeenCalled()
+  })
+
+  it('稍后再看只在对应账号登录时检查', async () => {
+    m.replaceAll([sub({ id: 'watch', input: 'watchlater', accountMid: 7 })])
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 8 } })
+    await m.check('watch')
+    expect(h.resolveInput).not.toHaveBeenCalled()
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 7 } })
+    h.resolveInput.mockResolvedValue(result([]))
+    await m.check('watch')
+    expect(h.resolveInput).toHaveBeenCalledWith('watchlater')
+  })
 })
 
 describe('add', () => {
@@ -129,7 +277,6 @@ describe('check', () => {
         item('ugc:BV2', { lazy: true, bvid: 'BV2' })
       ])
     )
-    enqueue.mockResolvedValue('1 个视频无法获取')
     const found = vi.fn()
     m.on('found', found)
     const [s] = await m.check('s')
@@ -142,7 +289,7 @@ describe('check', () => {
       items: [item('new'), item('ugc:BV2', { lazy: true, bvid: 'BV2' })],
       options: OPTIONS
     })
-    expect(found).toHaveBeenCalledWith({ title: '我的收藏', count: 2, note: '1 个视频无法获取' })
+    expect(found).toHaveBeenCalledWith({ title: '我的收藏', count: 2, note: undefined })
     expect(s.seen).toEqual(['seen', 'done', 'ugc:BV1', 'gone', 'new', 'ugc:BV2'])
     expect(s).toMatchObject({ lastNew: 2, lastError: undefined })
     expect(saved()[0].seen).toEqual(s.seen)
@@ -190,18 +337,28 @@ describe('check', () => {
     expect(s).toMatchObject({ lastError: '请求过于频繁', seen: ['ugc:BV1'] })
     expect(s.tailBaseline).toBeUndefined()
     h.loadTailPages.mockResolvedValueOnce([item('ugc:BV99')])
-    enqueue.mockRejectedValueOnce(new Error('磁盘满了'))
+    enqueue.mockImplementationOnce(() => { throw new Error('磁盘满了') })
     ;[s] = await m.check('s')
     expect(s.tailBaseline).toBeUndefined()
     expect(s.seen).toEqual(['ugc:BV1'])
   })
 
-  it('不是正序的分页来源（收藏夹等）只看第一页', async () => {
-    m.replaceAll([sub({ id: 's' })])
-    h.resolveInput.mockResolvedValue({ ...result([item('a')]), paging: { source: { type: 'fav', mediaId: 1 }, page: 1, total: 99, hasMore: true } })
+  it('收藏夹首页全是新增时继续翻页，遇到已见条目便停下', async () => {
+    m.replaceAll([sub({ id: 's', seen: ['old'] })])
+    const paging = { source: { type: 'fav', mediaId: 1 }, page: 1, total: 99, hasMore: true }
+    const first = Array.from({ length: 20 }, (_, i) => item(`new${i}`))
+    h.resolveInput.mockResolvedValueOnce({ ...result(first), paging })
+    h.loadHeadPages.mockResolvedValueOnce([item('new20')])
     const [s] = await m.check('s')
+    expect(h.loadHeadPages).toHaveBeenCalledWith(paging, expect.any(Function))
+    expect(h.loadHeadPages.mock.calls[0][1](item('old'))).toBe(true)
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [...first, item('new20')] }))
     expect(h.loadTailPages).not.toHaveBeenCalled()
-    expect(s.tailBaseline).toBeUndefined()
+    expect(s).toMatchObject({ lastNew: 21, seen: [...first.map((it) => it.key), 'new20', 'old'] })
+    h.resolveInput.mockResolvedValueOnce({ ...result(first), paging })
+    await m.check('s')
+    expect(h.loadHeadPages).toHaveBeenCalledOnce()
+    expect(enqueue).toHaveBeenCalledOnce()
   })
 
   it('同一个订阅正在检查时，再检查直接返回', async () => {
@@ -215,6 +372,63 @@ describe('check', () => {
     await first
     await m.check('s')
     expect(h.resolveInput).toHaveBeenCalledTimes(2)
+  })
+
+  it('稍后再看在准备分 P 时切号会保留待处理条目，不加入旧账号的任务', async () => {
+    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1' })
+    m.replaceAll([sub({ id: 's', accountMid: 7, pending: [lazy] })])
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 7 } })
+    h.resolveInput.mockResolvedValueOnce(result([lazy]))
+    h.prepare.mockImplementationOnce(async () => {
+      h.auth.mockReturnValue({ loggedIn: true, user: { mid: 8 } })
+      return { items: [item('ugc:BV1:10')], failed: [] }
+    })
+    await m.check('s')
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(saved()[0]).toMatchObject({ seen: [], pending: [lazy] })
+  })
+
+  it('旧版稍后再看在读取期间切号会丢弃结果，成功检查后绑定当前账号', async () => {
+    const legacy = sub({ input: 'watchlater', seen: ['a-seen'] })
+    m.replaceAll([legacy])
+    await m.check(legacy.id)
+    expect(h.resolveInput).not.toHaveBeenCalled()
+
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 7 } })
+    h.resolveInput.mockImplementationOnce(async () => {
+      h.auth.mockReturnValue({ loggedIn: true, user: { mid: 8 } })
+      return result([item('b-watch-later')])
+    })
+    await m.check(legacy.id)
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(saved()[0]).toEqual(legacy)
+
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 7 } })
+    h.resolveInput.mockResolvedValueOnce(result([item('a-seen'), item('a-new')]))
+    await m.check(legacy.id)
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [item('a-new')] }))
+    expect(saved()[0]).toMatchObject({ accountMid: 7, seen: ['a-seen', 'a-new'] })
+
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 8 } })
+    await m.check(legacy.id)
+    expect(h.resolveInput).toHaveBeenCalledTimes(2)
+    expect(enqueue).toHaveBeenCalledOnce()
+  })
+
+  it('完整列表里已经移除的条目不再自动重试，列表里仍存在的条目继续补齐分 P', async () => {
+    const removed = item('ugc:BVremoved', { lazy: true, bvid: 'BVremoved' })
+    const present = item('ugc:BVpresent', { lazy: true, bvid: 'BVpresent' })
+    const part = item('ugc:BVpresent:4')
+    m.replaceAll([sub({ id: 's', pending: [removed, present] })])
+    h.downloadedKeys.mockReturnValue(['ugc:BVpresent:3'])
+    h.resolveInput.mockResolvedValueOnce(result([present]))
+    h.prepare.mockImplementationOnce(async (items: MediaItem[]) => ({
+      items: items.map((entry) => entry.key === present.key ? part : item('ugc:BVremoved:4')),
+      failed: []
+    }))
+    await m.check('s')
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [part] }))
+    expect(saved()[0].pending).toBeUndefined()
   })
 
   it('没有新内容时不加入下载、不通知', async () => {
@@ -250,7 +464,7 @@ describe('check', () => {
   it('加入下载失败时不记为已见，下次重试', async () => {
     m.replaceAll([sub({ id: 's' })])
     h.resolveInput.mockResolvedValue(result([item('x')]))
-    enqueue.mockRejectedValue(new Error('磁盘满了'))
+    enqueue.mockImplementation(() => { throw new Error('磁盘满了') })
     let [s] = await m.check('s')
     expect(s.lastError).toBe('磁盘满了')
     expect(s.seen).toEqual([])

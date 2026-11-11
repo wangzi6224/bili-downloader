@@ -36,8 +36,16 @@ const api: BiliApi = {
   onParseProgress: on('parse:progress'),
   streamInfo: (item) => invoke('streamInfo', item),
   myFavFolders: () => invoke('myFavFolders'),
+  sources: {
+    listAccount: (mid, category, page) => invoke('sources:listAccount', mid, category, page),
+    open: (source) => invoke('sources:open', source),
+    prepareItems: (items, accountMid) => accountMid === undefined
+      ? invoke('sources:prepareItems', items)
+      : invoke('sources:prepareItems', items, accountMid),
+    subscribeDownload: (source) => invoke('sources:subscribeDownload', source)
+  },
   download: {
-    enqueue: (req) => invoke('dl:enqueue', req),
+    enqueue: (req, accountMid) => accountMid === undefined ? invoke('dl:enqueue', req) : invoke('dl:enqueue', req, accountMid),
     list: () => invoke('dl:list'),
     pause: (id) => invoke('dl:pause', id),
     pauseMany: (ids) => invoke('dl:pauseMany', ids),
@@ -68,6 +76,7 @@ const api: BiliApi = {
   },
   history: {
     downloadedKeys: () => invoke('history:downloadedKeys'),
+    onDownloadsChanged: on('history:downloadsChanged'),
     clearDownloads: () => invoke('history:clearDownloads'),
     parses: () => invoke('history:parses'),
     removeParse: (input) => invoke('history:removeParse', input),
