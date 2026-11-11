@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  devMode: 'In modalità sviluppo l’installazione automatica non è disponibile: prova con l’app pacchettizzata',
+  unsupportedOs: 'L’installazione automatica supporta solo macOS, Linux e Windows',
+  appNotFound: 'Impossibile trovare la posizione dell’app ({path})',
+  moveFirst: 'Trascina prima l’app nella cartella “Applicazioni”, aprila da lì e poi aggiorna',
+  translocated: 'L’app è stata aperta direttamente dalla cartella “Download”. {hint}',
+  inDiskImage: 'L’app è in esecuzione da un’immagine disco. {hint}',
+  noWritePermission: 'Nessun permesso per modificare {dir}',
+  appImageOnly: 'Solo la versione AppImage supporta l’installazione automatica',
+  installerOnly: 'Solo le versioni installate con il programma di installazione supportano l’installazione automatica',
+  noAppInPackage: 'Nessuna app trovata nel pacchetto di installazione',
+  notThisApp: 'Il pacchetto di installazione non è di questa app ({id})',
+  versionMismatch: 'La versione del pacchetto di installazione è {actual}, non {expected}',
+  platformUnsupported: 'L’installazione automatica non supporta {platform}',
+  launchFailed: 'Impossibile avviare il programma di aggiornamento',
+  badVersion: 'Formato del numero di versione non valido: {version}',
+  badManifest: 'Formato delle informazioni di aggiornamento non valido: {what}',
+  notJsonObject: 'non è un oggetto JSON',
+  noRelease: 'Sul server non è ancora stata pubblicata nessuna versione',
+  noPackage: 'La nuova versione {version} non ha un pacchetto di installazione per {key}',
+  checkFailed: 'Controllo aggiornamenti non riuscito: {reason}',
+  notReady: 'Il download dell’aggiornamento non è ancora completo',
+  corrupted: 'Il pacchetto di installazione è danneggiato, scaricalo di nuovo',
+  installFailed: 'Installazione dell’aggiornamento non riuscita: {reason}',
+  verifyFailed: 'Verifica del pacchetto di installazione non superata (file danneggiato o manomesso), riprova',
+  downloadFailed: 'Download dell’aggiornamento non riuscito: {reason}',
+  stalled: 'Timeout della connessione'
+} satisfies Messages['updateErr']

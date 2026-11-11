@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  file: 'Fichier',
+  quit: 'Quitter',
+  edit: 'Édition',
+  undo: 'Annuler',
+  redo: 'Rétablir',
+  cut: 'Couper',
+  copy: 'Copier',
+  paste: 'Coller',
+  selectAll: 'Tout sélectionner',
+  view: 'Présentation',
+  reload: 'Recharger',
+  forceReload: 'Forcer le rechargement',
+  devTools: 'Outils de développement',
+  actualSize: 'Taille réelle',
+  zoomIn: 'Zoom avant',
+  zoomOut: 'Zoom arrière',
+  fullscreen: 'Plein écran',
+  help: 'Aide',
+  openLogDir: 'Ouvrir le dossier des journaux',
+  openDataDir: 'Ouvrir le dossier des données',
+  debug: 'Débogage',
+  simulateExpiry: 'Simuler l’expiration de la connexion',
+  restoreLogin: 'Rétablir la vraie connexion',
+  trayShow: 'Afficher la fenêtre',
+  traySettings: 'Réglages',
+  trayCheckUpdate: 'Rechercher des mises à jour',
+  trayLogin: 'Se connecter',
+  trayLogout: 'Se déconnecter',
+  trayQuit: 'Quitter'
+} satisfies Messages['menu']

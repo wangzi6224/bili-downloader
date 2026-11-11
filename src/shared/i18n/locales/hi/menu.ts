@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  file: 'फ़ाइल',
+  quit: 'बंद करें',
+  edit: 'संपादन',
+  undo: 'पहले जैसा करें',
+  redo: 'फिर से करें',
+  cut: 'काटें',
+  copy: 'कॉपी करें',
+  paste: 'पेस्ट करें',
+  selectAll: 'सभी चुनें',
+  view: 'दृश्य',
+  reload: 'फिर से लोड करें',
+  forceReload: 'ज़बरदस्ती फिर से लोड करें',
+  devTools: 'डेवलपर टूल',
+  actualSize: 'वास्तविक आकार',
+  zoomIn: 'ज़ूम इन',
+  zoomOut: 'ज़ूम आउट',
+  fullscreen: 'फ़ुल स्क्रीन',
+  help: 'सहायता',
+  openLogDir: 'लॉग फ़ोल्डर खोलें',
+  openDataDir: 'डेटा फ़ोल्डर खोलें',
+  debug: 'डीबग',
+  simulateExpiry: 'लॉग इन समाप्ति का सिमुलेशन',
+  restoreLogin: 'असली लॉग इन वापस लाएँ',
+  trayShow: 'विंडो दिखाएँ',
+  traySettings: 'सेटिंग्स',
+  trayCheckUpdate: 'अपडेट जाँचें',
+  trayLogin: 'लॉग इन',
+  trayLogout: 'लॉग आउट',
+  trayQuit: 'बंद करें'
+} satisfies Messages['menu']

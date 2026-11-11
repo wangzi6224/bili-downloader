@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { isLanguageSetting, t } from '@shared/i18n'
 import { DEFAULT_TEMPLATES, validateTemplate } from '@shared/naming'
 import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
 import type { CodecPref, Settings } from '@shared/types'
@@ -27,7 +28,8 @@ function defaults(): Settings {
     proxy: { mode: 'direct', url: '' },
     cdn: '',
     mcp: { enabled: false, port: 39231, token: randomBytes(24).toString('hex') },
-    autoCheckUpdate: true
+    autoCheckUpdate: true,
+    language: 'system'
   }
 }
 
@@ -62,7 +64,8 @@ function migrate(saved: Partial<Settings> & LegacySettings, d: Settings): Settin
     naming,
     danmaku: { ...d.danmaku, ...saved.danmaku },
     proxy: { ...d.proxy, ...saved.proxy },
-    mcp: { ...d.mcp, ...saved.mcp }
+    mcp: { ...d.mcp, ...saved.mcp },
+    language: isLanguageSetting(saved.language) ? saved.language : d.language
   }
 }
 
@@ -84,6 +87,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   next.autoRetry = clamp(next.autoRetry, 0, 20)
   next.speedLimit = Math.max(0, Math.round(next.speedLimit) || 0)
   next.mcp = { ...next.mcp, port: clamp(next.mcp.port, 1024, 65535) }
+  if (!isLanguageSetting(next.language)) next.language = 'system'
   if (patch.defaults) {
     const { qn: _qn, ...opts } = normalizeOptions(patch.defaults)
     next.defaults = opts
@@ -91,7 +95,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   if (patch.naming) {
     for (const v of Object.values(patch.naming)) {
       const err = validateTemplate(v)
-      if (err) throw new Error(`命名模板有误：${err}`)
+      if (err) throw new Error(t('config.namingInvalid', { reason: err }))
     }
   }
   cache = next

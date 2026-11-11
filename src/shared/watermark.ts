@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import type { DownloadOptions, MediaItem, WatermarkRegion } from './types'
 
 /** 区域宽或高小于这个值就没有处理的意义 */
@@ -29,7 +30,8 @@ export const delogoFilter = (r: WatermarkRegion): string => `delogo=x=${r.x}:y=$
 export function cornerName(r: WatermarkRegion, W: number, H: number): string {
   const top = r.y + r.h / 2 < H / 2
   const left = r.x + r.w / 2 < W / 2
-  return `${left ? '左' : '右'}${top ? '上' : '下'}角`
+  if (top) return t(left ? 'wm.cornerTopLeft' : 'wm.cornerTopRight')
+  return t(left ? 'wm.cornerBottomLeft' : 'wm.cornerBottomRight')
 }
 
 /**
@@ -46,26 +48,40 @@ export function defaultRegion(W: number, H: number): WatermarkRegion {
 export const isVideoTask = (t: { item: Pick<MediaItem, 'kind'>; options: Pick<DownloadOptions, 'output'> }): boolean =>
   t.item.kind !== 'audio' && t.options.output !== 'audio'
 
-const MANUAL_HINT = '（可以在任务上点“去水印…”手动框选）'
+/**
+ * 去水印提示开头的标记（U+2060 WORD JOINER，不占位置、看不见）。任务提示会存进 tasks.json，
+ * 换一条去水印提示时要认出旧的那条，而界面语言可能已经换过，所以不按文案判断，只看这个标记
+ */
+export const WM_MARK = '\u2060'
 
-/** 去水印相关的提示，都以“去水印”开头，方便替换 */
+/** 打上去水印标记（已经有了就不重复打） */
+export const markWatermarkText = (s: string): string => (s.startsWith(WM_MARK) ? s : WM_MARK + s)
+
+/** 是不是去水印提示（或已经是完整的去水印报错）。旧版本存下的提示没有标记，都是以“去水印”开头的中文 */
+export const isWatermarkText = (s: string): boolean => s.startsWith(WM_MARK) || s.startsWith('去水印')
+
+const unmark = (s: string): string => (s.startsWith(WM_MARK) ? s.slice(WM_MARK.length) : s)
+
+/** 去水印相关的提示，都带 WM_MARK 标记，方便替换；按当前界面语言生成 */
 export const WM_NOTE = {
-  none: `去水印：没有识别到水印，已保留原视频${MANUAL_HINT}`,
-  static: `去水印：画面变化太少，没法自动识别，已保留原视频${MANUAL_HINT}`,
-  fewFrames: `去水印：视频太短或画面太暗，没法自动识别，已保留原视频${MANUAL_HINT}`,
-  hdr: '去水印：暂不支持 HDR 和杜比视界视频，已保留原视频',
-  interrupted: '去水印没有完成（应用中途退出了），已保留原视频',
-  moved: '去水印没有完成：处理期间原视频被移动或删除了',
-  failed: (reason: string): string => `${reason.startsWith('去水印') ? reason : `去水印失败：${reason}`}，已保留原视频`,
-  aiFallback: (reason: string): string => `去水印：AI 模型没能下载（${reason}），这次改用了快速去除`,
-  aiFailed: (reason: string): string => `去水印：AI 精修没能完成（${reason}），这次改用了快速去除`
+  none: (): string => markWatermarkText(t('wm.noteNone')),
+  static: (): string => markWatermarkText(t('wm.noteStatic')),
+  fewFrames: (): string => markWatermarkText(t('wm.noteFewFrames')),
+  hdr: (): string => markWatermarkText(t('wm.noteHdr')),
+  interrupted: (): string => markWatermarkText(t('wm.noteInterrupted')),
+  moved: (): string => markWatermarkText(t('wm.noteMoved')),
+  /** reason 本身已经是完整的去水印报错（带标记，例如“去水印失败：磁盘空间不足”）时不再加前缀 */
+  failed: (reason: string): string =>
+    markWatermarkText(isWatermarkText(reason) ? t('wm.noteFailedWhole', { reason: unmark(reason) }) : t('wm.noteFailed', { reason })),
+  aiFallback: (reason: string): string => markWatermarkText(t('wm.noteAiFallback', { reason: unmark(reason) })),
+  aiFailed: (reason: string): string => markWatermarkText(t('wm.noteAiFailed', { reason: unmark(reason) }))
 }
 
 /** 任务提示用“；”拼接，去掉其中旧的去水印提示，其余保留 */
 export function stripWatermarkNotes(note: string | undefined): string | undefined {
   const rest = (note ?? '')
     .split('；')
-    .filter((s) => s && !s.startsWith('去水印'))
+    .filter((s) => s && !isWatermarkText(s))
     .join('；')
   return rest || undefined
 }

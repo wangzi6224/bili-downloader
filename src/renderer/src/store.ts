@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { t, type Lang } from '@shared/i18n'
 import type { AuthState, ParseResult, Settings, TaskInfo, UpdateState } from '@shared/types'
 import { platformText } from './platform'
 
@@ -16,6 +17,8 @@ interface State {
   /** 显示更新弹窗 */
   updateOpen: boolean
   settings: Settings | null
+  /** 实际生效的界面语言，null 表示还没拿到 */
+  lang: Lang | null
   tasks: TaskInfo[]
   parse: ParseResult | null
   parsing: boolean
@@ -37,6 +40,7 @@ export const useStore = create<State>((set) => ({
   update: null,
   updateOpen: false,
   settings: null,
+  lang: null,
   tasks: [],
   parse: null,
   parsing: false,
@@ -48,7 +52,7 @@ export const useStore = create<State>((set) => ({
 }))
 
 export const api = window.api
-/** 和系统有关的文案（访达 / 文件管理器、⌘ / Ctrl 等） */
+/** 和系统有关的文案（访达 / 文件管理器、⌘ / Ctrl 等）；文字是 getter，每次读取都按当前语言取 */
 export const sysText = platformText(api.platform)
 
 export async function updateSettings(patch: Partial<Settings>): Promise<void> {
@@ -66,7 +70,8 @@ async function runParse(fn: () => Promise<ParseResult>): Promise<void> {
     const result = await fn()
     set({ parse: result })
     if (result.failures?.length) {
-      set({ notice: `${result.failures.length} 个链接解析失败：${result.failures.map((f) => f.error).join('；')}` })
+      const errors = result.failures.map((f) => f.error).join(t('input.separator'))
+      set({ notice: t('input.parseFailures', { count: result.failures.length, errors }) })
     }
   } catch (e) {
     set({ error: (e as Error).message })

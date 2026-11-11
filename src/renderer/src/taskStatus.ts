@@ -1,3 +1,4 @@
+import { t as tr, type Key } from '@shared/i18n'
 import type { ProcessingInfo, TaskInfo, TaskStatus } from '@shared/types'
 import { fmtBytes, fmtEta, fmtSpeed } from './format'
 import { ACTIVE } from './taskOrder'
@@ -10,15 +11,25 @@ export const settled = (t: TaskInfo): boolean => t.status === 'done' || t.status
 export const failed = (t: TaskInfo): boolean => (t.status === 'error' && !t.retryAt) || t.status === 'unsupported'
 
 export type Tab = 'all' | 'active' | 'done' | 'failed'
-export const TABS: { value: Tab; label: string; match: (t: TaskInfo) => boolean }[] = [
-  { value: 'all', label: '全部', match: () => true },
-  {
-    value: 'active',
-    label: '进行中',
-    match: (t) => ACTIVE.has(t.status) || ['queued', 'paused', 'waitingAuth'].includes(t.status) || Boolean(t.retryAt)
+
+const tab = (value: Tab, label: Key, match: (t: TaskInfo) => boolean): { value: Tab; label: string; match: (t: TaskInfo) => boolean } => ({
+  value,
+  get label() {
+    return tr(label)
   },
-  { value: 'done', label: '已完成', match: (t) => t.status === 'done' },
-  { value: 'failed', label: '失败', match: failed }
+  match
+})
+
+/** label 是 getter，读取时才按当前语言取 */
+export const TABS: { value: Tab; readonly label: string; match: (t: TaskInfo) => boolean }[] = [
+  tab('all', 'tasks.tabAll', () => true),
+  tab(
+    'active',
+    'tasks.tabActive',
+    (t) => ACTIVE.has(t.status) || ['queued', 'paused', 'waitingAuth'].includes(t.status) || Boolean(t.retryAt)
+  ),
+  tab('done', 'tasks.tabDone', (t) => t.status === 'done'),
+  tab('failed', 'tasks.tabFailed', failed)
 ]
 
 /** 按标签页筛选，再按标题、合集、文件路径、BV 号搜索 */
@@ -36,24 +47,27 @@ export const taskPct = (t: TaskInfo): number =>
 
 /** 去水印各阶段的说明 */
 export function processingDetail(p: ProcessingInfo): string {
-  if (p.stage === 'detect') return '识别水印…'
-  if (p.stage === 'queue') return '等其他视频处理完'
-  if (p.stage === 'model') return `下载 AI 模型 ${Math.floor(p.pct ?? 0)}%`
-  if (p.stage === 'analyze') return 'AI 精修：分析画面、加载模型…'
+  if (p.stage === 'detect') return tr('tasks.procDetect')
+  if (p.stage === 'queue') return tr('tasks.procQueue')
+  if (p.stage === 'model') return tr('tasks.procModel', { pct: Math.floor(p.pct ?? 0) })
+  if (p.stage === 'analyze') return tr('tasks.procAnalyze')
   // 这一栏很窄：有剩余时间时只写“AI · 剩 …”，用的什么硬件在开始时显示
-  if (p.stage === 'refine') return p.eta ? `AI · 剩 ${fmtEta(p.eta)}` : p.backend ? `AI 精修中（${p.backend}）` : 'AI 精修中'
-  return p.eta ? `剩 ${fmtEta(p.eta)}` : '重新编码中'
+  if (p.stage === 'refine') {
+    if (p.eta) return tr('tasks.procRefineEta', { eta: fmtEta(p.eta) })
+    return p.backend ? tr('tasks.procRefineBackend', { backend: p.backend }) : tr('tasks.procRefine')
+  }
+  return p.eta ? tr('tasks.remaining', { eta: fmtEta(p.eta) }) : tr('tasks.procEncode')
 }
 
 /** 任务行右侧状态下面那行：重试倒计时、速度和剩余时间、大小 */
 export function taskDetail(t: TaskInfo, now: number): string {
   if (t.processing) return processingDetail(t.processing)
   if (t.status === 'error' && t.retryAt) {
-    return `${Math.max(0, Math.ceil((t.retryAt - now) / 1000))} 秒后 · 第 ${(t.retries ?? 0) + 1} 次`
+    return tr('tasks.retryCountdown', { count: Math.max(0, Math.ceil((t.retryAt - now) / 1000)), attempt: (t.retries ?? 0) + 1 })
   }
   if (t.status === 'downloading') {
     const eta = t.speed > 0 ? fmtEta((t.total - t.downloaded) / t.speed) : ''
-    return `${fmtSpeed(t.speed)}${eta ? ` · 剩 ${eta}` : ''}`
+    return eta ? tr('tasks.speedEta', { speed: fmtSpeed(t.speed), eta }) : fmtSpeed(t.speed)
   }
   if (t.status === 'done') return fmtBytes(t.total)
   if (t.total > 0 && t.status !== 'queued') return `${fmtBytes(t.downloaded)} / ${fmtBytes(t.total)}`

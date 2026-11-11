@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  file: 'ファイル',
+  quit: '終了',
+  edit: '編集',
+  undo: '取り消す',
+  redo: 'やり直す',
+  cut: 'カット',
+  copy: 'コピー',
+  paste: 'ペースト',
+  selectAll: 'すべてを選択',
+  view: '表示',
+  reload: '再読み込み',
+  forceReload: '強制再読み込み',
+  devTools: 'デベロッパーツール',
+  actualSize: '実際のサイズ',
+  zoomIn: '拡大',
+  zoomOut: '縮小',
+  fullscreen: 'フルスクリーン',
+  help: 'ヘルプ',
+  openLogDir: 'ログフォルダを開く',
+  openDataDir: 'データフォルダを開く',
+  debug: 'デバッグ',
+  simulateExpiry: 'ログインの期限切れをシミュレート',
+  restoreLogin: '実際のログインに戻す',
+  trayShow: 'ウィンドウを表示',
+  traySettings: '設定',
+  trayCheckUpdate: 'アップデートを確認',
+  trayLogin: 'ログイン',
+  trayLogout: 'ログアウト',
+  trayQuit: '終了'
+} satisfies Messages['menu']

@@ -1,3 +1,4 @@
+import { t, type Key } from '@shared/i18n'
 import type { BrowserProfile } from '@shared/types'
 import { optionalBool, optionalEnum, optionalInt, optionalString, type Args } from './args'
 import { browserKey, rankProfiles, type LoginFlow, type LoginMethod, type LoginReason, type LoginSnapshot } from './loginFlow'
@@ -8,27 +9,22 @@ const MAX_WAIT = 50
 /** 不用钥匙串授权时导入几秒就完成，一次调用就能拿到结果 */
 const DEFAULT_WAIT = 15
 
-export const LOGIN_DEFINITIONS: ToolDefinition[] = [
+/** 登录工具的定义。按当前语言现算，每次 tools/list 时调用 */
+export const loginDefinitions = (): ToolDefinition[] => [
   {
     name: 'start_login',
-    title: '登录 B站',
-    description:
-      '应用没有登录时用它登录。默认导入用户浏览器里的登录信息：按 Chrome、其他 Chrome 系、Opera、Firefox、Safari 的顺序，先用能直接读到的；Cookie 只保存在应用里，结果不包含它。' +
-      '导入不成时按返回的 next 操作，next=try_qr 时告诉用户后用 method=qr 弹出扫码窗口，再用 get_login_status 带 wait_seconds 等登录完成。' +
-      '已经登录时什么都不做，切换账号要用户在应用里操作。浏览器需要关闭时由应用弹窗问用户本人，这里没有直接关闭的参数。',
+    title: t('mcpLogin.startTitle'),
+    description: t('mcpLogin.startDesc'),
     inputSchema: {
       type: 'object',
       properties: {
-        method: { type: 'string', enum: METHODS, description: 'browser 从浏览器导入（默认）；qr 弹出登录窗口让用户扫码' },
-        source: {
-          type: 'string',
-          description: '指定浏览器，如 chrome、edge、opera、firefox、safari，或 get_login_status 列出的配置档 id。不传时自动选择'
-        },
+        method: { type: 'string', enum: METHODS, description: t('mcpLogin.startMethod') },
+        source: { type: 'string', description: t('mcpLogin.startSource') },
         wait_seconds: {
           type: 'integer',
           minimum: 0,
           maximum: MAX_WAIT,
-          description: `最多等待多少秒，默认 ${DEFAULT_WAIT}。登录完成、失败或需要用户操作时立即返回`
+          description: t('mcpLogin.startWait', { n: DEFAULT_WAIT })
         }
       },
       additionalProperties: false
@@ -37,15 +33,13 @@ export const LOGIN_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'get_login_status',
-    title: '查看登录进度',
-    description:
-      '查看 start_login 的进度。wait_seconds 大于 0 时会等到登录成功、失败或状态变化才返回：登录成功的那一刻立即返回，这就是扫码完成的通知，比反复查询省事。' +
-      '用户在应用里自己登录也算。超时还是 waiting_user 就再调用一次。include_browsers=true 时列出本机浏览器和里面有没有 B站登录。',
+    title: t('mcpLogin.statusTitle'),
+    description: t('mcpLogin.statusDesc'),
     inputSchema: {
       type: 'object',
       properties: {
-        wait_seconds: { type: 'integer', minimum: 0, maximum: MAX_WAIT, description: '最多等待多少秒，默认 0' },
-        include_browsers: { type: 'boolean', description: '是否列出本机的浏览器，默认 false' }
+        wait_seconds: { type: 'integer', minimum: 0, maximum: MAX_WAIT, description: t('mcpLogin.statusWait') },
+        include_browsers: { type: 'boolean', description: t('mcpLogin.statusBrowsers') }
       },
       additionalProperties: false
     },
@@ -55,34 +49,37 @@ export const LOGIN_DEFINITIONS: ToolDefinition[] = [
 
 type Next = 'wait' | 'tell_user' | 'try_qr' | 'none'
 
-const FAILURES: Record<LoginReason, { next: Next; hint: string }> = {
-  locked: { next: 'try_qr', hint: '浏览器正在运行。可以让用户完全退出浏览器（包括后台运行的）后再试，或改用扫码' },
-  app_bound: { next: 'try_qr', hint: '这个浏览器用应用绑定加密保护登录信息，读不出来，请改用扫码' },
-  blocked: { next: 'try_qr', hint: '没有权限读取这个浏览器的数据。macOS 上要在系统设置里给 B站下载器“完全磁盘访问权限”并重启应用，其他系统请检查文件夹权限，也可以改用扫码' },
-  no_login: { next: 'try_qr', hint: '浏览器里没有 B站登录。用户刚在浏览器里登录的话，稍等半分钟再试（浏览器不是马上写入），或改用扫码' },
-  expired: { next: 'try_qr', hint: '浏览器里的 B站登录已失效，请改用扫码，或让用户先在浏览器里重新登录' },
-  keychain_denied: { next: 'try_qr', hint: '用户没有在钥匙串弹窗里点“允许”。问问用户是否要重试，或改用扫码' },
-  network: { next: 'tell_user', hint: '连不上 B站，或被风控拦下了，等一会儿再试' },
-  declined: { next: 'tell_user', hint: '用户不同意关闭浏览器，不要反复重试。问问用户是否要用 start_login method=qr 扫码' },
-  confirm_timeout: { next: 'tell_user', hint: '用户没有回答对话框，可能没看到。提醒用户留意后再试，或改用扫码' },
-  close_failed: { next: 'try_qr', hint: '浏览器没能关闭。可以让用户手动退出后再试，或改用扫码' },
-  window_closed: { next: 'tell_user', hint: '用户关掉了登录窗口。问问用户是否要重新打开' },
-  not_found: { next: 'try_qr', hint: '可以用 get_login_status include_browsers=true 查看本机的浏览器，或改用扫码' },
-  failed: { next: 'try_qr', hint: '可以换一个浏览器，或改用扫码' }
+const FAILURES: Record<LoginReason, { next: Next; hint: Key }> = {
+  locked: { next: 'try_qr', hint: 'mcpLogin.hintLocked' },
+  app_bound: { next: 'try_qr', hint: 'mcpLogin.hintAppBound' },
+  blocked: { next: 'try_qr', hint: 'mcpLogin.hintBlocked' },
+  no_login: { next: 'try_qr', hint: 'mcpLogin.hintNoLogin' },
+  expired: { next: 'try_qr', hint: 'mcpLogin.hintExpired' },
+  keychain_denied: { next: 'try_qr', hint: 'mcpLogin.hintKeychainDenied' },
+  network: { next: 'tell_user', hint: 'mcpLogin.hintNetwork' },
+  declined: { next: 'tell_user', hint: 'mcpLogin.hintDeclined' },
+  confirm_timeout: { next: 'tell_user', hint: 'mcpLogin.hintConfirmTimeout' },
+  close_failed: { next: 'try_qr', hint: 'mcpLogin.hintCloseFailed' },
+  window_closed: { next: 'tell_user', hint: 'mcpLogin.hintWindowClosed' },
+  not_found: { next: 'try_qr', hint: 'mcpLogin.hintNotFound' },
+  failed: { next: 'try_qr', hint: 'mcpLogin.hintFailed' }
 }
 
-const STEP_HINTS: Record<NonNullable<LoginSnapshot['step']>, string> = {
-  checking: '正在确认登录状态。用 get_login_status wait_seconds=30 等结果',
-  importing: '正在读取浏览器里的登录信息。macOS 可能弹出钥匙串授权，Linux 可能要解锁密钥环，请提醒用户点“允许”。用 get_login_status wait_seconds=30 等结果',
-  confirm_close: '应用弹出了是否关闭浏览器的对话框，请提醒用户回答。用 get_login_status wait_seconds=30 等结果',
-  closing_browser: '用户同意了，正在关闭浏览器。用 get_login_status wait_seconds=30 等结果',
-  qr: '登录窗口已经打开，请告诉用户用 B站 App 扫码。用 get_login_status wait_seconds=50 等结果，登录成功时会立即返回，超时就再调用一次'
+const STEP_HINTS: Record<NonNullable<LoginSnapshot['step']>, Key> = {
+  checking: 'mcpLogin.stepChecking',
+  importing: 'mcpLogin.stepImporting',
+  confirm_close: 'mcpLogin.stepConfirmClose',
+  closing_browser: 'mcpLogin.stepClosingBrowser',
+  qr: 'mcpLogin.stepQr'
 }
 
 function nextStep(s: LoginSnapshot): { next: Next; hint?: string } {
   if (s.status === 'logged_in' || s.status === 'idle') return { next: 'none' }
-  if (s.status === 'failed') return FAILURES[s.reason!]
-  return { next: s.status === 'in_progress' ? 'wait' : 'tell_user', hint: STEP_HINTS[s.step!] }
+  if (s.status === 'failed') {
+    const f = FAILURES[s.reason!]
+    return { next: f.next, hint: t(f.hint, { appName: t('common.appName') }) }
+  }
+  return { next: s.status === 'in_progress' ? 'wait' : 'tell_user', hint: t(STEP_HINTS[s.step!]) }
 }
 
 /** 读不到的配置档不能说成“没有登录”，所以 has_login 是 null */
@@ -94,7 +91,7 @@ const browserOut = (p: BrowserProfile) => ({
   has_login: p.locked || p.blocked ? null : p.hasBiliLogin,
   locked: p.locked || undefined,
   blocked: p.blocked || undefined,
-  app_bound: p.appBound || undefined
+  app_bound: p.appBound || p.appBoundLogin || undefined
 })
 
 /** 登录工具：把 LoginFlow 的状态整理成 agent 好用的 JSON */
@@ -135,7 +132,7 @@ export class LoginTools {
       also_available: s.alsoAvailable.length ? s.alsoAvailable : undefined,
       interrupted_batches: batches.length ? batches : undefined,
       ...nextStep(s),
-      ...(batches.length ? { hint: '这些批次之前被打断了，用 control_tasks action=resume batch_id=… 继续' } : {})
+      ...(batches.length ? { hint: t('mcpLogin.interrupted') } : {})
     }
   }
 

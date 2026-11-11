@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  devMode: 'Automatic install isn’t available in development mode. Test with a packaged build',
+  unsupportedOs: 'Automatic install only supports macOS, Linux and Windows',
+  appNotFound: 'Can’t find where the app is located ({path})',
+  moveFirst: 'Move the app to the Applications folder first, open it from there, then update',
+  translocated: 'The app was opened directly from the Downloads folder. {hint}',
+  inDiskImage: 'The app is running from a disk image. {hint}',
+  noWritePermission: 'No permission to modify {dir}',
+  appImageOnly: 'Only the AppImage version supports automatic install',
+  installerOnly: 'Only versions installed with the installer support automatic install',
+  noAppInPackage: 'No app found in the package',
+  notThisApp: 'The package is not this app ({id})',
+  versionMismatch: 'The package version is {actual}, not {expected}',
+  platformUnsupported: 'Automatic install doesn’t support {platform}',
+  launchFailed: 'Can’t start the updater',
+  badVersion: 'Invalid version number: {version}',
+  badManifest: 'Invalid update info: {what}',
+  notJsonObject: 'not a JSON object',
+  noRelease: 'No version has been released on the server yet',
+  noPackage: 'New version {version} has no package for {key}',
+  checkFailed: 'Failed to check for updates: {reason}',
+  notReady: 'The update hasn’t finished downloading',
+  corrupted: 'The package is corrupted. Please download it again',
+  installFailed: 'Failed to install the update: {reason}',
+  verifyFailed: 'The package failed verification (the file is corrupted or has been tampered with). Please try again',
+  downloadFailed: 'Failed to download the update: {reason}',
+  stalled: 'Connection timed out'
+} satisfies Messages['updateErr']

@@ -54,7 +54,7 @@ describe('createHost', () => {
     await bad(input)
     expect(sent).toEqual([
       { type: 'error', message: '找不到 onnxruntime' },
-      { type: 'error', id: 1, message: '模型还没加载' }
+      { type: 'error', id: 1, code: 'notLoaded', message: 'notLoaded' }
     ])
 
     sent.length = 0
@@ -70,7 +70,7 @@ describe('createHost', () => {
     await h(input)
     expect(sent.slice(1)).toEqual([
       { type: 'error', id: 1, message: 'GPU lost' },
-      { type: 'error', id: 1, message: '模型没有输出图像' }
+      { type: 'error', id: 1, code: 'noImage', message: 'noImage' }
     ])
   })
 })

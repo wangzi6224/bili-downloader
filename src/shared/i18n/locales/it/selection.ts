@@ -1,0 +1,58 @@
+import type { Messages } from '../types'
+
+export default {
+  qualityBest: 'Massima disponibile',
+  quality1080: '1080P HD',
+  quality720: '720P HD',
+  quality480: '480P SD',
+  kindUgc: 'Video',
+  kindPgc: 'Anime / film e serie',
+  kindCheese: 'Corso',
+  kindAudio: 'Audio',
+  sources: { one: '{count} fonte', other: '{count} fonti' },
+  loadedOf: 'Caricati {count} / {total} elementi',
+  totalItems: { one: '{count} elemento in totale', other: '{count} elementi in totale' },
+  downloadedBefore: { one: '{count} elemento già scaricato', other: '{count} elementi già scaricati' },
+  close: 'Chiudi',
+  selectAllFiltered: 'Seleziona tutti i risultati filtrati',
+  selectAll: 'Seleziona tutto',
+  selectNone: 'Deseleziona tutto',
+  invert: 'Inverti selezione',
+  deselectDownloaded: 'Escludi già scaricati',
+  filterPlaceholder: 'Filtra per titolo / creator',
+  rangePlaceholder: 'Numeri, es. 1-5,7',
+  rangeTitle: 'Seleziona per numero, premi Invio per applicare',
+  selectedCount: { one: 'Shift per selezionare un intervallo · {count} selezionato', other: 'Shift per selezionare un intervallo · {count} selezionati' },
+  groupLoaded: 'Caricati {count} / {total}',
+  downloadedTitle: 'Questo elemento è nella cronologia download',
+  downloaded: 'Scaricato',
+  needVip: 'Richiede Premium',
+  loadingPage: 'Caricamento pagina {page}…',
+  stop: 'Interrompi',
+  loadNext: 'Carica pagina successiva',
+  loadAllTitle: 'Attende 1 secondo tra una pagina e l’altra, per evitare che richieste troppo rapide attivino i controlli antiabuso',
+  loadAll: { one: 'Carica tutto (manca {count} elemento)', other: 'Carica tutto (mancano {count} elementi)' },
+  quality: 'Qualità',
+  fetchingQualities: 'Recupero delle qualità disponibili…',
+  vip: 'Premium',
+  audioOnlyHint:
+    'I contenuti della sezione audio vengono scaricati solo come audio; il lossless richiede Bilibili Premium e, se non è disponibile, si scende automaticamente di livello.',
+  fetchingParts: 'Recupero delle parti dei video {done}/{total}…',
+  dupPrompt: {
+    one: '{count} degli elementi selezionati è già stato scaricato',
+    other: '{count} degli elementi selezionati sono già stati scaricati'
+  },
+  skipThem: 'Saltali',
+  downloadAnyway: 'Scarica comunque',
+  downloadCount: { one: 'Scarica {count} elemento', other: 'Scarica {count} elementi' },
+  lazyHint:
+    'Per {count} video le parti verranno recuperate al momento dell’aggiunta alla coda; i video in più parti diventeranno più attività',
+  subscribeLink: 'Iscriviti agli aggiornamenti: scarica automaticamente i nuovi contenuti',
+  checkInterval: 'Intervallo di controllo',
+  subExisting: 'Scarica anche i contenuti già presenti (altrimenti solo quelli nuovi)',
+  subHint: 'Usa la qualità e il formato scelti sopra; il controllo avviene solo mentre l’app è in esecuzione',
+  subscribe: 'Iscriviti',
+  cancel: 'Annulla',
+  subscribed:
+    'Iscrizione a “{title}” effettuata: mentre l’app è in esecuzione verrà controllata ogni {interval} e i nuovi contenuti verranno scaricati automaticamente'
+} satisfies Messages['selection']

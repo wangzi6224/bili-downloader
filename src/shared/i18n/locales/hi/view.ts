@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: 'सर्वश्रेष्ठ',
+  audioFlac: 'Hi-Res लॉसलेस',
+  audioDolby: 'Dolby Atmos',
+  tagVideo: 'वीडियो ({container})',
+  tagAudio: 'ऑडियो ({audio})',
+  tagMuted: 'बिना आवाज़',
+  tagCover: 'कवर',
+  tagSubtitle: 'सबटाइटल',
+  tagChapters: 'चैप्टर',
+  tagDanmaku: 'डैनमाकू',
+  tagWatermark: 'वॉटरमार्क हटाया',
+  updateIdle: 'अभी तक जाँचा नहीं गया',
+  updateChecking: 'जाँच हो रही है…',
+  updateLatest: 'नवीनतम वर्ज़न है',
+  updateLatestAt: 'नवीनतम वर्ज़न है ({time} जाँचा गया)',
+  updateAvailable: 'नया वर्ज़न {version} उपलब्ध है',
+  updateAvailableSkipped: 'नया वर्ज़न {version} उपलब्ध है (छोड़ा गया)',
+  updateDownloading: '{version} डाउनलोड हो रहा है',
+  updateReady: '{version} डाउनलोड हो गया, अपडेट पूरा करने के लिए रीस्टार्ट करें',
+  updateInstalling: 'इंस्टॉल हो रहा है…',
+  entryAvailable: 'नया वर्ज़न {version}',
+  entryDownloading: 'अपडेट डाउनलोड हो रहा है {pct}%',
+  entryRestart: 'अपडेट पूरा करने के लिए रीस्टार्ट करें',
+  entryInstalling: 'अपडेट इंस्टॉल हो रहा है…',
+  entryError: 'अपडेट विफल',
+  pingFailed: 'कनेक्ट नहीं'
+} satisfies Messages['view']

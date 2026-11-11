@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { t } from '@shared/i18n'
 import { encodeCommand, POWERSHELL } from '../powershell'
 
 /** 从 stdin 读每行一个 base64 密文，按同样的顺序每行输出一个 base64 明文 */
@@ -32,10 +33,13 @@ export function unprotect(encrypted: Buffer[]): Promise<Buffer[]> {
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk))
     child.once('error', reject)
     child.once('close', (code, signal) => {
-      if (signal) return reject(new Error('DPAPI 解密超时，请改用应用内登录或手动粘贴 Cookie'))
-      if (code !== 0) return reject(new Error(`DPAPI 解密失败：${stderr.trim() || `PowerShell 退出码 ${code}`}`))
+      if (signal) return reject(new Error(t('authErr.dpapiTimeout')))
+      if (code !== 0) {
+        const reason = stderr.trim() || t('authErr.powershellExitCode', { code: String(code) })
+        return reject(new Error(t('authErr.dpapiFailed', { reason })))
+      }
       const lines = stdout.split(/\s+/).filter(Boolean)
-      if (lines.length !== encrypted.length) return reject(new Error('PowerShell 没有返回完整的解密结果'))
+      if (lines.length !== encrypted.length) return reject(new Error(t('authErr.dpapiIncomplete')))
       resolve(lines.map((line) => Buffer.from(line, 'base64')))
     })
     child.stdin.once('error', reject)

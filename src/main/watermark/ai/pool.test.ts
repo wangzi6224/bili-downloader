@@ -67,6 +67,8 @@ describe('InferenceHost', () => {
 
     const crash = new FakeChannel((_m, ch) => queueMicrotask(() => ch.die(3)))
     await expect(start(crash)).rejects.toThrow('推理进程意外退出（代码 3）')
+    const crashNoCode = new FakeChannel((_m, ch) => queueMicrotask(() => ch.die(null)))
+    await expect(start(crashNoCode)).rejects.toThrow('推理进程意外退出（代码 未知）')
 
     vi.useFakeTimers()
     const silent = new FakeChannel(() => {})
@@ -82,6 +84,9 @@ describe('InferenceHost', () => {
     ch.behave = (m, c) => m.type === 'run' && queueMicrotask(() => c.reply({ type: 'error', id: m.id, message: '坏帧' }))
     await expect(h.run(img(1), img(0), 1, 1, 1000)).rejects.toThrow('坏帧')
     expect(h.alive).toBe(true)
+    // 子进程里没有界面语言：自己产生的错误只回 code，这边按当前语言转成文案
+    ch.behave = (m, c) => m.type === 'run' && queueMicrotask(() => c.reply({ type: 'error', id: m.id, code: 'noImage', message: 'noImage' }))
+    await expect(h.run(img(1), img(0), 1, 1, 1000)).rejects.toThrow(new HostError('模型没有输出图像'))
 
     vi.useFakeTimers()
     ch.behave = () => {}

@@ -4,6 +4,7 @@ import { statfs } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
+import { joinList, t, translate, type Key } from '@shared/i18n'
 import { normalizeOptions } from '@shared/options'
 import type { AuthState, MediaItem, ParseResult, Settings, TaskInfo } from '@shared/types'
 import { lazyVideo } from '../bili/lists'
@@ -26,10 +27,13 @@ import {
 import { BatchManager, type Batch, type ReportPart, type TaskQueue } from './batches'
 import {
   ACTIVE,
+  batchNotFound,
   countStatuses,
   describeError,
   invalid,
-  LOGIN_HINT,
+  joinHints,
+  loginHint,
+  loginThenRetry,
   mcpStatus,
   STATUSES,
   summarizeTask,
@@ -39,8 +43,8 @@ import {
   type TaskSummary
 } from './format'
 import type { LoginFlow } from './loginFlow'
-import { LOGIN_DEFINITIONS, LoginTools } from './loginTools'
-import { LOOKUP_DEFINITIONS, LookupTools } from './lookupTools'
+import { loginDefinitions, LoginTools } from './loginTools'
+import { lookupDefinitions, LookupTools } from './lookupTools'
 import { ParseCache } from './parseCache'
 import { batchWatermark, METHODS, plannedWatermark, removeTargets, removeWatermark, watermarkStatus, type WatermarkDeps } from './watermark'
 
@@ -78,7 +82,8 @@ export interface ToolResult {
 }
 
 export interface ToolSet {
-  definitions: ToolDefinition[]
+  /** 按当前语言生成，每次 tools/list 时调用 */
+  definitions(): ToolDefinition[]
   call(name: string, args: Args): Promise<ToolResult>
 }
 
@@ -129,9 +134,6 @@ const TASK_FIELDS = [
 const STATUS_FILTER = [...STATUSES, 'active', 'all'] as const
 const REPORT_PARTS: ReportPart[] = ['failed', 'files', 'running']
 
-const QN_DESCRIPTION =
-  '清晰度代码，会取不高于它的最高可用档：127 最高可用、120 4K、116 1080P60、112 1080P+、80 1080P、64 720P、32 480P、16 360P'
-
 const statusSchema = (description: string) => ({
   description,
   anyOf: [
@@ -140,31 +142,28 @@ const statusSchema = (description: string) => ({
   ]
 })
 
-const DEFINITIONS: ToolDefinition[] = [
+/** 下载、批次、设置类工具的定义。按当前语言现算，每次 tools/list 时调用 */
+const definitions = (): ToolDefinition[] => [
   {
     name: 'get_status',
-    title: '应用状态',
-    description: '登录和大会员状态、下载队列汇总、总速度、下载目录及剩余空间、主要设置，以及需要注意的提示。建议第一个调用。',
+    title: t('mcpTools.getStatusTitle'),
+    description: t('mcpTools.getStatusDesc'),
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
     name: 'parse_link',
-    title: '解析链接',
-    description:
-      '解析 B站链接（视频、合集、番剧、课程、收藏夹、UP 主空间、稍后再看等），分页的列表会自动翻页。' +
-      '条目很多时用 offset / limit 分段读取，结果缓存 10 分钟。条目的 id 是稳定的，传给 download_batch 的 ids。' +
-      '列表里的视频（lazy）还没展开分P：加入下载时会自动展开；想看分P或只下其中几P时传 expand_parts。' +
-      'lazy 视频的 downloaded=\'partly\' 表示至少有一P下载过，加入下载时会按每一P核对。',
+    title: t('mcpTools.parseLinkTitle'),
+    description: t('mcpTools.parseLinkDesc'),
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'B站链接、BV 号，或“稍后再看”“每周必看”“排行榜”' },
-        max_items: { type: 'integer', minimum: 1, maximum: MAX_ITEMS, description: `最多翻页取多少条，默认 ${DEFAULT_ITEMS}` },
-        offset: { type: 'integer', minimum: 0, description: '从第几条开始返回，默认 0' },
-        limit: { type: 'integer', minimum: 1, maximum: 500, description: '返回多少条，默认 100' },
-        expand_parts: { type: 'boolean', description: `展开本次返回的列表视频的分P（逐个请求，较慢），此时 limit 最大 ${MAX_EXPAND}` },
-        refresh: { type: 'boolean', description: '忽略缓存重新解析' }
+        url: { type: 'string', description: t('mcpTools.parseLinkUrl') },
+        max_items: { type: 'integer', minimum: 1, maximum: MAX_ITEMS, description: t('mcpTools.parseLinkMaxItems', { n: DEFAULT_ITEMS }) },
+        offset: { type: 'integer', minimum: 0, description: t('mcpTools.parseLinkOffset') },
+        limit: { type: 'integer', minimum: 1, maximum: 500, description: t('mcpTools.parseLinkLimit') },
+        expand_parts: { type: 'boolean', description: t('mcpTools.parseLinkExpand', { n: MAX_EXPAND }) },
+        refresh: { type: 'boolean', description: t('mcpTools.parseLinkRefresh') }
       },
       required: ['url']
     },
@@ -172,56 +171,49 @@ const DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'download_batch',
-    title: '批量下载',
-    description:
-      '把链接里的条目作为一个批次加入下载队列，立即返回 batch_id，列表视频的分P在后台展开。' +
-      '用 ids 选条目，或 all=true 全部下载；单个视频的链接可以都不传。' +
-      '要下载的视频来自不同链接（例如搜索结果）时用 videos 一次提交，不要逐个调用。已下载过的默认跳过，已在队列里的不会重复添加。' +
-      '原批次还没结束时，同样的请求再提交会返回原来的批次（deduplicated=true）；传 request_id 可以明确指定幂等键。',
+    title: t('mcpTools.downloadTitle'),
+    description: t('mcpTools.downloadDesc'),
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: '和 parse_link 用的同一个链接。和 videos 只能用一个' },
+        url: { type: 'string', description: t('mcpTools.downloadUrl') },
         videos: {
           type: 'array',
           items: { type: 'string' },
           maxItems: MAX_VIDEOS,
-          description: `BV 号、av 号、视频链接或 b23.tv 短链（例如 search_videos 结果里的 url），合成一个批次，最多 ${MAX_VIDEOS} 个，其中短链和 av 号最多 20 个。每个视频下载全部分P，链接里的 p 参数不生效；合集、收藏夹这类列表链接用 url`
+          description: t('mcpTools.downloadVideos', { max: MAX_VIDEOS })
         },
-        title: { type: 'string', maxLength: MAX_TITLE, description: 'videos 的批次名，多个视频时也是保存的文件夹名。默认：一个视频用它的标题，多个用“N 个视频”' },
-        ids: { type: 'array', items: { type: 'string' }, description: 'parse_link 返回的条目 id（视频的 id 表示它的全部分P）' },
-        all: { type: 'boolean', description: '下载全部条目（最多 max_items 条）' },
+        title: { type: 'string', maxLength: MAX_TITLE, description: t('mcpTools.downloadBatchTitle') },
+        ids: { type: 'array', items: { type: 'string' }, description: t('mcpTools.downloadIds') },
+        all: { type: 'boolean', description: t('mcpTools.downloadAll') },
         max_items: {
           type: 'integer',
           minimum: 1,
           maximum: MAX_ITEMS,
-          description: `all=true 时最多取多少条，默认 ${DEFAULT_ITEMS}，和 parse_link 一样时直接用它的缓存`
+          description: t('mcpTools.downloadMaxItems', { n: DEFAULT_ITEMS })
         },
-        qn: { type: 'integer', description: `${QN_DESCRIPTION}。默认用设置里的清晰度` },
-        options: optionsSchema('下载选项，没传的用设置里的默认值'),
-        subdir: { type: 'string', description: '保存到下载目录下的这个子目录' },
-        skip_downloaded: { type: 'boolean', description: '跳过下载历史里已有的条目，默认 true' },
-        request_id: { type: 'string', description: '幂等键：同一个 request_id 只会创建一个批次' }
+        qn: { type: 'integer', description: t('mcpTools.downloadQn', { qn: t('mcpTools.qn') }) },
+        options: optionsSchema(t('mcpTools.downloadOptions')),
+        subdir: { type: 'string', description: t('mcpTools.downloadSubdir') },
+        skip_downloaded: { type: 'boolean', description: t('mcpTools.downloadSkip') },
+        request_id: { type: 'string', description: t('mcpTools.downloadRequestId') }
       }
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   {
     name: 'get_batch_status',
-    title: '批次进度',
-    description:
-      '查看一个批次的进度：各状态的任务数、已下载字节、速度、预计剩余时间、实际清晰度、失败原因和下一步提示。' +
-      'watermark 是去水印的情况：识别到 B站水印的视频数、已去掉的数量、正在处理的进度，以及有水印还没去掉时两种方式各要多久（hint 里有给用户的说法）。' +
-      'wait_seconds 大于 0 时会等到批次全部结束、暂停或需要处理时才返回（最多等这么久），还在去水印时也会等，比反复查询省事。',
+    title: t('mcpTools.batchStatusTitle'),
+    description: t('mcpTools.batchStatusDesc'),
     inputSchema: {
       type: 'object',
       properties: {
         batch_id: { type: 'string' },
-        wait_seconds: { type: 'integer', minimum: 0, maximum: 50, description: '最多等待多少秒，默认 0' },
+        wait_seconds: { type: 'integer', minimum: 0, maximum: 50, description: t('mcpTools.batchStatusWait') },
         include: {
           type: 'array',
           items: { type: 'string', enum: REPORT_PARTS },
-          description: '附带的明细：failed 失败列表（默认）、files 已完成的文件路径、running 正在下载的任务'
+          description: t('mcpTools.batchStatusInclude')
         }
       },
       required: ['batch_id']
@@ -230,49 +222,43 @@ const DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'list_batches',
-    title: '最近的批次',
-    description: '最近提交的批次（新的在前），找回 batch_id 时用。',
+    title: t('mcpTools.listBatchesTitle'),
+    description: t('mcpTools.listBatchesDesc'),
     inputSchema: {
       type: 'object',
-      properties: { limit: { type: 'integer', minimum: 1, maximum: 50, description: '默认 20' } }
+      properties: { limit: { type: 'integer', minimum: 1, maximum: 50, description: t('mcpTools.listBatchesLimit') } }
     },
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
     name: 'list_tasks',
-    title: '任务列表',
-    description:
-      '分页查看下载任务，可按批次、状态、标题筛选。状态：queued 排队、running 下载中、paused 暂停、retrying 等待自动重试、' +
-      'failed 失败、unsupported 无法下载、waiting_auth 等待登录、done 完成；active 表示还没结束的。',
+    title: t('mcpTools.listTasksTitle'),
+    description: t('mcpTools.listTasksDesc'),
     inputSchema: {
       type: 'object',
       properties: {
         batch_id: { type: 'string' },
-        status: statusSchema('一个或多个状态，默认 all'),
-        query: { type: 'string', description: '标题里包含的文字' },
+        status: statusSchema(t('mcpTools.listTasksStatus')),
+        query: { type: 'string', description: t('mcpTools.listTasksQuery') },
         offset: { type: 'integer', minimum: 0 },
-        limit: { type: 'integer', minimum: 1, maximum: 500, description: '默认 50' },
-        fields: { type: 'array', items: { type: 'string', enum: TASK_FIELDS }, description: '只返回这些字段' }
+        limit: { type: 'integer', minimum: 1, maximum: 500, description: t('mcpTools.listTasksLimit') },
+        fields: { type: 'array', items: { type: 'string', enum: TASK_FIELDS }, description: t('mcpTools.listTasksFields') }
       }
     },
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
     name: 'control_tasks',
-    title: '批量控制任务',
-    description:
-      '批量暂停、继续、重试、重新下载、移除任务，或取消去水印。用 task_ids、batch_id、status 指定范围（至少一个，可以组合）。' +
-      '只指定 batch_id（不带 task_ids、status）时对整个批次操作：pause / resume 时之后才加入队列的任务也一起暂停 / 继续，retry 时也重试展开分P失败的条目，remove 时不再加入还没处理的条目。' +
-      'redownload 删掉已下载的部分从头下载；remove 取消未完成的任务并把任务移出列表，已下载好的文件不会删除；' +
-      'cancel_watermark 取消正在进行的去水印（remove_watermark 发起的），原视频保持不变。',
+    title: t('mcpTools.controlTitle'),
+    description: t('mcpTools.controlDesc'),
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ACTIONS },
         task_ids: { type: 'array', items: { type: 'string' } },
         batch_id: { type: 'string' },
-        status: statusSchema('只操作这些状态的任务'),
-        include_unsupported: { type: 'boolean', description: 'retry 时也重试“无法下载”的任务（例如刚开通了大会员）' }
+        status: statusSchema(t('mcpTools.controlStatus')),
+        include_unsupported: { type: 'boolean', description: t('mcpTools.controlUnsupported') }
       },
       required: ['action']
     },
@@ -280,27 +266,22 @@ const DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'remove_watermark',
-    title: '去水印',
-    description:
-      '给已下载的视频去掉画面角落的 B站水印，在后台进行，完成后替换原文件（会重新编码）。只在用户明确要求或同意后调用。' +
-      'method=fast 快速去除：用周围的画面填补，水印处略糊，一般只要视频时长的零点几倍；' +
-      'method=ai AI 精修：逐帧补出水印下面的画面，清楚得多，但慢很多（有显卡时约为视频时长的 2～4 倍），第一次会先下载约 200MB 的模型，下不下来或精修失败时改用快速去除。' +
-      '用 batch_id 时处理这个批次里下载完、识别到水印、还没去掉的视频；用 task_ids 时逐个识别（下载时没识别过的每个要几秒，一次最多识别 10 个）。' +
-      '先带 dry_run=true 拿到每个视频的预计耗时，告诉用户后再正式调用。进度看 get_batch_status 或 list_tasks 的 watermark，取消用 control_tasks action=cancel_watermark。',
+    title: t('mcpTools.removeWmTitle'),
+    description: t('mcpTools.removeWmDesc'),
     inputSchema: {
       type: 'object',
       properties: {
-        method: { type: 'string', enum: METHODS, description: 'fast 快速去除；ai AI 精修' },
-        task_ids: { type: 'array', items: { type: 'string' }, description: '要处理的任务（必须已下载完成）' },
-        batch_id: { type: 'string', description: '处理这个批次里识别到水印、还没去掉的视频' },
+        method: { type: 'string', enum: METHODS, description: t('mcpTools.removeWmMethod') },
+        task_ids: { type: 'array', items: { type: 'string' }, description: t('mcpTools.removeWmTaskIds') },
+        batch_id: { type: 'string', description: t('mcpTools.removeWmBatchId') },
         region: {
           type: 'object',
           properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },
           required: ['x', 'y', 'w', 'h'],
-          description: '手动指定水印位置（视频像素坐标），只能和一个 task_id 一起用；没认出位置时 skipped 里会给出视频尺寸和可能的位置'
+          description: t('mcpTools.removeWmRegion')
         },
-        force: { type: 'boolean', description: '已经去过水印的也重新处理（例如快速去除后想换成 AI 精修）' },
-        dry_run: { type: 'boolean', description: '只识别和估算耗时，不开始处理' }
+        force: { type: 'boolean', description: t('mcpTools.removeWmForce') },
+        dry_run: { type: 'boolean', description: t('mcpTools.removeWmDryRun') }
       },
       required: ['method']
     },
@@ -308,25 +289,25 @@ const DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'get_settings',
-    title: '读取设置',
-    description: '读取下载相关的设置：下载目录、并发数、每个文件的线程数、限速、自动重试次数、默认清晰度和默认下载选项。',
+    title: t('mcpTools.getSettingsTitle'),
+    description: t('mcpTools.getSettingsDesc'),
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
     name: 'update_settings',
-    title: '修改设置',
-    description: '修改下载相关的设置，只需传要改的项。返回修改后的设置和每一项什么时候生效。',
+    title: t('mcpTools.updateSettingsTitle'),
+    description: t('mcpTools.updateSettingsDesc'),
     inputSchema: {
       type: 'object',
       properties: {
-        download_dir: { type: 'string', description: '绝对路径（可以用 ~/ 开头），不存在会创建' },
-        concurrency: { type: 'integer', minimum: 1, maximum: 5, description: '同时下载的任务数' },
-        threads: { type: 'integer', minimum: 1, maximum: 8, description: '每个文件同时开几个连接分段下载' },
-        speed_limit_kbps: { type: 'integer', minimum: 0, description: '全局限速 KB/s，0 为不限' },
-        auto_retry: { type: 'integer', minimum: 0, maximum: 20, description: '网络错误自动重试次数' },
-        default_qn: { type: 'integer', description: QN_DESCRIPTION },
-        defaults: optionsSchema('默认下载选项，只改传了的字段')
+        download_dir: { type: 'string', description: t('mcpTools.updateDownloadDir') },
+        concurrency: { type: 'integer', minimum: 1, maximum: 5, description: t('mcpTools.updateConcurrency') },
+        threads: { type: 'integer', minimum: 1, maximum: 8, description: t('mcpTools.updateThreads') },
+        speed_limit_kbps: { type: 'integer', minimum: 0, description: t('mcpTools.updateSpeedLimit') },
+        auto_retry: { type: 'integer', minimum: 0, maximum: 20, description: t('mcpTools.updateAutoRetry') },
+        default_qn: { type: 'integer', description: t('mcpTools.qn') },
+        defaults: optionsSchema(t('mcpTools.updateDefaults'))
       }
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
@@ -342,9 +323,6 @@ const failure = (e: unknown): ToolResult => {
   const error = describeError(e)
   return { content: [{ type: 'text', text: JSON.stringify({ error }) }], structuredContent: { error }, isError: true }
 }
-
-const batchNotFound = (id: string): ToolError =>
-  new ToolError('NOT_FOUND', `没有这个批次：${id}`, '用 list_batches 查看最近的批次')
 
 /** 状态筛选：active 展开成还没结束的几种，all 或不传表示不筛选 */
 function statusSet(list: readonly string[] | undefined): Set<McpStatus> | undefined {
@@ -367,29 +345,28 @@ async function freeSpace(dir: string): Promise<number | undefined> {
 /** 检查并创建下载目录，返回规范化后的绝对路径 */
 function prepareDir(raw: string): string {
   const dir = normalize(raw.startsWith('~/') ? join(homedir(), raw.slice(2)) : raw)
-  if (!isAbsolute(dir)) throw invalid('download_dir 必须是绝对路径')
+  if (!isAbsolute(dir)) throw invalid(t('mcpTools.downloadDirAbsolute'))
   try {
     mkdirSync(dir, { recursive: true })
     accessSync(dir, constants.W_OK)
   } catch (e) {
-    throw invalid(`下载目录不可用：${toDiskError(e, dir).message}`)
+    throw invalid(t('mcpTools.downloadDirUnusable', { reason: toDiskError(e, dir).message }))
   }
   return dir
 }
 
-const SETTING_EFFECTS: Record<string, string> = {
-  download_dir: '只影响之后加入的任务，已在队列里的任务仍保存到原来的目录',
-  concurrency: '立即生效：调高时排队的任务马上开始，调低时正在下载的任务不会被打断',
-  threads: '正在下载的任务不受影响；之后开始下载、暂停后继续的任务按新值分段',
-  speed_limit_kbps: '立即生效',
-  auto_retry: '立即生效',
-  default_qn: '只影响之后加入的任务',
-  defaults: '只影响之后加入的任务'
+const SETTING_EFFECTS: Record<string, Key> = {
+  download_dir: 'mcpTools.effectDownloadDir',
+  concurrency: 'mcpTools.effectConcurrency',
+  threads: 'mcpTools.effectThreads',
+  speed_limit_kbps: 'mcpTools.effectNow',
+  auto_retry: 'mcpTools.effectNow',
+  default_qn: 'mcpTools.effectLater',
+  defaults: 'mcpTools.effectLater'
 }
 
 /** MCP 的工具：参数校验、调用下载队列和批次管理，结果整理成 agent 好用的 JSON */
 export class McpTools implements ToolSet {
-  readonly definitions = [...DEFINITIONS, ...LOGIN_DEFINITIONS, ...LOOKUP_DEFINITIONS]
   readonly batches: BatchManager
   private cache: ParseCache
   private lookup: LookupTools
@@ -403,6 +380,10 @@ export class McpTools implements ToolSet {
     this.cache = new ParseCache(deps.parseAll, now)
     this.lookup = new LookupTools(deps.lookup, deps.authState, { now })
     this.login = new LoginTools(deps.login, () => this.batches.list().filter((b) => this.batches.state(b) === 'interrupted').map((b) => b.id))
+  }
+
+  definitions(): ToolDefinition[] {
+    return [...definitions(), ...loginDefinitions(), ...lookupDefinitions()]
   }
 
   async call(name: string, args: Args): Promise<ToolResult> {
@@ -431,7 +412,7 @@ export class McpTools implements ToolSet {
         case 'update_settings':
           return result(this.updateSettings(args))
         default:
-          throw new ToolError('NOT_FOUND', `没有这个工具：${name}`, '用 tools/list 查看可用的工具')
+          throw new ToolError('NOT_FOUND', t('mcpTools.noSuchTool', { name }), t('mcpTools.noSuchToolHint'))
       }
     } catch (e) {
       return failure(e)
@@ -449,19 +430,19 @@ export class McpTools implements ToolSet {
       const auth = await this.deps.authState()
       if (auth.loggedIn) {
         login = { logged_in: true, user: auth.user.uname, vip: auth.user.vipActive, vip_label: auth.user.vipLabel || undefined }
-        if (!auth.user.vipActive) hints.push('不是大会员：4K、1080P 高码率等大会员清晰度拿不到，会自动降到能下载的最高档')
+        if (!auth.user.vipActive) hints.push(t('mcpTools.notVip'))
       } else {
         login = { logged_in: false, expired: auth.expired || undefined }
-        hints.push(`应用没有登录：解析链接需要登录。${LOGIN_HINT}`)
+        hints.push(t('mcpTools.appNotLoggedIn', { loginHint: loginHint() }))
       }
     } catch (e) {
       login = { logged_in: null, error: describeError(e).message }
-      hints.push('暂时无法确认登录状态（可能是网络问题）')
+      hints.push(t('mcpTools.loginUnknown'))
     }
-    if (counts.waiting_auth) hints.push(`${counts.waiting_auth} 个任务在等待登录，重新登录后会自动继续。${LOGIN_HINT}`)
-    if (counts.paused) hints.push(`${counts.paused} 个任务已暂停（应用重启后未完成的任务会自动暂停），可以用 control_tasks action=resume 继续`)
-    if (counts.failed) hints.push(`${counts.failed} 个任务失败，可以用 control_tasks action=retry status=failed 重试`)
-    if (free !== undefined && free < LOW_SPACE) hints.push('下载目录所在磁盘剩余空间不足 5 GB')
+    if (counts.waiting_auth) hints.push(t('mcpTools.waitingAuth', { count: counts.waiting_auth, loginHint: loginHint() }))
+    if (counts.paused) hints.push(t('mcpTools.paused', { count: counts.paused }))
+    if (counts.failed) hints.push(t('mcpTools.failed', { count: counts.failed }))
+    if (free !== undefined && free < LOW_SPACE) hints.push(t('mcpTools.lowSpace'))
     return {
       login,
       queue: { total: tasks.length, ...counts, speed_bps: totalSpeed(tasks) },
@@ -489,10 +470,10 @@ export class McpTools implements ToolSet {
     const groupOf = new Map(r.groups.length > 1 ? r.groups.flatMap((g) => g.items.map((i) => [i.key, g.title] as const)) : [])
     const next = offset + limit < p.items.length ? offset + limit : null
     const hints: string[] = []
-    if (p.error) hints.push(`翻页时出错（${p.error}），只拿到前 ${p.items.length} 条，过一会儿可以带 refresh=true 重试`)
-    else if (!p.complete) hints.push(`只取了前 ${p.items.length} 条，需要更多请调大 max_items（最多 ${MAX_ITEMS}）`)
-    if (next !== null) hints.push(`还有条目没返回，用 offset=${next} 继续读取`)
-    if (p.items.some((i) => i.lazy)) hints.push('lazy 的条目是还没展开分P的视频，加入下载时会自动展开')
+    if (p.error) hints.push(t('mcpTools.pageError', { error: p.error, count: p.items.length }))
+    else if (!p.complete) hints.push(t('mcpTools.truncated', { count: p.items.length, max: MAX_ITEMS }))
+    if (next !== null) hints.push(t('mcpTools.moreItems', { next }))
+    if (p.items.some((i) => i.lazy)) hints.push(t('mcpTools.lazyItems'))
     return {
       title: r.title,
       kind: r.kind,
@@ -528,7 +509,7 @@ export class McpTools implements ToolSet {
           queued: isQueued(i) || undefined
         }
       }),
-      hint: hints.join('；') || undefined
+      hint: joinHints(hints)
     }
   }
 
@@ -566,8 +547,8 @@ export class McpTools implements ToolSet {
       ...this.submitted(dup),
       deduplicated: true,
       hint: resumed
-        ? '同样的请求之前提交过，已经接着处理上次没加入队列的条目'
-        : `同样的请求之前提交过，没有重复添加；用 get_batch_status batch_id=${dup.id} 查看进度，要重新提交请换一个 request_id`
+        ? t('mcpTools.dupResumed')
+        : t('mcpTools.dupSame', { id: dup.id })
     }
   }
 
@@ -575,11 +556,11 @@ export class McpTools implements ToolSet {
     const videos = optionalStrings(args, 'videos')
     if (videos) {
       for (const key of ['url', 'ids', 'all', 'max_items']) {
-        if (args[key] !== undefined && args[key] !== null) throw invalid(`videos 和 ${key} 不能一起用`)
+        if (args[key] !== undefined && args[key] !== null) throw invalid(t('mcpTools.videosWith', { key }))
       }
       const list = [...new Set(videos)]
-      if (!list.length) throw invalid('videos 不能是空的')
-      if (list.length > MAX_VIDEOS) throw invalid(`videos 一次最多 ${MAX_VIDEOS} 个，分成几批提交`)
+      if (!list.length) throw invalid(t('mcpTools.videosEmpty'))
+      if (list.length > MAX_VIDEOS) throw invalid(t('mcpTools.videosTooMany', { max: MAX_VIDEOS }))
       return this.downloadVideos(list, args)
     }
     return this.downloadUrl(requireString(args, 'url'), args)
@@ -592,22 +573,23 @@ export class McpTools implements ToolSet {
   private async downloadVideos(list: string[], args: Args) {
     const { downloadDir, options, subdir, skipDownloaded, requestId } = this.batchArgs(args)
     const custom = optionalString(args, 'title')
-    if (custom && custom.length > MAX_TITLE) throw invalid(`title 不能超过 ${MAX_TITLE} 个字`)
+    if (custom && custom.length > MAX_TITLE) throw invalid(t('mcpTools.titleTooLong', { max: MAX_TITLE }))
     const { bvids, rejected } = await this.lookup.resolveBvids(list)
     const unique = [...new Set(bvids)]
     if (!unique.length) {
-      throw invalid(`videos 里没有能下载的视频（例如 ${rejected.slice(0, 3).join('、')}），合集、收藏夹这类列表链接用 url`)
+      throw invalid(t('mcpTools.videosNone', { examples: joinList(rejected.slice(0, 3)) }))
     }
     // 只有一个视频时和直接传链接一样，用它的标题和封面；多个时后台展开才知道
     const only = unique.length === 1 ? await this.lookup.videoDetail(unique[0]) : undefined
-    const title = custom ?? only?.title ?? `${unique.length} 个视频`
+    // 标题是命名变量 {series}（文件夹名）和去重指纹的一部分，和其他自动生成的标题一样固定用中文，不随界面语言变
+    const title = custom ?? only?.title ?? translate('zh-CN', 'mcpTools.videosTitle', { count: unique.length })
     const fingerprint = createHash('sha256')
       .update(JSON.stringify(['videos', [...unique].sort(), title, options, subdir, skipDownloaded]))
       .digest('hex')
 
     // 这条路径不解析链接，要自己确认登录：没登录时清晰度和可下载的内容都不对
     const auth = await this.deps.authState()
-    if (!auth.loggedIn) throw new ToolError('NOT_LOGGED_IN', '应用没有登录', `${LOGIN_HINT}，登录后再试`)
+    if (!auth.loggedIn) throw new ToolError('NOT_LOGGED_IN', t('mcp.notLoggedIn'), loginThenRetry())
 
     const rejectedOut = rejected.length ? rejected : undefined
     // 查重和提交之间不能有 await：并行的相同请求才不会都建出批次
@@ -626,22 +608,22 @@ export class McpTools implements ToolSet {
       skipDownloaded,
       skipped: { downloaded: 0, unavailable: 0 }
     })
-    const notes = [`用 get_batch_status batch_id=${b.id} wait_seconds=30 查看进度`]
-    if (rejected.length) notes.unshift(`${rejected.length} 项查不到对应的视频，已忽略，见 rejected`)
+    const notes = [t('mcpTools.checkProgress', { id: b.id })]
+    if (rejected.length) notes.unshift(t('mcpTools.rejected', { count: rejected.length }))
     // 只有一个视频时知道时长，多个时要展开后才知道
     const items = only?.duration ? [{ duration: only.duration } as MediaItem] : []
     return {
       ...this.submitted(b),
       rejected: rejectedOut,
       watermark: plannedWatermark(options, items, this.deps.watermark),
-      hint: notes.join('；')
+      hint: joinHints(notes)
     }
   }
 
   private async downloadUrl(url: string, args: Args) {
     const ids = optionalStrings(args, 'ids')
     const all = optionalBool(args, 'all', false)
-    if (ids && all) throw invalid('ids 和 all 只能用一个')
+    if (ids && all) throw invalid(t('mcpTools.idsAndAll'))
     const { downloadDir, options, subdir, skipDownloaded, requestId } = this.batchArgs(args)
     const maxItems = optionalInt(args, 'max_items', 1, MAX_ITEMS, DEFAULT_ITEMS)
     const fingerprint = createHash('sha256')
@@ -660,12 +642,12 @@ export class McpTools implements ToolSet {
     let unknown: string[] = []
     if (ids) {
       ;({ chosen, unknown } = this.pick(p.items, ids))
-      if (!chosen.length) throw invalid(`ids 都不在这个链接里（例如 ${unknown.slice(0, 3).join('、')}），先用 parse_link 查看条目 id`)
+      if (!chosen.length) throw invalid(t('mcpTools.idsNone', { examples: joinList(unknown.slice(0, 3)) }))
     } else if (all) {
       chosen = p.items
     } else if (r.paging) {
       // 收藏夹、UP 主投稿可能有成千上万条，必须明确选择
-      throw invalid(`这是一个有 ${r.paging.total} 条的列表，请传 all=true 下载全部，或用 ids 选择条目`)
+      throw invalid(t('mcpTools.pagedList', { total: r.paging.total }))
     } else {
       const def = new Set(r.defaultSelected)
       chosen = def.size ? p.items.filter((i) => def.has(i.key)) : p.items
@@ -682,10 +664,10 @@ export class McpTools implements ToolSet {
     const fresh = skipDownloaded ? chosen.filter((i) => i.lazy || !isDownloaded(i)) : chosen
     const downloaded = chosen.length - fresh.length
     const notes: string[] = []
-    if (unknown.length) notes.push(`${unknown.length} 个 id 不在这个链接里，已忽略`)
+    if (unknown.length) notes.push(t('mcpTools.unknownIds', { count: unknown.length }))
     const truncated = all && !p.complete
-    if (truncated && p.error) notes.push(`翻页时出错（${p.error}），只加入了前 ${p.items.length} 条；过一会儿再提交一次可以补上后面的`)
-    else if (truncated) notes.push(`只取了前 ${p.items.length} 条，后面的没有加入；需要更多请调大 max_items（最多 ${MAX_ITEMS}）`)
+    if (truncated && p.error) notes.push(t('mcpTools.addPageError', { error: p.error, count: p.items.length }))
+    else if (truncated) notes.push(t('mcpTools.addTruncated', { count: p.items.length, max: MAX_ITEMS }))
 
     if (!fresh.length) {
       return {
@@ -694,7 +676,7 @@ export class McpTools implements ToolSet {
         selected: 0,
         skipped: { downloaded, unavailable },
         unknown_ids: unknown.length ? unknown : undefined,
-        hint: downloaded ? '选中的条目都已经下载过；要重新下载请传 skip_downloaded=false' : '没有可以下载的条目'
+        hint: downloaded ? t('mcpTools.allDownloaded') : t('mcpTools.nothingToDownload')
       }
     }
     const b = this.batches.submit({
@@ -711,13 +693,13 @@ export class McpTools implements ToolSet {
       skipDownloaded,
       skipped: { downloaded, unavailable }
     })
-    notes.push(`用 get_batch_status batch_id=${b.id} wait_seconds=30 查看进度`)
+    notes.push(t('mcpTools.checkProgress', { id: b.id }))
     return {
       ...this.submitted(b),
       complete: truncated ? false : undefined,
       unknown_ids: unknown.length ? unknown : undefined,
       watermark: plannedWatermark(options, fresh, this.deps.watermark),
-      hint: notes.join('；')
+      hint: joinHints(notes)
     }
   }
 
@@ -800,7 +782,7 @@ export class McpTools implements ToolSet {
     const taskIds = optionalStrings(args, 'task_ids')
     const batchId = optionalString(args, 'batch_id')
     const statuses = optionalEnums(args, 'status', STATUS_FILTER)
-    if (!taskIds && !batchId && !statuses) throw invalid('需要用 task_ids、batch_id 或 status 指定要操作的任务')
+    if (!taskIds && !batchId && !statuses) throw invalid(t('mcpTools.controlScope'))
     const batch = batchId ? this.batches.find(batchId) : undefined
     if (batchId && !batch) throw batchNotFound(batchId)
     const want = statusSet(statuses)
@@ -817,13 +799,13 @@ export class McpTools implements ToolSet {
     const eligible = matched.filter(can)
     const ids = eligible.map((t) => t.id)
     const skipped = [
-      ...(taskIds ?? []).filter((id) => !all.some((t) => t.id === id)).map((id) => ({ id, reason: '没有这个任务' })),
+      ...(taskIds ?? []).filter((id) => !all.some((t) => t.id === id)).map((id) => ({ id, reason: t('mcp.noSuchTask') })),
       ...matched
-        .filter((t) => !can(t))
-        .map((t) => ({
-          id: t.id,
-          status: mcpStatus(t),
-          reason: action === 'cancel_watermark' ? '没有在去水印' : `${mcpStatus(t)} 状态的任务不能 ${action}`
+        .filter((task) => !can(task))
+        .map((task) => ({
+          id: task.id,
+          status: mcpStatus(task),
+          reason: action === 'cancel_watermark' ? t('mcpTools.notWatermarking') : t('mcpTools.wrongStatus', { status: mcpStatus(task), action })
         }))
     ]
     // 只指定了批次（没有点名任务、没有按状态筛选），就是对整个批次操作
@@ -872,7 +854,7 @@ export class McpTools implements ToolSet {
 
   private removeWatermark(args: Args) {
     if (args.task_ids !== undefined && args.task_ids !== null && args.batch_id !== undefined && args.batch_id !== null) {
-      throw invalid('task_ids 和 batch_id 只能用一个')
+      throw invalid(t('mcpTools.taskIdsAndBatch'))
     }
     const ids = removeTargets(args, (id) => {
       const b = this.batches.find(id)
@@ -928,8 +910,8 @@ export class McpTools implements ToolSet {
       const { qn: _qn, ...opts } = normalizeOptions({ ...cur.defaults, ...parseOptions(args.defaults, 'defaults') })
       set('defaults', 'defaults', opts)
     }
-    if (!changed.length) throw invalid('没有要修改的设置，可以改：' + Object.keys(SETTING_EFFECTS).join('、'))
+    if (!changed.length) throw invalid(t('mcpTools.nothingToUpdate', { names: joinList(Object.keys(SETTING_EFFECTS)) }))
     const next = this.deps.updateSettings(patch)
-    return { settings: this.settingsOut(next), effects: Object.fromEntries(changed.map((k) => [k, SETTING_EFFECTS[k]])) }
+    return { settings: this.settingsOut(next), effects: Object.fromEntries(changed.map((k) => [k, t(SETTING_EFFECTS[k])])) }
   }
 }

@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, Rss, Trash2 } from 'lucide-react'
 import type { Subscription } from '@shared/types'
+import { t } from '@shared/i18n'
 import { checkedAgo } from '../format'
+import { useT } from '../i18n'
 import { api } from '../store'
 import { EmptyState, IconButton, PageHeader, Select, Switch } from './ui'
 
-export const INTERVALS = [
-  { min: 30, label: '30 分钟' },
-  { min: 60, label: '1 小时' },
-  { min: 180, label: '3 小时' },
-  { min: 360, label: '6 小时' },
-  { min: 720, label: '12 小时' },
-  { min: 1440, label: '每天' }
+/** 检查间隔的选项。文案在调用时取，切换语言后跟着变 */
+export const intervals = (): { min: number; label: string }[] => [
+  { min: 30, label: t('subs.interval30m') },
+  { min: 60, label: t('subs.interval1h') },
+  { min: 180, label: t('subs.interval3h') },
+  { min: 360, label: t('subs.interval6h') },
+  { min: 720, label: t('subs.interval12h') },
+  { min: 1440, label: t('subs.interval1d') }
 ]
 
 export function SubscriptionsPage() {
+  const t = useT()
   const [subs, setSubs] = useState<Subscription[] | null>(null)
   const [checking, setChecking] = useState<string | null>(null)
 
@@ -25,11 +29,11 @@ export function SubscriptionsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="订阅" subtitle="应用运行期间按间隔检查收藏夹、合集、番剧、UP 主等来源，有新内容就按订阅时的选项自动下载。" />
+      <PageHeader title={t('subs.title')} subtitle={t('subs.subtitle')} />
       <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
         {subs?.length === 0 && (
-          <EmptyState icon={Rss} title="还没有订阅">
-            解析收藏夹、合集、番剧或 UP 主空间后，在选择窗口底部点“订阅更新”即可添加。
+          <EmptyState icon={Rss} title={t('subs.empty')}>
+            {t('subs.emptyHint')}
           </EmptyState>
         )}
         {subs && subs.length > 0 && (
@@ -38,7 +42,7 @@ export function SubscriptionsPage() {
               <div key={s.id} className="group flex items-center gap-4 px-4 py-3">
                 <Switch
                   checked={s.enabled}
-                  label={s.enabled ? '已启用' : '已停用'}
+                  label={s.enabled ? t('subs.enabled') : t('subs.disabled')}
                   onChange={async (enabled) => setSubs(await api.subs.update(s.id, { enabled }))}
                 />
                 <div className="min-w-0 flex-1">
@@ -47,7 +51,7 @@ export function SubscriptionsPage() {
                   </div>
                   <div className="mt-0.5 truncate text-xs text-muted">
                     {checkedAgo(s.lastCheck, Date.now())}
-                    {s.lastNew ? ` · 上次发现 ${s.lastNew} 个新内容` : ''}
+                    {s.lastNew ? ` · ${t('subs.lastNew', { count: s.lastNew })}` : ''}
                     {s.lastError && <span className="text-red-600 dark:text-red-400"> · {s.lastError}</span>}
                   </div>
                 </div>
@@ -55,16 +59,16 @@ export function SubscriptionsPage() {
                   value={s.intervalMin}
                   onChange={async (e) => setSubs(await api.subs.update(s.id, { intervalMin: Number(e.target.value) }))}
                 >
-                  {INTERVALS.map((i) => (
+                  {intervals().map((i) => (
                     <option key={i.min} value={i.min}>
-                      每 {i.label}
+                      {t('subs.everyInterval', { interval: i.label })}
                     </option>
                   ))}
                 </Select>
                 <div className="flex gap-0.5">
                   <IconButton
                     icon={RefreshCw}
-                    label={checking === s.id ? '检查中…' : '立即检查'}
+                    label={checking === s.id ? t('subs.checking') : t('subs.checkNow')}
                     disabled={checking !== null}
                     className={checking === s.id ? '[&>svg]:animate-spin' : ''}
                     onClick={async () => {
@@ -79,9 +83,9 @@ export function SubscriptionsPage() {
                   <IconButton
                     icon={Trash2}
                     variant="danger"
-                    label="取消订阅"
+                    label={t('subs.unsubscribe')}
                     onClick={async () => {
-                      if (confirm(`取消订阅“${s.title}”？`)) setSubs(await api.subs.remove(s.id))
+                      if (confirm(t('subs.unsubscribeConfirm', { title: s.title }))) setSubs(await api.subs.remove(s.id))
                     }}
                   />
                 </div>

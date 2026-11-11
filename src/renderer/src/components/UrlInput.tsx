@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Clipboard, ClipboardPaste, Clock, Flame, Folder, Link2, ListPlus, Loader2, Star } from 'lucide-react'
-import { extractInputs, RANK_SLUGS } from '@shared/parseUrl'
+import { extractInputs, rankLabel } from '@shared/parseUrl'
+import { useT } from '../i18n'
 import { api, parseBatch, parseLink, useStore } from '../store'
 import { classifyPaste } from '../viewLogic'
 import { Banner, Button, Dropdown, fieldCls, IconButton, MenuItem, MenuLabel, Modal, ModalFooter, ModalHeader, STROKE } from './ui'
 
 /** 菜单打开时才挂载，顺便加载收藏夹 */
 function MyMenuContent({ pick }: { pick: (input: string) => void }) {
+  const t = useT()
   const [folders, setFolders] = useState<{ id: number; title: string; count: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -20,11 +22,11 @@ function MyMenuContent({ pick }: { pick: (input: string) => void }) {
   return (
     <>
       <MenuItem icon={Clock} onClick={() => pick('https://www.bilibili.com/watchlater')}>
-        稍后再看
+        {t('input.watchLater')}
       </MenuItem>
-      <MenuLabel>热门</MenuLabel>
+      <MenuLabel>{t('input.popular')}</MenuLabel>
       <MenuItem icon={Flame} onClick={() => pick('每周必看')}>
-        每周必看（最新一期）
+        {t('input.weekly')}
       </MenuItem>
       <div className="flex flex-wrap gap-1 px-2.5 pt-1 pb-1.5">
         {['all', 'knowledge', 'tech', 'music', 'game', 'douga', 'life', 'cinephile'].map((slug) => (
@@ -34,19 +36,19 @@ function MyMenuContent({ pick }: { pick: (input: string) => void }) {
             onClick={() => pick(`https://www.bilibili.com/v/popular/rank/${slug}`)}
             className="rounded-md bg-track px-2 py-0.5 text-xs text-muted transition-colors hover:bg-bili/15 hover:text-bili-dark dark:hover:text-bili"
           >
-            {RANK_SLUGS[slug].label}排行
+            {t('input.rank', { name: rankLabel(slug) })}
           </button>
         ))}
       </div>
-      <MenuLabel>我的收藏夹</MenuLabel>
+      <MenuLabel>{t('input.myFavorites')}</MenuLabel>
       {!folders && !error && (
         <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted">
           <Loader2 size={13} className="animate-spin" />
-          加载中…
+          {t('input.loading')}
         </div>
       )}
       {error && <div className="px-2.5 py-1.5 text-xs text-red-600">{error}</div>}
-      {folders?.length === 0 && <div className="px-2.5 py-1.5 text-xs text-muted">没有收藏夹</div>}
+      {folders?.length === 0 && <div className="px-2.5 py-1.5 text-xs text-muted">{t('input.noFavorites')}</div>}
       {folders?.map((f) => (
         <MenuItem
           key={f.id}
@@ -63,6 +65,7 @@ function MyMenuContent({ pick }: { pick: (input: string) => void }) {
 
 /** “我的”：稍后再看、热门和自己的收藏夹，不用再回浏览器复制链接 */
 function MyMenu({ onPick }: { onPick: (input: string) => void }) {
+  const t = useT()
   const loggedIn = useStore((s) => s.auth?.loggedIn)
   return (
     <Dropdown
@@ -70,7 +73,7 @@ function MyMenu({ onPick }: { onPick: (input: string) => void }) {
       button={({ open, toggle }) => (
         <IconButton
           icon={Star}
-          label={loggedIn ? '稍后再看、热门、我的收藏夹' : '登录后可用：稍后再看、热门、我的收藏夹'}
+          label={loggedIn ? t('input.myMenu') : t('input.myMenuLoggedOut')}
           size="lg"
           variant="default"
           className="h-11 w-11 rounded-xl"
@@ -93,14 +96,15 @@ function MyMenu({ onPick }: { onPick: (input: string) => void }) {
 }
 
 function BatchDialog({ onClose }: { onClose: () => void }) {
+  const t = useT()
   const [text, setText] = useState('')
   const inputs = extractInputs(text)
   return (
     <Modal onClose={onClose}>
       <ModalHeader
         icon={ListPlus}
-        title="批量解析"
-        subtitle="每行一个链接（BV 号、番剧、收藏夹、UP 主都可以），会逐个解析后合在一起选择。"
+        title={t('input.batchTitle')}
+        subtitle={t('input.batchSubtitle')}
         onClose={onClose}
       />
       <div className="px-6 pt-4">
@@ -114,9 +118,9 @@ function BatchDialog({ onClose }: { onClose: () => void }) {
         />
       </div>
       <ModalFooter>
-        <span className="flex-1 text-xs text-muted">识别到 {inputs.length} 个链接</span>
+        <span className="flex-1 text-xs text-muted">{t('input.detectedLinks', { count: inputs.length })}</span>
         <Button variant="ghost" onClick={onClose}>
-          取消
+          {t('input.cancel')}
         </Button>
         <Button
           variant="primary"
@@ -127,7 +131,7 @@ function BatchDialog({ onClose }: { onClose: () => void }) {
             void (inputs.length === 1 ? parseLink(inputs[0]) : parseBatch(inputs))
           }}
         >
-          解析 {inputs.length} 个
+          {t('input.parseCount', { count: inputs.length })}
         </Button>
       </ModalFooter>
     </Modal>
@@ -135,6 +139,7 @@ function BatchDialog({ onClose }: { onClose: () => void }) {
 }
 
 export function UrlInput() {
+  const t = useT()
   const [text, setText] = useState('')
   const [clip, setClip] = useState<string[] | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
@@ -164,15 +169,15 @@ export function UrlInput() {
   useEffect(() => {
     if (!clipboardWatch) return
     const onFocus = async (): Promise<void> => {
-      let t = ''
+      let text = ''
       try {
-        t = (await api.readClipboard()).trim()
+        text = (await api.readClipboard()).trim()
       } catch {
         return
       }
-      if (!t || t === lastClip.current) return
-      lastClip.current = t
-      const inputs = extractInputs(t)
+      if (!text || text === lastClip.current) return
+      lastClip.current = text
+      const inputs = extractInputs(text)
       if (inputs.length) setClip(inputs)
     }
     void onFocus()
@@ -204,20 +209,20 @@ export function UrlInput() {
               }
             }}
             onKeyDown={(e) => e.key === 'Enter' && submit(text)}
-            placeholder="粘贴视频、合集、番剧、课程、收藏夹或 UP 主链接"
+            placeholder={t('input.placeholder')}
             className="h-11 w-full rounded-xl border border-line-strong bg-field pr-11 pl-11 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle focus:border-bili focus:ring-4 focus:ring-bili/15"
           />
           {!text && (
             <button
               type="button"
-              title="从剪贴板粘贴并解析"
-              aria-label="从剪贴板粘贴并解析"
+              title={t('input.pasteAndParse')}
+              aria-label={t('input.pasteAndParse')}
               onClick={async () => {
-                const t = (await api.readClipboard()).trim()
-                if (!t) return
-                lastClip.current = t
-                setText(t)
-                submit(t)
+                const clipText = (await api.readClipboard()).trim()
+                if (!clipText) return
+                lastClip.current = clipText
+                setText(clipText)
+                submit(clipText)
               }}
               className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-subtle hover:bg-hover hover:text-fg"
             >
@@ -234,9 +239,9 @@ export function UrlInput() {
           onClick={() => submit(text)}
         >
           {parsing && <Loader2 size={16} className="animate-spin" />}
-          {parsing ? '解析中' : '解析'}
+          {parsing ? t('input.parsing') : t('input.parse')}
         </Button>
-        <IconButton icon={ListPlus} label="批量解析：一次粘贴多行链接" size="lg" variant="default" className="h-11 w-11 rounded-xl" onClick={() => setBatchOpen(true)} />
+        <IconButton icon={ListPlus} label={t('input.batchButton')} size="lg" variant="default" className="h-11 w-11 rounded-xl" onClick={() => setBatchOpen(true)} />
         <MyMenu onPick={pick} />
       </div>
 
@@ -245,7 +250,7 @@ export function UrlInput() {
           <Banner icon={Loader2} spin tone="info">
             <div className="flex items-center gap-3">
               <span className="shrink-0 tabular-nums">
-                正在解析 {progress.done}/{progress.total}
+                {t('input.parsingProgress', { done: progress.done, total: progress.total })}
               </span>
               <div className="h-1 w-32 shrink-0 overflow-hidden rounded-full bg-sky/20">
                 <div className="h-full bg-sky transition-[width]" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
@@ -268,12 +273,12 @@ export function UrlInput() {
                   submit(clip.join('\n'))
                 }}
               >
-                {clip.length > 1 ? '批量解析' : '解析'}
+                {clip.length > 1 ? t('input.batchTitle') : t('input.parse')}
               </Button>
             }
           >
             <div className="flex items-center gap-2">
-              <span className="shrink-0 font-medium">{clip.length > 1 ? `剪贴板里有 ${clip.length} 个链接` : '检测到剪贴板里的链接'}</span>
+              <span className="shrink-0 font-medium">{clip.length > 1 ? t('input.clipboardLinks', { count: clip.length }) : t('input.clipboardLink')}</span>
               <span className="min-w-0 truncate opacity-70">{clip.join('  ')}</span>
             </div>
           </Banner>

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { t } from '@shared/i18n'
 import { WM_NOTE } from '@shared/watermark'
 import type { AiModelStatus, ProcessingInfo, WatermarkMethod, WatermarkState } from '@shared/types'
 import { isDolbyVision, type DashStream } from '../bili/playurl'
@@ -88,7 +89,7 @@ export async function ensureModel(ai: NonNullable<AutoRemoveInput['ai']>, signal
     onStage({ stage: 'model', pct: 0 })
     await Promise.race([ai.model.download({ threads: ai.threads }), aborted])
     const s = ai.model.status()
-    return s.state === 'ready' ? undefined : (s.message ?? '下载没有完成')
+    return s.state === 'ready' ? undefined : (s.message ?? t('wm.modelNotDone'))
   } finally {
     ai.model.off('status', listener)
     signal.removeEventListener('abort', onAbort)
@@ -122,7 +123,7 @@ export async function detectOnly(i: Pick<AutoRemoveInput, 'source' | 'stream' | 
 export async function autoRemove(i: AutoRemoveInput): Promise<AutoRemoveResult> {
   const hit = cached(i.tmp, i.source, i.method)
   if (hit) return hit
-  if (HDR_QN.has(i.stream.id) || isDolbyVision(i.stream)) return { note: WM_NOTE.hdr }
+  if (HDR_QN.has(i.stream.id) || isDolbyVision(i.stream)) return { note: WM_NOTE.hdr() }
   const part = join(i.tmp, PART)
   const work = join(i.tmp, WORK)
   let state: WatermarkState | undefined
@@ -130,14 +131,14 @@ export async function autoRemove(i: AutoRemoveInput): Promise<AutoRemoveResult> 
     i.onStage({ stage: 'detect' })
     const probe = await probeMedia(i.source, i.signal)
     const v = probe.video
-    if (!v) return { note: WM_NOTE.failed('没找到视频画面') }
-    if (v.hdr || v.dolbyVision) return { note: WM_NOTE.hdr }
+    if (!v) return { note: WM_NOTE.failed(t('wm.noVideoFrame')) }
+    if (v.hdr || v.dolbyVision) return { note: WM_NOTE.hdr() }
     const duration = probe.duration ?? i.durationHint ?? 0
     const l = await locateWatermark(i.source, v, duration, i.signal)
     state = { width: v.width, height: v.height, detected: l.region, found: isConfident(l) }
-    if (l.result.reason === 'few-frames') return { state, note: WM_NOTE.fewFrames }
-    if (l.result.reason === 'static') return { state, note: WM_NOTE.static }
-    if (!isConfident(l)) return { state, note: WM_NOTE.none }
+    if (l.result.reason === 'few-frames') return { state, note: WM_NOTE.fewFrames() }
+    if (l.result.reason === 'static') return { state, note: WM_NOTE.static() }
+    if (!isConfident(l)) return { state, note: WM_NOTE.none() }
     const region = l.region
 
     // 先删掉上次崩溃留下的半成品：没退出的旧 ffmpeg 可能还在写它，不能和这次写进同一个文件

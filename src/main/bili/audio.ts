@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { AudioPref, MediaItem, ParseResult, StreamInfo } from '@shared/types'
 import { api, UnsupportedError } from './http'
 
@@ -63,7 +64,7 @@ export async function parseAudioMenu(amid: number): Promise<ParseResult> {
     cover: info.cover,
     owner: info.uname,
     meta: { owner: info.uname, ownerMid: info.uid, desc: info.intro, url: `https://www.bilibili.com/audio/am${amid}` },
-    groups: [{ id: 'menu', title: '歌单', items }],
+    groups: [{ id: 'menu', title: t('bili.groupAudioMenu'), items }],
     defaultSelected: items.map((i) => i.key)
   }
 }
@@ -77,12 +78,17 @@ const QUALITY_ORDER: Record<AudioPref, number[]> = {
   '132k': [0],
   '64k': [0]
 }
+/** 按接口的音质参数取：拼进下载分片的指纹和文件名模板的 {quality}，保持中文，不随界面语言变 */
 const QUALITY_LABEL = ['128K', '192K', '320K', '无损']
+const LOSSLESS = 3
 
 export interface AudioStream {
   urls: string[]
   size: number
+  /** 固定的中文标签，用在分片指纹和文件名里 */
   label: string
+  /** 界面上显示的音质 */
+  text: string
   flac: boolean
 }
 
@@ -93,23 +99,25 @@ export async function getAudioStream(sid: number, pref: AudioPref): Promise<Audi
       const d = await api<{ cdns: string[] | null; size: number; type: number }>(`${BASE}/url`, { sid, privilege: 2, quality })
       if (!d.cdns?.length) continue
       const flac = /\.flac(\?|$)/i.test(d.cdns[0])
-      return { urls: d.cdns, size: d.size, label: QUALITY_LABEL[d.type] ?? QUALITY_LABEL[quality], flac }
+      const q = QUALITY_LABEL[d.type] === undefined ? quality : d.type
+      return { urls: d.cdns, size: d.size, label: QUALITY_LABEL[q], text: q === LOSSLESS ? t('bili.audioLossless') : QUALITY_LABEL[q], flac }
     } catch (e) {
       lastMessage = e instanceof Error ? e.message : String(e)
     }
   }
-  throw new UnsupportedError(`拿不到这首歌的下载地址${lastMessage ? `：${lastMessage}` : ''}`)
+  throw new UnsupportedError(lastMessage ? t('bili.audioNoUrlReason', { reason: lastMessage }) : t('bili.audioNoUrl'))
 }
 
-export const AUDIO_STREAM_INFO: StreamInfo = {
+/** 音频区可选的音质；标签按当前界面语言生成 */
+export const audioStreamInfo = (): StreamInfo => ({
   qualities: [],
   hasAudio: true,
   audios: [
-    { id: 'best', label: '最佳', available: true },
-    { id: 'flac', label: 'Hi-Res 无损', available: true },
-    { id: 'dolby', label: '杜比全景声', available: false },
+    { id: 'best', label: t('bili.audioBest'), available: true },
+    { id: 'flac', label: t('bili.audioFlac'), available: true },
+    { id: 'dolby', label: t('bili.audioDolby'), available: false },
     { id: '192k', label: '192K', available: true },
     { id: '132k', label: '132K', available: false },
     { id: '64k', label: '64K', available: true }
   ]
-}
+})

@@ -1,3 +1,4 @@
+import { t as tr } from '@shared/i18n'
 import type { MediaItem, ParseResult } from '@shared/types'
 import { api } from './http'
 
@@ -51,7 +52,7 @@ export async function parseCheese(t: { epId?: number; seasonId?: number }): Prom
       ownerMid: s.up_info?.mid,
       url: `https://www.bilibili.com/cheese/play/ss${s.season_id}`
     },
-    groups: [{ id: 'cheese', title: '课程', items }],
+    groups: [{ id: 'cheese', title: tr('bili.groupCourse'), items }],
     defaultSelected: current ? [current.key] : items.map((i) => i.key)
   }
 }

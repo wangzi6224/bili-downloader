@@ -1,7 +1,7 @@
 import { createServer, request, type Server } from 'node:http'
 import { connect, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { normalizeProxyUrl, parseResolvedProxy, setFetchProxy } from './proxy'
+import { describeProxy, normalizeProxyUrl, parseResolvedProxy, setFetchProxy } from './proxy'
 
 describe('normalizeProxyUrl', () => {
   it.each([
@@ -68,14 +68,11 @@ describe('parseResolvedProxy：其余情况', () => {
   })
 })
 
-describe('setFetchProxy：状态文案', () => {
-  afterAll(() => {
-    setFetchProxy(undefined)
-  })
-
+describe('describeProxy：状态文案', () => {
   it('凭据打码', () => {
-    expect(setFetchProxy('http://user:secret@127.0.0.1:1')).toBe('通过 http://***@127.0.0.1:1 连接')
-    expect(setFetchProxy('https://127.0.0.1:2')).toBe('通过 https://127.0.0.1:2 连接')
+    expect(describeProxy('http://user:secret@127.0.0.1:1')).toBe('通过 http://***@127.0.0.1:1 连接')
+    expect(describeProxy('https://127.0.0.1:2')).toBe('通过 https://127.0.0.1:2 连接')
+    expect(describeProxy(undefined)).toBe('直连')
   })
 })
 
@@ -121,12 +118,12 @@ describe('setFetchProxy', () => {
   })
 
   it('routes global fetch through the proxy and back to direct', async () => {
-    expect(setFetchProxy(proxyUrl)).toContain('通过')
+    setFetchProxy(proxyUrl)
     expect(await (await fetch(targetUrl)).text()).toBe('hello')
     expect(tunnelled).toBeGreaterThan(0)
 
     const before = tunnelled
-    expect(setFetchProxy(undefined)).toBe('直连')
+    setFetchProxy(undefined)
     expect(await (await fetch(targetUrl)).text()).toBe('hello')
     expect(tunnelled).toBe(before)
   })

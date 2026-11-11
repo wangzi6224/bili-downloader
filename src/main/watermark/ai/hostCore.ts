@@ -11,7 +11,19 @@ export type HostRequest =
 export type HostReply =
   | { type: 'ready'; backend: Backend; ms: number }
   | { type: 'result'; id: number; output: Float32Array; ms: number }
-  | { type: 'error'; id?: number; message: string }
+  | { type: 'error'; id?: number; message: string; code?: HostErrorCode }
+
+/**
+ * 子进程里自己产生的错误只回传 code，由主进程按当前界面语言转成文案（子进程里没有设置语言）；
+ * onnxruntime 等抛出的其他错误原样回传 message
+ */
+export type HostErrorCode = 'notLoaded' | 'noImage'
+
+class HostCodeError extends Error {
+  constructor(readonly code: HostErrorCode) {
+    super(code)
+  }
+}
 
 /** 用到的那一小部分 onnxruntime-node 接口 */
 export interface OrtLike {
@@ -39,6 +51,9 @@ export function sessionOptions(backend: Backend, threads: number): Record<string
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
+const errorReply = (e: unknown, id?: number): HostReply =>
+  e instanceof HostCodeError ? { type: 'error', id, code: e.code, message: e.code } : { type: 'error', id, message: message(e) }
+
 /** 返回处理一条消息的函数；ort 在第一次 init 时才加载，加载失败也能报回去 */
 export function createHost(loadOrt: () => Promise<OrtLike>, send: (r: HostReply) => void): (m: HostRequest) => Promise<void> {
   let ort: OrtLike | undefined
@@ -51,11 +66,11 @@ export function createHost(loadOrt: () => Promise<OrtLike>, send: (r: HostReply)
         session = await ort.InferenceSession.create(m.model, sessionOptions(m.backend, m.threads))
         send({ type: 'ready', backend: m.backend, ms: performance.now() - t })
       } catch (e) {
-        send({ type: 'error', message: message(e) })
+        send(errorReply(e))
       }
       return
     }
-    if (!session || !ort) return send({ type: 'error', id: m.id, message: '模型还没加载' })
+    if (!session || !ort) return send(errorReply(new HostCodeError('notLoaded'), m.id))
     try {
       const t = performance.now()
       const out = await session.run({
@@ -63,10 +78,10 @@ export function createHost(loadOrt: () => Promise<OrtLike>, send: (r: HostReply)
         mask: new ort.Tensor('float32', m.mask, [1, 1, m.height, m.width])
       })
       const data = Object.values(out)[0]?.data
-      if (!(data instanceof Float32Array)) throw new Error('模型没有输出图像')
+      if (!(data instanceof Float32Array)) throw new HostCodeError('noImage')
       send({ type: 'result', id: m.id, output: data, ms: performance.now() - t })
     } catch (e) {
-      send({ type: 'error', id: m.id, message: message(e) })
+      send(errorReply(e, m.id))
     }
   }
 }

@@ -1,3 +1,4 @@
+import { t as tr } from '@shared/i18n'
 import type { MediaGroup, MediaItem, ParseResult } from '@shared/types'
 import { api } from './http'
 
@@ -33,6 +34,7 @@ interface SeasonData {
 function episodeTitle(ep: Episode, seasonTitle: string, single: boolean): string {
   if (single) return seasonTitle
   if (ep.show_title) return ep.show_title
+  // 标题是文件名模板的 {title}，保持中文
   const head = /^\d+(\.\d+)?$/.test(ep.title) ? `第${ep.title}话` : ep.title
   return [head, ep.long_title].filter(Boolean).join(' ')
 }
@@ -70,7 +72,7 @@ export async function parsePgc(t: { epId?: number; seasonId?: number; mediaId?: 
     })
 
   const groups: MediaGroup[] = []
-  if (s.episodes.length) groups.push({ id: 'main', title: '正片', items: s.episodes.map(toItem(single)) })
+  if (s.episodes.length) groups.push({ id: 'main', title: tr('bili.groupMain'), items: s.episodes.map(toItem(single)) })
   for (const sec of s.section ?? []) {
     if (sec.episodes.length) {
       groups.push({ id: `sec-${sec.id}`, title: sec.title, items: sec.episodes.map(toItem(false)) })

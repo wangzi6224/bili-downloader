@@ -3,6 +3,7 @@ import { accessSync, chmodSync, constants, copyFileSync, mkdirSync, openSync, re
 import { basename, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { app } from 'electron'
+import { t } from '@shared/i18n'
 import { encodeCommand, POWERSHELL } from '../powershell'
 
 const run = promisify(execFile)
@@ -110,32 +111,32 @@ const appImage = (): string | undefined => process.env.APPIMAGE
 
 /** 不能自动替换应用的原因；可以替换时返回 undefined */
 export function installBlocker(): string | undefined {
-  if (!app.isPackaged) return '开发模式下不能自动安装，请用打包后的应用测试'
+  if (!app.isPackaged) return t('updateErr.devMode')
   if (process.platform === 'linux') return appImageBlocker()
   if (process.platform === 'win32') return nsisBlocker()
-  if (process.platform !== 'darwin') return '自动安装只支持 macOS、Linux 和 Windows'
+  if (process.platform !== 'darwin') return t('updateErr.unsupportedOs')
   const bundle = appBundle()
-  if (!bundle.endsWith('.app')) return `找不到应用所在的位置（${bundle}）`
+  if (!bundle.endsWith('.app')) return t('updateErr.appNotFound', { path: bundle })
   // 没拖进“应用程序”就直接打开时，macOS 会把应用放到一个只读的随机路径里运行
-  const moveFirst = '请先把应用拖到“应用程序”文件夹，从那里打开后再更新'
-  if (bundle.includes('/AppTranslocation/')) return `应用是从“下载”文件夹里直接打开的，${moveFirst}`
+  const hint = t('updateErr.moveFirst')
+  if (bundle.includes('/AppTranslocation/')) return t('updateErr.translocated', { hint })
   try {
     accessSync(dirname(bundle), constants.W_OK)
     accessSync(bundle, constants.W_OK)
   } catch {
-    return bundle.startsWith('/Volumes/') ? `应用正在磁盘映像里运行，${moveFirst}` : `没有权限修改 ${dirname(bundle)}`
+    return bundle.startsWith('/Volumes/') ? t('updateErr.inDiskImage', { hint }) : t('updateErr.noWritePermission', { dir: dirname(bundle) })
   }
   return undefined
 }
 
 function appImageBlocker(): string | undefined {
   const file = appImage()
-  if (!file) return '只有 AppImage 版支持自动安装'
+  if (!file) return t('updateErr.appImageOnly')
   try {
     accessSync(dirname(file), constants.W_OK)
     accessSync(file, constants.W_OK)
   } catch {
-    return `没有权限修改 ${dirname(file)}`
+    return t('updateErr.noWritePermission', { dir: dirname(file) })
   }
   return undefined
 }
@@ -149,14 +150,14 @@ function nsisBlocker(): string | undefined {
   } catch {
     // 读不了目录也当作不是安装版
   }
-  if (!names.some((n) => /^Uninstall .+\.exe$/i.test(n))) return '只有用安装程序安装的版本支持自动安装'
+  if (!names.some((n) => /^Uninstall .+\.exe$/i.test(n))) return t('updateErr.installerOnly')
   // Windows 上 access() 不看文件夹的权限设置（ACL），只能真的写一下试试
   const probe = join(dir, `.update-check-${process.pid}`)
   try {
     writeFileSync(probe, '')
     rmSync(probe)
   } catch {
-    return `没有权限修改 ${dir}`
+    return t('updateErr.noWritePermission', { dir })
   }
   return undefined
 }
@@ -173,15 +174,15 @@ export async function unpack(zip: string, dir: string, version: string): Promise
   // ditto 能正确还原 Electron Framework 里的符号链接
   await run('/usr/bin/ditto', ['-x', '-k', zip, dir])
   const name = readdirSync(dir).find((n) => n.endsWith('.app'))
-  if (!name) throw new Error('安装包里没有找到应用')
+  if (!name) throw new Error(t('updateErr.noAppInPackage'))
   const next = join(dir, name)
   const [id, ver, ownId] = await Promise.all([
     plistValue(next, 'CFBundleIdentifier'),
     plistValue(next, 'CFBundleShortVersionString'),
     plistValue(appBundle(), 'CFBundleIdentifier')
   ])
-  if (id !== ownId) throw new Error(`安装包不是本应用（${id}）`)
-  if (ver !== version) throw new Error(`安装包的版本是 ${ver}，不是 ${version}`)
+  if (id !== ownId) throw new Error(t('updateErr.notThisApp', { id }))
+  if (ver !== version) throw new Error(t('updateErr.versionMismatch', { actual: ver, expected: version }))
   return next
 }
 
@@ -191,7 +192,7 @@ export async function unpack(zip: string, dir: string, version: string): Promise
  */
 export function stageAppImage(file: string): string {
   const target = appImage()
-  if (!target) throw new Error('只有 AppImage 版支持自动安装')
+  if (!target) throw new Error(t('updateErr.appImageOnly'))
   const next = join(dirname(target), `.${basename(target)}.new`)
   copyFileSync(file, next)
   chmodSync(next, 0o755)
@@ -203,7 +204,7 @@ export const prepare = (pkg: string, stageDir: string, version: string): Promise
   if (process.platform === 'darwin') return unpack(pkg, stageDir, version)
   if (process.platform === 'linux') return Promise.resolve().then(() => stageAppImage(pkg))
   if (process.platform === 'win32') return Promise.resolve(pkg)
-  return Promise.reject(new Error(`自动安装不支持 ${process.platform}`))
+  return Promise.reject(new Error(t('updateErr.platformUnsupported', { platform: process.platform })))
 }
 
 /** 启动独立的替换脚本；调用方随后退出应用 */
@@ -225,7 +226,7 @@ export function replaceAfterExit(next: string, workDir: string, log: string): vo
     })
     // 没起来时 pid 是空的，error 事件稍后才到：先报错，调用方就不会退出应用
     child.once('error', (e) => console.error('更新脚本没有启动', e))
-    if (child.pid === undefined) throw new Error('无法启动更新程序')
+    if (child.pid === undefined) throw new Error(t('updateErr.launchFailed'))
     child.unref()
     return
   }

@@ -888,6 +888,20 @@ describe('Windows browser import', () => {
     ])
   })
 
+  it('另有一条能解开的 SESSDATA 时跳过 v20 那条照常导入，和检测时的判断一致', async () => {
+    const key = Buffer.alloc(32, 9)
+    localState(chromeRoot())
+    chromeDb(join(chromeRoot(), 'Default/Network/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: winEnc(key, '.bilibili.com', 'win-sess') },
+      { host: 'www.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }
+    ])
+    m.unprotect.mockResolvedValue([key])
+
+    expect(bi.listBrowserProfiles()[0].appBoundLogin).toBeUndefined()
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+    expect(lastImported().map((c) => [c.name, c.value])).toEqual([['SESSDATA', 'win-sess']])
+  })
+
   it('SESSDATA 是应用绑定加密时不尝试 DPAPI，提示应用内登录或手动 Cookie', async () => {
     chromeDb(join(chromeRoot(), 'Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }])
 
@@ -895,6 +909,20 @@ describe('Windows browser import', () => {
       code: 'app_bound',
       message: '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
     })
+    expect(m.unprotect).not.toHaveBeenCalled()
+  })
+
+  it('检测时就标出 SESSDATA 是应用绑定加密、无法导入的配置档，不去解密', () => {
+    const key = Buffer.alloc(32, 9)
+    chromeDb(join(chromeRoot(), 'Default/Cookies'), [{ host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }])
+    chromeDb(localAppData('Microsoft/Edge/User Data/Default/Cookies'), [
+      { host: '.bilibili.com', name: 'SESSDATA', enc: winEnc(key, '.bilibili.com', 'win-sess') },
+      { host: '.bilibili.com', name: 'buvid3', enc: Buffer.from('v20bound-cookie') }
+    ])
+    expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.hasBiliLogin, p.appBoundLogin])).toEqual([
+      ['chrome::Default', true, true],
+      ['edge::Default', true, undefined]
+    ])
     expect(m.unprotect).not.toHaveBeenCalled()
   })
 

@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { PlainCookie } from './session'
 
 /**
@@ -24,7 +25,7 @@ const EXPIRES = 40
 /** 从 start 读到 \0 为止；越界说明文件坏了，抛错而不是读出乱码 */
 function cString(buf: Buffer, start: number): string {
   const end = buf.indexOf(0, start)
-  if (start >= buf.length || end < 0) throw new Error('Safari Cookie 文件已损坏')
+  if (start >= buf.length || end < 0) throw new Error(t('authErr.safariCorrupt'))
   return buf.toString('utf8', start, end)
 }
 
@@ -45,7 +46,7 @@ function parseRecord(rec: Buffer): PlainCookie {
 }
 
 function parsePage(page: Buffer): PlainCookie[] {
-  if (page.readUInt32BE(0) !== PAGE_MAGIC) throw new Error('Safari Cookie 文件已损坏')
+  if (page.readUInt32BE(0) !== PAGE_MAGIC) throw new Error(t('authErr.safariCorrupt'))
   const count = page.readUInt32LE(4)
   const out: PlainCookie[] = []
   for (let i = 0; i < count; i++) {
@@ -57,7 +58,7 @@ function parsePage(page: Buffer): PlainCookie[] {
 }
 
 export function parseBinaryCookies(file: Buffer): PlainCookie[] {
-  if (file.toString('latin1', 0, 4) !== MAGIC) throw new Error('不是 Safari 的 Cookie 文件')
+  if (file.toString('latin1', 0, 4) !== MAGIC) throw new Error(t('authErr.notSafariCookies'))
   const pages = file.readUInt32BE(4)
   const out: PlainCookie[] = []
   let offset = 8 + pages * 4

@@ -12,17 +12,20 @@ import {
   Settings,
   type LucideIcon
 } from 'lucide-react'
+import { t } from '@shared/i18n'
 import { thumb } from '../format'
+import { useT } from '../i18n'
 import { api, useStore, type View } from '../store'
 import { updateEntry, type UpdateIcon } from '../viewLogic'
 import { Logo } from './Logo'
 import { ACTIVE } from './TaskList'
 import { Badge, IconButton, STROKE } from './ui'
 
-const NAV: { view: View; label: string; icon: LucideIcon }[] = [
-  { view: 'downloads', label: '下载', icon: Download },
-  { view: 'subs', label: '订阅', icon: Rss },
-  { view: 'history', label: '解析记录', icon: History }
+// 文案在渲染时取，切换语言后跟着变
+const nav = (): { view: View; label: string; icon: LucideIcon }[] => [
+  { view: 'downloads', label: t('sidebar.downloads'), icon: Download },
+  { view: 'subs', label: t('sidebar.subs'), icon: Rss },
+  { view: 'history', label: t('sidebar.history'), icon: History }
 ]
 
 function NavItem({ view, label, icon: Icon, count }: { view: View; label: string; icon: LucideIcon; count?: number }) {
@@ -74,6 +77,7 @@ function UpdateEntry() {
 }
 
 function Account() {
+  const t = useT()
   const auth = useStore((s) => s.auth)
   const set = useStore((s) => s.set)
 
@@ -81,7 +85,7 @@ function Account() {
     return (
       <div className="flex h-11 items-center gap-2 px-2.5 text-xs text-muted">
         <Loader2 size={15} strokeWidth={STROKE} className="animate-spin" />
-        检查登录…
+        {t('sidebar.checkingLogin')}
       </div>
     )
   }
@@ -99,8 +103,8 @@ function Account() {
           {auth.expired ? <KeyRound size={15} strokeWidth={STROKE} /> : <LogIn size={15} strokeWidth={STROKE} />}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">{auth.expired ? '登录已过期' : '登录 B站账号'}</div>
-          <div className="truncate text-[11px] text-muted">{auth.expired ? '点这里重新登录' : '解锁 1080P 以上清晰度'}</div>
+          <div className="text-[13px] font-medium">{auth.expired ? t('sidebar.loginExpired') : t('sidebar.login')}</div>
+          <div className="truncate text-[11px] text-muted">{auth.expired ? t('sidebar.reloginHint') : t('sidebar.loginHint')}</div>
         </div>
       </button>
     )
@@ -120,16 +124,16 @@ function Account() {
             {auth.user.vipLabel}
           </Badge>
         ) : (
-          <div className="text-[11px] text-muted">普通用户</div>
+          <div className="text-[11px] text-muted">{t('sidebar.normalUser')}</div>
         )}
       </div>
       <IconButton
         icon={LogOut}
-        label="退出登录"
+        label={t('sidebar.logout')}
         size="sm"
         variant="danger"
         onClick={async () => {
-          if (confirm('退出后需要重新导入或登录，确定吗？')) set({ auth: await api.auth.logout() })
+          if (confirm(t('sidebar.logoutConfirm'))) set({ auth: await api.auth.logout() })
         }}
       />
     </div>
@@ -137,6 +141,7 @@ function Account() {
 }
 
 export function Sidebar() {
+  const t = useT()
   const running = useStore((s) => s.tasks.filter((t) => ACTIVE.has(t.status) || t.status === 'queued').length)
   const version = useStore((s) => s.update?.current)
 
@@ -147,20 +152,20 @@ export function Sidebar() {
       <div className="flex items-center gap-2.5 px-5 pt-6 pb-5 mac:pt-0">
         <Logo size={30} className="shrink-0 drop-shadow-sm" />
         <div>
-          <div className="text-[15px] font-semibold tracking-tight">B站下载器</div>
+          <div className="text-[15px] font-semibold tracking-tight">{t('common.appName')}</div>
           {/* 先占好高度，拿到版本号时布局不跳 */}
           <div className="h-4 text-[11px] leading-4 text-muted tabular-nums">{version && `v${version}`}</div>
         </div>
       </div>
       <nav className="flex flex-col gap-0.5 px-3">
-        {NAV.map((n) => (
+        {nav().map((n) => (
           <NavItem key={n.view} {...n} count={n.view === 'downloads' ? running : undefined} />
         ))}
       </nav>
       <div className="flex-1" />
       <div className="flex flex-col gap-2 px-3 pb-3">
         <UpdateEntry />
-        <NavItem view="settings" label="设置" icon={Settings} />
+        <NavItem view="settings" label={t('sidebar.settings')} icon={Settings} />
         {/* 账号单独成块，和上面的导航分开 */}
         <div className="mx-2.5 border-t border-line" />
         <Account />

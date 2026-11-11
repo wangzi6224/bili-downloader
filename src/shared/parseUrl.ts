@@ -1,3 +1,4 @@
+import { t, type Key } from './i18n'
 import type { MediaItem } from './types'
 
 export type Target =
@@ -15,7 +16,10 @@ export type Target =
   | { type: 'weekly'; number?: number }
   | { type: 'rank'; slug: string }
 
-/** 排行榜分区：网页地址里的英文名 → 接口参数 */
+/**
+ * 排行榜分区：网页地址里的英文名 → 接口参数。label 是中文名，会拼进解析结果的标题
+ * （下载多个时是文件名模板的 {series}），保持中文；界面上显示用 rankLabel
+ */
 export const RANK_SLUGS: Record<string, { rid: number; type: string; label: string }> = {
   all: { rid: 0, type: 'all', label: '全站' },
   douga: { rid: 1, type: 'all', label: '动画' },
@@ -36,6 +40,30 @@ export const RANK_SLUGS: Record<string, { rid: number; type: string; label: stri
   origin: { rid: 0, type: 'origin', label: '原创' },
   rookie: { rid: 0, type: 'rookie', label: '新人' }
 }
+
+const RANK_TEXT: Record<string, Key> = {
+  all: 'bili.rankAll',
+  douga: 'bili.rankDouga',
+  music: 'bili.rankMusic',
+  dance: 'bili.rankDance',
+  game: 'bili.rankGame',
+  knowledge: 'bili.rankKnowledge',
+  tech: 'bili.rankTech',
+  sports: 'bili.rankSports',
+  car: 'bili.rankCar',
+  life: 'bili.rankLife',
+  food: 'bili.rankFood',
+  animal: 'bili.rankAnimal',
+  kichiku: 'bili.rankKichiku',
+  fashion: 'bili.rankFashion',
+  ent: 'bili.rankEnt',
+  cinephile: 'bili.rankCinephile',
+  origin: 'bili.rankOrigin',
+  rookie: 'bili.rankRookie'
+}
+
+/** 排行榜分区在界面上的名字（当前语言）；不认识的分区原样返回 */
+export const rankLabel = (slug: string): string => (RANK_TEXT[slug] ? t(RANK_TEXT[slug]) : slug)
 
 const SHORT_HOSTS = /^(?:https?:\/\/)?(?:b23\.tv|bili2233\.cn|bili22\.cn|bili23\.cn|bili33\.cn)\/\S+/i
 const URL_RE =

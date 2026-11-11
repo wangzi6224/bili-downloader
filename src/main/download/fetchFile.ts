@@ -1,5 +1,6 @@
 import { existsSync, renameSync, rmSync } from 'node:fs'
 import { open, type FileHandle } from 'node:fs/promises'
+import { t } from '@shared/i18n'
 import { readJson, writeJson } from '../store'
 import { AbortError, DiskError, DownloadError, toDiskError } from './errors'
 import { limiter } from './rateLimiter'
@@ -84,18 +85,18 @@ async function probeSize(o: FetchFileOptions): Promise<number> {
       await res.body?.cancel()
       const total = Number(res.headers.get('content-range')?.match(/\/(\d+)$/)?.[1])
       if (res.status === 206 && total > 0) return total
-      lastErr = new DownloadError(`获取文件大小失败（HTTP ${res.status}）`)
+      lastErr = new DownloadError(t('download.sizeFailed', { status: res.status }))
     } catch (e) {
       if (o.signal.aborted) throw new AbortError()
       lastErr = e
     }
   }
-  throw lastErr instanceof DownloadError ? lastErr : new DownloadError(`连接下载服务器失败：${String(lastErr)}`)
+  throw lastErr instanceof DownloadError ? lastErr : new DownloadError(t('download.connectFailed', { error: String(lastErr) }))
 }
 
 /** 等 p 完成，等太久就中止 stall。只包住等网络的地方，限速和写盘的等待不算 */
 async function withinStall<T>(p: Promise<T>, stall: AbortController): Promise<T> {
-  const timer = setTimeout(() => stall.abort(new DownloadError('连接超时')), STALL_MS)
+  const timer = setTimeout(() => stall.abort(new DownloadError(t('download.timeout'))), STALL_MS)
   try {
     return await p
   } finally {
@@ -119,13 +120,13 @@ async function fetchRange(
   )
   if (res.status !== 206 || !res.body) {
     await res.body?.cancel()
-    throw new DownloadError(`下载失败（HTTP ${res.status}）`)
+    throw new DownloadError(t('download.httpFailed', { status: res.status }))
   }
   // 个别 CDN 节点会返回错误的区间，直接写入会导致花屏、音画不同步
   const m = res.headers.get('content-range')?.match(/bytes (\d+)-(\d+)\//)
   if (!m || Number(m[1]) !== from) {
     await res.body.cancel()
-    throw new DownloadError('服务器返回的数据区间不对')
+    throw new DownloadError(t('download.badRange'))
   }
 
   const reader = res.body.getReader()
@@ -147,7 +148,7 @@ async function fetchRange(
   } finally {
     reader.cancel().catch(() => {})
   }
-  if (seg.start + seg.done <= seg.end) throw new DownloadError('连接中断')
+  if (seg.start + seg.done <= seg.end) throw new DownloadError(t('download.interrupted'))
 }
 
 async function downloadSegment(
@@ -263,7 +264,7 @@ export async function fetchFile(o: FetchFileOptions): Promise<void> {
 
   if (o.signal.aborted) throw new AbortError()
   if (firstError) throw firstError
-  if (sum() !== m.total) throw new DownloadError(`文件不完整（${sum()}/${m.total}）`)
+  if (sum() !== m.total) throw new DownloadError(t('download.incomplete', { done: sum(), total: m.total }))
   renameSync(part, o.dest)
   rmSync(metaFile, { force: true })
 }

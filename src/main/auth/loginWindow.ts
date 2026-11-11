@@ -1,4 +1,5 @@
 import { app, BrowserWindow, shell } from 'electron'
+import { t } from '@shared/i18n'
 import type { AuthState } from '@shared/types'
 import { getMainWindow } from '../windows'
 import { checkAuth, getAuthState } from './authGuard'
@@ -28,7 +29,7 @@ export function openLoginWindow(): Promise<AuthState> {
       height: 720,
       // 主窗口藏在后台或最小化时不挂上去，否则登录窗会跟着看不见
       parent: main?.isVisible() && !main.isMinimized() ? main : undefined,
-      title: '登录 B站',
+      title: t('dialogs.loginWindowTitle'),
       webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true }
     })
     loginWin = win

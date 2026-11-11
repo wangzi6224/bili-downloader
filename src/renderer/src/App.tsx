@@ -9,6 +9,7 @@ import { SubscriptionsPage } from './components/SubscriptionsPage'
 import { TaskList } from './components/TaskList'
 import { UpdateDialog } from './components/UpdateDialog'
 import { UrlInput } from './components/UrlInput'
+import { applyLanguage } from './i18n'
 import { isSettingsShortcut } from './platform'
 import { api, useStore } from './store'
 
@@ -18,6 +19,7 @@ export default function App() {
   useEffect(() => {
     const { set } = useStore.getState()
     void api.settings.get().then((settings) => set({ settings }))
+    void api.i18n.get().then(applyLanguage)
     void api.download.list().then((tasks) => set({ tasks: [...tasks] }))
     void api.auth.check().then((auth) => set({ auth }))
     void api.update.state().then((update) => set({ update }))
@@ -27,6 +29,7 @@ export default function App() {
       api.download.onUpdate((tasks) => set({ tasks: [...tasks] })),
       // MCP 改了设置时同步过来，免得界面之后用旧值写回去
       api.settings.onChanged((settings) => set({ settings })),
+      api.i18n.onChanged(applyLanguage),
       api.app.onCloseRequested(() => set({ closeAsk: true })),
       api.app.onOpenSettings(() => set({ view: 'settings' })),
       api.update.onState((update) => set({ update })),
@@ -46,7 +49,8 @@ export default function App() {
     }
   }, [])
 
-  if (!s.settings) return null
+  // 设置和语言都拿到了才渲染，免得先闪一下别的语言
+  if (!s.settings || !s.lang) return null
 
   return (
     <div className="flex h-full">

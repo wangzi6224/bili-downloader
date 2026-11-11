@@ -1,4 +1,5 @@
 // 更新说明只用到标题、列表和段落，不引入完整的 Markdown 库
+import { DATE_LOCALE, getLanguage } from '@shared/i18n'
 
 export type InlineNode =
   | { type: 'text'; text: string }
@@ -64,5 +65,5 @@ export function parseMarkdown(text: string): Block[] {
 /** 发布日期显示成本地格式，解析不了的原样返回 */
 export const fmtDate = (s: string): string => {
   const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('zh-CN')
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(DATE_LOCALE[getLanguage()])
 }

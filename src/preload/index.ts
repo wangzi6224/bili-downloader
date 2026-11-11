@@ -73,6 +73,10 @@ const api: BiliApi = {
     removeParse: (input) => invoke('history:removeParse', input),
     clearParses: () => invoke('history:clearParses')
   },
+  i18n: {
+    get: () => invoke('i18n:get'),
+    onChanged: on('i18n:changed')
+  },
   settings: {
     get: () => invoke('settings:get'),
     set: (patch) => invoke('settings:set', patch),

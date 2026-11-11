@@ -2,6 +2,7 @@
 // 实测（水印长条 432×144）：WebGPU 最快（M5 Pro 80ms、RTX 5070 92ms、Intel iMac 的 Radeon 192ms），再开进程也不会更快；
 // CoreML 在 Apple 芯片上可用（121ms），在 Intel Mac 上会卡死；DirectML 跑不了这个模型。
 // CPU 单个会话加线程几乎没用（模型由几千个小算子组成），要开多个进程，每个约占 0.6GB 内存
+import { t } from '@shared/i18n'
 import { AbortError } from '../../download/errors'
 import type { Backend } from './hostCore'
 import { HostError, InferenceHost, InferencePool, type SpawnHost } from './pool'
@@ -91,7 +92,7 @@ async function startHost(o: OpenPoolInput, b: Backend, threads: number): Promise
     const s = o.sample
     await host.run(s.image, s.mask, s.height, s.width, WARMUP_TIMEOUT)
     const r = await host.run(s.image, s.mask, s.height, s.width, WARMUP_TIMEOUT)
-    if (!validOutput(r.output, s)) throw new HostError('推理结果异常')
+    if (!validOutput(r.output, s)) throw new HostError(t('wm.badInference'))
     return { host, ms: r.ms }
   } catch (e) {
     host.kill()
@@ -134,5 +135,5 @@ export async function openPool(o: OpenPoolInput): Promise<InferencePool> {
     }
     return new InferencePool(hosts, b, first.ms, o.sample.mask, o.sample.height, o.sample.width)
   }
-  throw new Error(`没有可用的 AI 推理方式（${errors.join('；')}）`)
+  throw new Error(t('wm.noAiBackend', { errors: errors.join('；') }))
 }

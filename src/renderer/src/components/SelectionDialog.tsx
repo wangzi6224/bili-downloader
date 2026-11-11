@@ -18,9 +18,11 @@ import {
   UserRound,
   X
 } from 'lucide-react'
+import { pluralTemplate, type Key } from '@shared/i18n'
 import { parseRange } from '@shared/range'
 import type { MediaGroup, MediaItem, Paging, ParseResult, StreamInfo } from '@shared/types'
 import { fmtDuration, thumb } from '../format'
+import { useT } from '../i18n'
 import {
   appendToFirst,
   bestQuality,
@@ -40,16 +42,22 @@ import {
 import { api, useStore } from '../store'
 import { summaryTags, type EditableOptions } from '../viewLogic'
 import { OptionsEditor, Section } from './OptionsEditor'
-import { INTERVALS } from './SubscriptionsPage'
-import { Badge, Button, IconButton, Input, Modal, Select, STROKE } from './ui'
+import { intervals } from './SubscriptionsPage'
+import { Badge, Button, IconButton, Input, Modal, rich, Select, STROKE } from './ui'
 
-const KIND_TEXT = { ugc: '视频', pgc: '番剧 / 影视', cheese: '课程', audio: '音频' } as const
+const KIND_TEXT: Record<ParseResult['kind'], Key> = {
+  ugc: 'selection.kindUgc',
+  pgc: 'selection.kindPgc',
+  cheese: 'selection.kindCheese',
+  audio: 'selection.kindAudio'
+}
 /** 自动加载全部分页时每页的间隔，避免触发风控 */
 const PAGE_INTERVAL = 1000
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 export function SelectionDialog({ result }: { result: ParseResult }) {
+  const t = useT()
   const set = useStore((s) => s.set)
   const settings = useStore((s) => s.settings)!
   const auth = useStore((s) => s.auth)
@@ -172,7 +180,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
         const note = await api.download.enqueue({ ...b, options })
         if (note) notes.push(note)
       }
-      if (notes.length) set({ notice: notes.join('；') })
+      if (notes.length) set({ notice: notes.join(t('input.separator')) })
       if (settings.rememberLast && !audioKind) {
         set({ settings: await api.settings.set({ defaults: opts, defaultQn: qn }) })
       }
@@ -213,8 +221,8 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
         includeExisting: subExisting,
         currentKeys: all.map((i) => i.key)
       })
-      const label = INTERVALS.find((i) => i.min === subInterval)?.label
-      set({ notice: `已订阅“${result.title}”，应用运行期间每 ${label} 检查一次，有新内容会自动下载` })
+      const label = intervals().find((i) => i.min === subInterval)?.label ?? ''
+      set({ notice: t('selection.subscribed', { title: result.title, interval: label }) })
       close()
     } catch (e) {
       set({ error: (e as Error).message })
@@ -238,22 +246,22 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-semibold">{result.title}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-            <Badge tone="brand">{result.batch ? `${groups.length} 个来源` : KIND_TEXT[result.kind]}</Badge>
+            <Badge tone="brand">{result.batch ? t('selection.sources', { count: groups.length }) : t(KIND_TEXT[result.kind])}</Badge>
             {result.owner && (
               <span className="flex items-center gap-1">
                 <UserRound size={12} strokeWidth={STROKE} />
                 {result.owner}
               </span>
             )}
-            <span className="tabular-nums">{paging ? `已加载 ${all.length} / ${paging.total} 项` : `共 ${all.length} 项`}</span>
+            <span className="tabular-nums">{paging ? t('selection.loadedOf', { count: all.length, total: paging.total }) : t('selection.totalItems', { count: all.length })}</span>
             {downloadedCount > 0 && (
               <Badge tone="success" icon={Check}>
-                已下载过 {downloadedCount} 项
+                {t('selection.downloadedBefore', { count: downloadedCount })}
               </Badge>
             )}
           </div>
         </div>
-        <IconButton icon={X} label="关闭" onClick={close} className="self-start" />
+        <IconButton icon={X} label={t('selection.close')} onClick={close} className="self-start" />
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -261,10 +269,10 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
           {showList && (
             <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2">
               <Button size="sm" variant="ghost" icon={SquareCheck} onClick={() => setMany(visibleItems, true)}>
-                {filter ? '全选筛选结果' : '全选'}
+                {filter ? t('selection.selectAllFiltered') : t('selection.selectAll')}
               </Button>
               <Button size="sm" variant="ghost" icon={Square} onClick={() => setMany(visibleItems, false)}>
-                全不选
+                {t('selection.selectNone')}
               </Button>
               <Button
                 size="sm"
@@ -272,15 +280,15 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                 icon={ArrowLeftRight}
                 onClick={() => setSelected(new Set(all.filter((i) => selectable(i) && !selected.has(i.key)).map((i) => i.key)))}
               >
-                反选
+                {t('selection.invert')}
               </Button>
               {downloadedCount > 0 && (
                 <Button size="sm" variant="ghost" icon={CopyMinus} onClick={() => setMany(all.filter(isDownloaded), false)}>
-                  去掉已下载
+                  {t('selection.deselectDownloaded')}
                 </Button>
               )}
               <div className="mx-1 h-4 w-px bg-line" />
-              <Input icon={Search} size="sm" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="筛选标题 / UP 主" className="w-36" />
+              <Input icon={Search} size="sm" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t('selection.filterPlaceholder')} className="w-36" />
               <Input
                 icon={Hash}
                 size="sm"
@@ -289,12 +297,14 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') setSelected(new Set(all.filter((i) => parseRange(range).has(i.index) && selectable(i)).map((i) => i.key)))
                 }}
-                placeholder="序号 如 1-5,7"
-                title="按序号选择，回车生效"
+                placeholder={t('selection.rangePlaceholder')}
+                title={t('selection.rangeTitle')}
                 className="w-32"
               />
               <span className="ml-auto pl-2 text-xs text-muted">
-                Shift 连选 · 已选 <span className="font-medium text-fg tabular-nums">{selectedCount}</span> 项
+                {rich(pluralTemplate('selection.selectedCount', selectedCount), {
+                  count: <span className="font-medium text-fg tabular-nums">{selectedCount}</span>
+                })}
               </span>
             </div>
           )}
@@ -308,7 +318,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                       <input type="checkbox" checked={groupOn} onChange={() => setMany(g.items, !groupOn)} className="accent-bili" />
                       {g.title}
                       <span className="font-normal text-subtle tabular-nums">
-                        {paging && g === groups[0] ? `已加载 ${g.items.length} / ${paging.total}` : g.items.length}
+                        {paging && g === groups[0] ? t('selection.groupLoaded', { count: g.items.length, total: paging.total }) : g.items.length}
                       </span>
                     </label>
                   )}
@@ -334,12 +344,12 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                         )}
                         {item.unavailable && <Badge tone="danger">{item.unavailable}</Badge>}
                         {isDownloaded(item) && (
-                          <Badge tone="success" icon={Check} title="下载历史里有这一项">
-                            已下载
+                          <Badge tone="success" icon={Check} title={t('selection.downloadedTitle')}>
+                            {t('selection.downloaded')}
                           </Badge>
                         )}
                         {item.badge && <Badge tone="brand">{item.badge}</Badge>}
-                        {item.needVip && !isVip && !item.badge && <Badge tone="brand">需大会员</Badge>}
+                        {item.needVip && !isVip && !item.badge && <Badge tone="brand">{t('selection.needVip')}</Badge>}
                         <span className="w-14 shrink-0 text-right text-xs text-subtle tabular-nums">{fmtDuration(item.duration)}</span>
                       </label>
                     )
@@ -353,19 +363,19 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                   <>
                     <span className="flex items-center gap-2 text-xs text-muted">
                       <Loader2 size={13} className="animate-spin" />
-                      正在加载第 {paging.page + 1} 页…
+                      {t('selection.loadingPage', { page: paging.page + 1 })}
                     </span>
                     <Button size="sm" variant="ghost" icon={CircleStop} onClick={() => (stopLoading.current = true)}>
-                      停止
+                      {t('selection.stop')}
                     </Button>
                   </>
                 ) : (
                   <>
                     <Button icon={ChevronDown} onClick={loadNext}>
-                      加载下一页
+                      {t('selection.loadNext')}
                     </Button>
-                    <Button variant="ghost" icon={ChevronsDown} onClick={loadAll} title="每页间隔 1 秒，避免请求太快被风控">
-                      加载全部（剩 {paging.total - all.length} 项）
+                    <Button variant="ghost" icon={ChevronsDown} onClick={loadAll} title={t('selection.loadAllTitle')}>
+                      {t('selection.loadAll', { count: paging.total - all.length })}
                     </Button>
                   </>
                 )}
@@ -377,11 +387,11 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
         <div className="flex w-80 shrink-0 flex-col bg-surface">
           <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
             {!audioKind && (
-              <Section title="清晰度" dim={opts.output === 'audio'}>
+              <Section title={t('selection.quality')} dim={opts.output === 'audio'}>
                 {!info && !infoError && (
                   <div className="flex items-center gap-2 text-xs text-muted">
                     <Loader2 size={13} className="animate-spin" />
-                    正在获取可用清晰度…
+                    {t('selection.fetchingQualities')}
                   </div>
                 )}
                 {infoError && <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">{infoError}</div>}
@@ -406,7 +416,7 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                         <span className="text-[10px] text-subtle">{q.codecs.map((c) => CODEC_TEXT[c]).join(' ')}</span>
                         {q.needVip && (
                           <Badge tone="brand" icon={Crown}>
-                            大会员
+                            {t('selection.vip')}
                           </Badge>
                         )}
                       </label>
@@ -415,35 +425,35 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                 </div>
               </Section>
             )}
-            {audioKind && <div className="text-xs leading-relaxed text-muted">音频区内容只下载音频；无损需要大会员，拿不到时自动降档。</div>}
+            {audioKind && <div className="text-xs leading-relaxed text-muted">{t('selection.audioOnlyHint')}</div>}
             <OptionsEditor value={opts} onChange={setOpts} info={info} codecsForQuality={chosen?.codecs} />
           </div>
 
           {/* 下载按钮固定在底部，不随选项滚动 */}
           <div className="border-t border-line bg-elevated p-4">
             <div className="mb-3 flex flex-wrap gap-1">
-              {summaryTags(audioKind ? { ...opts, output: 'audio' } : opts, info).map((t) => (
-                <Badge key={t}>{t}</Badge>
+              {summaryTags(audioKind ? { ...opts, output: 'audio' } : opts, info).map((tag) => (
+                <Badge key={tag}>{tag}</Badge>
               ))}
             </div>
             {submitting && lazyCount > 0 && progress ? (
               <div className="flex items-center gap-2 text-xs text-muted">
                 <Loader2 size={13} className="animate-spin" />
-                正在获取视频分P {progress.done}/{progress.total}…
+                {t('selection.fetchingParts', { done: progress.done, total: progress.total })}
               </div>
             ) : dupPrompt ? (
               <div className="rounded-xl bg-amber-500/12 p-3 text-xs text-amber-800 dark:text-amber-200">
-                选中的项目里有 {dupPrompt.length} 项已经下载过
+                {t('selection.dupPrompt', { count: dupPrompt.length })}
                 <div className="mt-2 flex gap-2">
                   <Button
                     size="sm"
                     variant="primary"
                     onClick={() => enqueue(selectedItems(all, selected).filter((i) => !isDownloaded(i)))}
                   >
-                    跳过它们
+                    {t('selection.skipThem')}
                   </Button>
                   <Button size="sm" onClick={() => enqueue(selectedItems(all, selected))}>
-                    仍然下载
+                    {t('selection.downloadAnyway')}
                   </Button>
                 </div>
               </div>
@@ -456,11 +466,11 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                 disabled={!selectedCount || submitting || (!audioKind && !info && !infoError && opts.output !== 'audio')}
                 onClick={start}
               >
-                下载 {selectedCount} 项
+                {t('selection.downloadCount', { count: selectedCount })}
               </Button>
             )}
             {lazyCount > 0 && !submitting && (
-              <div className="mt-1.5 text-xs leading-relaxed text-muted">其中 {lazyCount} 个视频会在加入队列时查询分P，多P视频会展开成多个任务</div>
+              <div className="mt-1.5 text-xs leading-relaxed text-muted">{t('selection.lazyHint', { count: lazyCount })}</div>
             )}
             <div className="mt-2 flex items-center gap-1.5 text-xs text-muted" title={`${settings.downloadDir}/${preview}`}>
               <FileVideo size={13} strokeWidth={STROKE} className="shrink-0" />
@@ -473,33 +483,33 @@ export function SelectionDialog({ result }: { result: ParseResult }) {
                 onClick={() => setSubForm(true)}
               >
                 <Rss size={13} strokeWidth={STROKE} />
-                订阅更新：以后有新内容自动下载
+                {t('selection.subscribeLink')}
               </button>
             )}
             {subForm && (
               <div className="mt-3 rounded-xl border border-line bg-surface p-3 text-xs">
                 <div className="flex items-center gap-2">
                   <Rss size={13} strokeWidth={STROKE} className="text-sky-600 dark:text-sky-400" />
-                  检查间隔
+                  {t('selection.checkInterval')}
                   <Select size="sm" value={subInterval} onChange={(e) => setSubInterval(Number(e.target.value))}>
-                    {INTERVALS.map((i) => (
+                    {intervals().map((i) => (
                       <option key={i.min} value={i.min}>
-                        每 {i.label}
+                        {t('subs.everyInterval', { interval: i.label })}
                       </option>
                     ))}
                   </Select>
                 </div>
                 <label className="mt-2 flex items-center gap-1.5">
                   <input type="checkbox" className="accent-bili" checked={subExisting} onChange={(e) => setSubExisting(e.target.checked)} />
-                  现在已有的也一起下载（否则只下载以后新增的）
+                  {t('selection.subExisting')}
                 </label>
-                <div className="mt-1 text-muted">使用上面选好的清晰度和格式；只在应用运行时检查</div>
+                <div className="mt-1 text-muted">{t('selection.subHint')}</div>
                 <div className="mt-2.5 flex gap-2">
                   <Button size="sm" variant="primary" onClick={subscribe}>
-                    订阅
+                    {t('selection.subscribe')}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setSubForm(false)}>
-                    取消
+                    {t('selection.cancel')}
                   </Button>
                 </div>
               </div>

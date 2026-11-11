@@ -1,12 +1,20 @@
+import { DATE_LOCALE, getLanguage, t } from '@shared/i18n'
 import { extractInputs, parseInput } from '@shared/parseUrl'
 import type { AudioPref, CodecPref, DownloadOptions, StreamInfo, UpdateState } from '@shared/types'
 
 export type EditableOptions = Omit<DownloadOptions, 'qn'>
 
+/** 前三项是 getter，读取时才按当前语言取 */
 export const AUDIO_LABEL: Record<AudioPref, string> = {
-  best: '最佳',
-  flac: 'Hi-Res 无损',
-  dolby: '杜比全景声',
+  get best() {
+    return t('view.audioBest')
+  },
+  get flac() {
+    return t('view.audioFlac')
+  },
+  get dolby() {
+    return t('view.audioDolby')
+  },
   '192k': '192K',
   '132k': '132K',
   '64k': '64K'
@@ -16,15 +24,15 @@ export const AUDIO_LABEL: Record<AudioPref, string> = {
 export function summaryTags(o: EditableOptions, info?: StreamInfo | null): string[] {
   const tags: string[] = []
   const hasAudio = !info || info.hasAudio
-  if (o.output !== 'audio') tags.push(`视频（${o.container.toUpperCase()}）`)
-  if (o.output !== 'video' && hasAudio) tags.push(`音频（${AUDIO_LABEL[o.audio]}）`)
-  if (o.output === 'video') tags.push('无声')
-  if (o.embedCover || o.cover) tags.push('封面')
+  if (o.output !== 'audio') tags.push(t('view.tagVideo', { container: o.container.toUpperCase() }))
+  if (o.output !== 'video' && hasAudio) tags.push(t('view.tagAudio', { audio: AUDIO_LABEL[o.audio] }))
+  if (o.output === 'video') tags.push(t('view.tagMuted'))
+  if (o.embedCover || o.cover) tags.push(t('view.tagCover'))
   if (o.output !== 'audio') {
-    if (o.embedSubtitle || o.subtitle) tags.push('字幕')
-    if (o.chapters) tags.push('章节')
-    if (o.danmaku) tags.push('弹幕')
-    if (o.watermark === 'auto') tags.push('去水印')
+    if (o.embedSubtitle || o.subtitle) tags.push(t('view.tagSubtitle'))
+    if (o.chapters) tags.push(t('view.tagChapters'))
+    if (o.danmaku) tags.push(t('view.tagDanmaku'))
+    if (o.watermark === 'auto') tags.push(t('view.tagWatermark'))
   }
   if (o.nfo) tags.push('NFO')
   return tags
@@ -42,22 +50,33 @@ export function moveUp<T>(list: T[], i: number): T[] | null {
 export const actualCodec = (order: CodecPref[], available?: CodecPref[]): CodecPref | undefined =>
   available?.length ? order.find((c) => available.includes(c)) : undefined
 
+function updateText(u: Exclude<UpdateState, { status: 'error' }>): string {
+  switch (u.status) {
+    case 'idle':
+      return t('view.updateIdle')
+    case 'checking':
+      return t('view.updateChecking')
+    case 'latest':
+      if (!u.checkedAt) return t('view.updateLatest')
+      return t('view.updateLatestAt', {
+        time: new Date(u.checkedAt).toLocaleTimeString(DATE_LOCALE[getLanguage()], { hour: '2-digit', minute: '2-digit' })
+      })
+    case 'available':
+      return t(u.info.skipped ? 'view.updateAvailableSkipped' : 'view.updateAvailable', { version: u.info.version })
+    case 'downloading':
+      return t('view.updateDownloading', { version: u.info.version })
+    case 'ready':
+      return t('view.updateReady', { version: u.info.version })
+    case 'installing':
+      return t('view.updateInstalling')
+  }
+}
+
 /** 设置页“当前版本”下面的说明；error 为 true 时显示成红字 */
 export function updateHint(u: UpdateState | null): { text: string; error: boolean } | null {
   if (!u) return null
-  const info = 'info' in u ? u.info : undefined
-  const at = u.checkedAt ? `（${new Date(u.checkedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 检查）` : ''
   if (u.status === 'error') return { text: u.error, error: true }
-  const text = {
-    idle: '还没有检查过',
-    checking: '正在检查…',
-    latest: `已是最新版本${at}`,
-    available: `发现新版本 ${info?.version}${info?.skipped ? '（已跳过）' : ''}`,
-    downloading: `正在下载 ${info?.version}`,
-    ready: `${info?.version} 已下载，重启即可完成更新`,
-    installing: '正在安装…'
-  }[u.status]
-  return { text, error: false }
+  return { text: updateText(u), error: false }
 }
 
 export type UpdateIcon = 'available' | 'loading' | 'restart' | 'error'
@@ -67,15 +86,15 @@ export function updateEntry(u: UpdateState | null): { icon: UpdateIcon; label: s
   if (!u || !('info' in u) || !u.info) return null
   switch (u.status) {
     case 'available':
-      return u.info.skipped ? null : { icon: 'available', label: `新版本 ${u.info.version}` }
+      return u.info.skipped ? null : { icon: 'available', label: t('view.entryAvailable', { version: u.info.version }) }
     case 'downloading':
-      return { icon: 'loading', label: `下载更新 ${u.total ? Math.floor((u.done / u.total) * 100) : 0}%` }
+      return { icon: 'loading', label: t('view.entryDownloading', { pct: u.total ? Math.floor((u.done / u.total) * 100) : 0 }) }
     case 'ready':
-      return { icon: 'restart', label: '重启以完成更新' }
+      return { icon: 'restart', label: t('view.entryRestart') }
     case 'installing':
-      return { icon: 'loading', label: '正在安装更新…' }
+      return { icon: 'loading', label: t('view.entryInstalling') }
     case 'error':
-      return { icon: 'error', label: '更新失败' }
+      return { icon: 'error', label: t('view.entryError') }
   }
 }
 
@@ -91,7 +110,7 @@ export function mcpClientConfig(port: number, token: string): { endpoint: string
   return { endpoint, json, command }
 }
 
-export const pingLabel = (ms: number | null | undefined): string => (ms === null ? '不通' : `${ms} ms`)
+export const pingLabel = (ms: number | null | undefined): string => (ms === null ? t('view.pingFailed') : `${ms} ms`)
 
 /** CDN 测速结果按耗时从快到慢，不通的排最后 */
 export function sortPings<H extends { host: string }>(

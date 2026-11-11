@@ -1,4 +1,5 @@
 import { isAbsolute, normalize, sep } from 'node:path'
+import { joinList, t, type Key } from '@shared/i18n'
 import type { CodecPref, DownloadOptions } from '@shared/types'
 import { invalid } from './format'
 
@@ -10,14 +11,14 @@ const missing = (v: unknown): boolean => v === undefined || v === null
 
 export function requireString(args: Args, key: string): string {
   const v = args[key]
-  if (typeof v !== 'string' || !v.trim()) throw invalid(`缺少参数 ${key}`)
+  if (typeof v !== 'string' || !v.trim()) throw invalid(t('mcp.argMissing', { key }))
   return v.trim()
 }
 
 export function optionalString(args: Args, key: string): string | undefined {
   const v = args[key]
   if (missing(v)) return undefined
-  if (typeof v !== 'string') throw invalid(`${key} 必须是字符串`)
+  if (typeof v !== 'string') throw invalid(t('mcp.argString', { key }))
   return v.trim() || undefined
 }
 
@@ -26,14 +27,14 @@ export function optionalInt(args: Args, key: string, min: number, max: number, f
   if (missing(v)) return fallback
   // 有的客户端会把数字当字符串传
   const n = typeof v === 'string' && v.trim() ? Number(v) : v
-  if (typeof n !== 'number' || !Number.isInteger(n) || n < min || n > max) throw invalid(`${key} 必须是 ${min}～${max} 之间的整数`)
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < min || n > max) throw invalid(t('mcp.argInt', { key, min, max }))
   return n
 }
 
 export function optionalBool(args: Args, key: string, fallback: boolean): boolean {
   const v = args[key]
   if (missing(v)) return fallback
-  if (typeof v !== 'boolean') throw invalid(`${key} 必须是 true 或 false`)
+  if (typeof v !== 'boolean') throw invalid(t('mcp.argBool', { key }))
   return v
 }
 
@@ -42,13 +43,13 @@ export function optionalStrings(args: Args, key: string): string[] | undefined {
   const v = args[key]
   if (missing(v)) return undefined
   const list = typeof v === 'string' ? [v] : v
-  if (!Array.isArray(list) || list.some((x) => typeof x !== 'string' || !x)) throw invalid(`${key} 必须是字符串数组`)
+  if (!Array.isArray(list) || list.some((x) => typeof x !== 'string' || !x)) throw invalid(t('mcp.argStrings', { key }))
   return list as string[]
 }
 
 export function requireEnum<T extends string>(args: Args, key: string, allowed: readonly T[]): T {
   const v = args[key]
-  if (typeof v !== 'string' || !allowed.includes(v as T)) throw invalid(`${key} 必须是以下之一：${allowed.join('、')}`)
+  if (typeof v !== 'string' || !allowed.includes(v as T)) throw invalid(t('mcp.argEnum', { key, values: joinList(allowed) }))
   return v as T
 }
 
@@ -63,14 +64,14 @@ export function optionalDay(args: Args, key: string): number | undefined {
   const ms = Date.parse(`${v}T00:00:00+08:00`)
   // 转回日期再比较：2 月 31 日这样的日期有时不会报错，而是顺延到下个月
   const same = !Number.isNaN(ms) && new Date(ms + 8 * 3600_000).toISOString().slice(0, 10) === v
-  if (!same) throw invalid(`${key} 必须是 YYYY-MM-DD 格式的日期`)
+  if (!same) throw invalid(t('mcp.argDay', { key }))
   return ms / 1000
 }
 
 export function optionalEnums<T extends string>(args: Args, key: string, allowed: readonly T[]): T[] | undefined {
   const list = optionalStrings(args, key)
   const bad = list?.find((x) => !allowed.includes(x as T))
-  if (bad !== undefined) throw invalid(`${key} 不认识“${bad}”，可选值：${allowed.join('、')}`)
+  if (bad !== undefined) throw invalid(t('mcp.argEnumsUnknown', { key, value: bad, values: joinList(allowed) }))
   return list as T[] | undefined
 }
 
@@ -79,7 +80,7 @@ export function optionalSubdir(args: Args, key: string): string | undefined {
   const v = optionalString(args, key)
   if (!v) return undefined
   const n = normalize(v)
-  if (isAbsolute(v) || n === '..' || n.startsWith(`..${sep}`)) throw invalid(`${key} 必须是下载目录下的相对路径，不能用绝对路径或 ..`)
+  if (isAbsolute(v) || n === '..' || n.startsWith(`..${sep}`)) throw invalid(t('mcp.argSubdir', { key }))
   return n
 }
 
@@ -88,43 +89,30 @@ export function optionalSubdir(args: Args, key: string): string | undefined {
 type OptionKey = Exclude<keyof DownloadOptions, 'qn'>
 
 type OptionField =
-  | { key: OptionKey; type: 'boolean'; description: string }
-  | { key: OptionKey; type: 'enum'; values: readonly string[]; description: string }
-  | { key: OptionKey; type: 'codecs'; description: string }
+  | { key: OptionKey; type: 'boolean'; description: Key }
+  | { key: OptionKey; type: 'enum'; values: readonly string[]; description: Key }
+  | { key: OptionKey; type: 'codecs'; description: Key }
 
 const CODECS: CodecPref[] = ['avc', 'hevc', 'av1']
 
 /** 工具参数里的字段名（snake_case）→ DownloadOptions */
 const OPTION_FIELDS: Record<string, OptionField> = {
-  output: { key: 'output', type: 'enum', values: ['full', 'audio', 'video'], description: '完整视频 / 仅音频 / 仅视频（无声）' },
-  container: { key: 'container', type: 'enum', values: ['mp4', 'mkv'], description: '视频封装格式' },
-  audio: {
-    key: 'audio',
-    type: 'enum',
-    values: ['best', 'flac', 'dolby', '192k', '132k', '64k'],
-    description: '音质：best 自动选最好的，拿不到指定档位时降档'
-  },
-  codec_order: { key: 'codecOrder', type: 'codecs', description: '视频编码优先级，例如 ["hevc","avc","av1"]' },
-  subtitle: { key: 'subtitle', type: 'boolean', description: '字幕另存为 .srt' },
-  embed_subtitle: { key: 'embedSubtitle', type: 'boolean', description: '字幕写进视频文件' },
-  danmaku: { key: 'danmaku', type: 'boolean', description: '下载弹幕' },
-  danmaku_format: { key: 'danmakuFormat', type: 'enum', values: ['ass', 'xml', 'both'], description: '弹幕格式' },
-  cover: { key: 'cover', type: 'boolean', description: '封面另存为图片' },
-  embed_cover: { key: 'embedCover', type: 'boolean', description: '封面写进视频 / 音频文件' },
-  chapters: { key: 'chapters', type: 'boolean', description: '把进度条上的分段写成章节' },
-  nfo: { key: 'nfo', type: 'boolean', description: '生成 Kodi / Jellyfin 的 NFO 元数据' },
-  watermark: {
-    key: 'watermark',
-    type: 'enum',
-    values: ['off', 'auto', 'ai'],
-    description:
-      '去水印：下载后自动识别画面角落的水印并去掉（要重新编码视频；没识别到、HDR、杜比视界时保留原视频）。' +
-      'auto 快速去除（插值填补，几分钟内完成，水印处略糊）；ai 用 AI 模型逐帧修补，清楚得多但慢很多' +
-      '（有显卡时约为视频时长的 2～4 倍，没有显卡更慢；第一次会先下载约 200MB 的模型，下不下来时改用快速去除）。' +
-      'off 时也会识别有没有水印，结果在 get_batch_status 的 watermark 里，之后可以用 remove_watermark 去掉。用户没提去水印时不用传'
-  }
+  output: { key: 'output', type: 'enum', values: ['full', 'audio', 'video'], description: 'mcpTools.optOutput' },
+  container: { key: 'container', type: 'enum', values: ['mp4', 'mkv'], description: 'mcpTools.optContainer' },
+  audio: { key: 'audio', type: 'enum', values: ['best', 'flac', 'dolby', '192k', '132k', '64k'], description: 'mcpTools.optAudio' },
+  codec_order: { key: 'codecOrder', type: 'codecs', description: 'mcpTools.optCodecOrder' },
+  subtitle: { key: 'subtitle', type: 'boolean', description: 'mcpTools.optSubtitle' },
+  embed_subtitle: { key: 'embedSubtitle', type: 'boolean', description: 'mcpTools.optEmbedSubtitle' },
+  danmaku: { key: 'danmaku', type: 'boolean', description: 'mcpTools.optDanmaku' },
+  danmaku_format: { key: 'danmakuFormat', type: 'enum', values: ['ass', 'xml', 'both'], description: 'mcpTools.optDanmakuFormat' },
+  cover: { key: 'cover', type: 'boolean', description: 'mcpTools.optCover' },
+  embed_cover: { key: 'embedCover', type: 'boolean', description: 'mcpTools.optEmbedCover' },
+  chapters: { key: 'chapters', type: 'boolean', description: 'mcpTools.optChapters' },
+  nfo: { key: 'nfo', type: 'boolean', description: 'mcpTools.optNfo' },
+  watermark: { key: 'watermark', type: 'enum', values: ['off', 'auto', 'ai'], description: 'mcpTools.optWatermark' }
 }
 
+/** 按当前语言生成，每次 tools/list 时调用 */
 export const optionsSchema = (description: string) => ({
   type: 'object',
   description,
@@ -133,25 +121,25 @@ export const optionsSchema = (description: string) => ({
     Object.entries(OPTION_FIELDS).map(([name, f]) => [
       name,
       f.type === 'boolean'
-        ? { type: 'boolean', description: f.description }
+        ? { type: 'boolean', description: t(f.description) }
         : f.type === 'enum'
-          ? { type: 'string', enum: f.values, description: f.description }
-          : { type: 'array', items: { type: 'string', enum: CODECS }, description: f.description }
+          ? { type: 'string', enum: f.values, description: t(f.description) }
+          : { type: 'array', items: { type: 'string', enum: CODECS }, description: t(f.description) }
     ])
   )
 })
 
 export function parseOptions(raw: unknown, key: string): Partial<DownloadOptions> {
   if (missing(raw)) return {}
-  if (typeof raw !== 'object' || Array.isArray(raw)) throw invalid(`${key} 必须是对象`)
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw invalid(t('mcp.argObject', { key }))
   const out: Partial<Record<OptionKey, unknown>> = {}
   for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
     const f = OPTION_FIELDS[name]
-    if (!f) throw invalid(`${key}.${name} 不是可设置的选项，可选：${Object.keys(OPTION_FIELDS).join('、')}`)
-    if (f.type === 'boolean' && typeof v !== 'boolean') throw invalid(`${key}.${name} 必须是 true 或 false`)
-    if (f.type === 'enum' && !f.values.includes(v as string)) throw invalid(`${key}.${name} 可选值：${f.values.join('、')}`)
+    if (!f) throw invalid(t('mcp.optionUnknown', { key, name, names: joinList(Object.keys(OPTION_FIELDS)) }))
+    if (f.type === 'boolean' && typeof v !== 'boolean') throw invalid(t('mcp.optionBool', { key, name }))
+    if (f.type === 'enum' && !f.values.includes(v as string)) throw invalid(t('mcp.optionValues', { key, name, values: joinList(f.values) }))
     if (f.type === 'codecs' && (!Array.isArray(v) || !v.length || v.some((c) => !CODECS.includes(c)))) {
-      throw invalid(`${key}.${name} 必须是由 avc、hevc、av1 组成的数组`)
+      throw invalid(t('mcp.optionCodecs', { key, name, codecs: joinList(CODECS) }))
     }
     out[f.key] = v
   }

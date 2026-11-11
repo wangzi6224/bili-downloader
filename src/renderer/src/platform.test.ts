@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { setLanguage } from '@shared/i18n'
 import { isSettingsShortcut, platformText } from './platform'
 
 describe('platformText', () => {
@@ -8,7 +9,21 @@ describe('platformText', () => {
     expect(t.fileManager).toBe('访达')
     expect(t.reopenFrom).toBe('程序坞或菜单栏图标')
     expect(t.quitKey).toBe('⌘Q')
-    expect(t.browsers).toContain('Arc')
+    expect(t.browsers).toBe('Chrome、Edge、Brave、Arc、Vivaldi、Opera、Chromium、Firefox、Safari')
+    expect(t.av1Hint).toBe('最省空间，需 M1 以后的 Mac')
+  })
+
+  it('文字是 getter，切换语言后读取到的是新语言', () => {
+    const t = platformText('darwin')
+    for (const k of ['fileManager', 'reopenFrom', 'av1Hint', 'browsers', 'chromiumAuthHint'] as const) {
+      expect(Object.getOwnPropertyDescriptor(t, k)?.get).toBeTypeOf('function')
+    }
+    setLanguage('en')
+    try {
+      expect(t.browsers).toBe('Chrome, Edge, Brave, Arc, Vivaldi, Opera, Chromium, Firefox, Safari')
+    } finally {
+      setLanguage('zh-CN')
+    }
   })
 
   it('Windows 显示文件资源管理器、托盘和 DPAPI 登录说明', () => {
@@ -18,8 +33,7 @@ describe('platformText', () => {
     expect(t.reopenFrom).toBe('托盘图标')
     expect(t.quitKey).toBe('Ctrl+Q')
     expect(t.pasteKey).toBe('Ctrl+V')
-    expect(t.chromiumAuthHint).toContain('DPAPI')
-    expect(t.chromiumAuthHint).toContain('应用内登录')
+    expect(t.chromiumAuthHint).toContain('Windows 用户的身份')
     expect(t.chromiumAuthHint).not.toContain('密钥环')
   })
 

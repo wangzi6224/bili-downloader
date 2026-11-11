@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { AuthState } from '@shared/types'
 import { BiliError } from '../bili/http'
 import { checkAuth } from './authGuard'
@@ -25,9 +26,9 @@ const SAME_SITE: Record<string, SameSite> = { no_restriction: 'no_restriction', 
  * 和浏览器插件（如 Cookie-Editor）导出的 JSON 数组。只保留 bilibili.com 的。
  */
 export function parseCookieText(text: string, now = Math.floor(Date.now() / 1000)): PlainCookie[] {
-  const t = text.trim()
-  if (t.startsWith('[') || t.startsWith('{')) {
-    const raw = JSON.parse(t) as JsonCookie | JsonCookie[]
+  const trimmed = text.trim()
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    const raw = JSON.parse(trimmed) as JsonCookie | JsonCookie[]
     return (Array.isArray(raw) ? raw : [raw])
       .filter((c) => c.name && typeof c.value === 'string')
       .filter((c) => !c.domain || isBiliHost(c.domain))
@@ -42,7 +43,7 @@ export function parseCookieText(text: string, now = Math.floor(Date.now() / 1000
         sameSite: SAME_SITE[(c.sameSite ?? '').toLowerCase()] ?? 'unspecified'
       }))
   }
-  return t
+  return trimmed
     .replace(/^cookie:\s*/i, '')
     .split(/;\s*/)
     .map((pair) => {
@@ -67,10 +68,10 @@ export async function importCookieText(text: string): Promise<AuthState> {
   try {
     cookies = parseCookieText(text)
   } catch {
-    throw new Error('看不懂这段内容，请粘贴 “SESSDATA=…; bili_jct=…” 这样的 Cookie，或插件导出的 JSON')
+    throw new Error(t('authErr.cookieUnreadable'))
   }
-  if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) throw new Error('里面没有 SESSDATA，无法登录')
-  return replaceLogin(cookies, '这段 Cookie 已经失效，请重新获取')
+  if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) throw new Error(t('authErr.noSessdata'))
+  return replaceLogin(cookies, t('authErr.cookieExpired'))
 }
 
 let lastReplace: Promise<unknown> = Promise.resolve()
@@ -80,7 +81,7 @@ const CONFIRM_TIMEOUT = 30_000
 function confirmLogin(): Promise<AuthState> {
   let timer: NodeJS.Timeout
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new BiliError('确认登录超时，请检查网络')), CONFIRM_TIMEOUT)
+    timer = setTimeout(() => reject(new BiliError(t('authErr.confirmTimeout'))), CONFIRM_TIMEOUT)
   })
   return Promise.race([checkAuth(), timeout]).finally(() => clearTimeout(timer))
 }
@@ -93,7 +94,7 @@ function confirmLogin(): Promise<AuthState> {
  */
 export function replaceLogin(cookies: PlainCookie[], invalid: string, shouldApply?: () => boolean): Promise<AuthState> {
   const run = lastReplace.then(() => {
-    if (shouldApply && !shouldApply()) throw new ImportError('cancelled', '这次导入已取消')
+    if (shouldApply && !shouldApply()) throw new ImportError('cancelled', t('authErr.importCancelled'))
     return swapCookies(cookies, invalid)
   })
   lastReplace = run.catch(() => {})

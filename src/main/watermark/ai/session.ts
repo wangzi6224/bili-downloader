@@ -1,6 +1,7 @@
 // 去水印对话框里的 AI 精修：估算处理时间、预览一帧的效果。
 // 同一个任务、同一个框只分析、加载一次；推理进程留着给后面的预览用，对话框关掉或闲置一会儿就释放
 import { availableParallelism, totalmem } from 'node:os'
+import { t } from '@shared/i18n'
 import type { AiEstimate, WatermarkRegion } from '@shared/types'
 import { clampRegion } from '@shared/watermark'
 import { FfmpegError } from '../../download/errors'
@@ -47,7 +48,7 @@ export async function frameJpeg(frame: Uint8Array, a: Analysis, maxWidth = 1280)
     ],
     { stdin: frame, maxBytes: 32 * 1024 * 1024 }
   )
-  if (r.stdout.length < 2 || r.stdout[0] !== 0xff || r.stdout[1] !== 0xd8) throw new FfmpegError('没能生成预览画面', r.stderr)
+  if (r.stdout.length < 2 || r.stdout[0] !== 0xff || r.stdout[1] !== 0xd8) throw new FfmpegError(t('wm.previewFailed'), r.stderr)
   return `data:image/jpeg;base64,${r.stdout.toString('base64')}`
 }
 
@@ -62,10 +63,10 @@ export class AiSessions {
   private async prepare(path: string, region: WatermarkRegion): Promise<Prepared> {
     const probe = await probeMedia(path)
     const v = probe.video
-    if (!v) throw new Error('文件里没有视频画面')
-    if (v.hdr || v.dolbyVision) throw new Error('暂不支持 HDR 和杜比视界视频')
+    if (!v) throw new Error(t('wm.noVideoInFile'))
+    if (v.hdr || v.dolbyVision) throw new Error(t('wm.hdrUnsupported'))
     const r = clampRegion(region, v.width, v.height)
-    if (!r) throw new Error('水印区域太小')
+    if (!r) throw new Error(t('wm.regionTooSmall'))
     const duration = probe.duration ?? 0
     const a = await analyze({ path, v, duration, region: r })
     const codec = makeCodec(a)

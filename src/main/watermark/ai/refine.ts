@@ -5,8 +5,9 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { availableParallelism, totalmem } from 'node:os'
 import { join } from 'node:path'
 import type { Writable } from 'node:stream'
+import { t as tr } from '@shared/i18n'
 import type { ProcessingInfo, WatermarkRegion } from '@shared/types'
-import { clampRegion } from '@shared/watermark'
+import { clampRegion, markWatermarkText } from '@shared/watermark'
 import { AbortError, FfmpegError } from '../../download/errors'
 import { explainFfmpegError, ffmpegPath, isEncoderFailure } from '../../download/mux'
 import { buildCoverExtractArgs, coverFileName } from '../delogo'
@@ -24,7 +25,6 @@ import type { AiModel } from './model'
 import { HostError, type InferencePool, type SpawnHost } from './pool'
 import { sameScene, type Patch, type StripCodec } from './pixels'
 
-const HDR_BLOCKER = '暂不支持 HDR 和杜比视界视频'
 /** 这么久没有写出一帧，视为卡死（醒着的时间，系统睡眠不算） */
 const IDLE_MS = 180_000
 const STDERR_MAX = 4000
@@ -32,11 +32,18 @@ const STDERR_MAX = 4000
 /** 编码那一端失败了：换软件编码器可能就好 */
 export class EncodeError extends FfmpegError {}
 
-const BACKEND_LABEL: Record<Backend, string> = { webgpu: 'GPU', coreml: 'Apple 神经引擎', cpu: 'CPU' }
+/** 往编码进程写帧时发现它已经退出了；runPass 据此按编码失败报，带上编码器的输出 */
+class EncoderGoneError extends Error {
+  constructor() {
+    super(tr('wm.encoderExited'))
+  }
+}
 
 /** 进度上显示的后端说明，例如“GPU”“CPU × 6” */
 export function backendLabel(backend: Backend, hosts: number): string {
-  return backend === 'cpu' && hosts > 1 ? `CPU × ${hosts}` : BACKEND_LABEL[backend]
+  if (backend === 'coreml') return tr('wm.backendCoreml')
+  if (backend === 'webgpu') return 'GPU'
+  return hosts > 1 ? `CPU × ${hosts}` : 'CPU'
 }
 
 /**
@@ -90,14 +97,14 @@ export async function grabFrame(path: string, a: Analysis, time: number, signal?
     ['-ss', time.toFixed(3), '-i', path, '-map', `0:${a.videoIndex}`, '-frames:v', '1', '-vf', `crop=${a.width}:${a.height}:0:0,format=yuv420p`, '-f', 'rawvideo', 'pipe:1'],
     { signal, maxBytes: size * 2 }
   )
-  if (r.stdout.length !== size) throw new FfmpegError('没能从视频里取出画面', r.stderr)
+  if (r.stdout.length !== size) throw new FfmpegError(tr('wm.grabFailed'), r.stderr)
   return r.stdout
 }
 
 /** 写一帧，管道满了就等它腾出空间；对方退出了就报错，不会一直等下去 */
 function writeFrame(stream: Writable, buf: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (stream.destroyed || stream.writableEnded) return reject(new Error('编码进程已退出'))
+    if (stream.destroyed || stream.writableEnded) return reject(new EncoderGoneError())
     if (stream.write(buf)) return resolve()
     const cleanup = (): void => {
       stream.off('drain', onDrain)
@@ -109,7 +116,7 @@ function writeFrame(stream: Writable, buf: Uint8Array): Promise<void> {
     }
     const onClose = (): void => {
       cleanup()
-      reject(new Error('编码进程已退出'))
+      reject(new EncoderGoneError())
     }
     stream.on('drain', onDrain)
     stream.on('close', onClose)
@@ -231,17 +238,17 @@ export async function runPass(o: PassInput): Promise<PassResult> {
     enc.stdin!.end()
     const [dc, ec] = await Promise.all([decExit, encExit])
     if (o.signal.aborted) throw new AbortError()
-    if (stalled) throw new FfmpegError('去水印超时：长时间没有进展', encErr || decErr)
-    if (dc !== 0) throw new FfmpegError(explainFfmpegError(decErr, dc, '读取视频'), decErr)
-    if (ec !== 0) throw new EncodeError(explainFfmpegError(encErr, ec, '去水印'), encErr)
+    if (stalled) throw new FfmpegError(markWatermarkText(tr('wm.stalled')), encErr || decErr)
+    if (dc !== 0) throw new FfmpegError(explainFfmpegError(decErr, dc, 'read'), decErr)
+    if (ec !== 0) throw new EncodeError(explainFfmpegError(encErr, ec, 'watermark'), encErr)
     return { frames: written, inferred }
   } catch (e) {
     kill()
     await Promise.all([decExit, encExit])
     if (o.signal.aborted) throw new AbortError()
-    if (stalled) throw new FfmpegError('去水印超时：长时间没有进展', encErr || decErr)
+    if (stalled) throw new FfmpegError(markWatermarkText(tr('wm.stalled')), encErr || decErr)
     // 编码进程先挂了，写帧时才发现：按编码失败报，带上它的输出
-    if (e instanceof Error && e.message === '编码进程已退出') throw new EncodeError(explainFfmpegError(encErr, enc.exitCode, '去水印'), encErr)
+    if (e instanceof EncoderGoneError) throw new EncodeError(explainFfmpegError(encErr, enc.exitCode, 'watermark'), encErr)
     throw e
   } finally {
     idle.stop()
@@ -301,10 +308,10 @@ export async function refineVideo(o: RefineInput): Promise<{ codec: Encoder['cod
     o.onStage({ ...tag, stage: 'analyze' })
     const probe = await probeMedia(o.input, o.signal)
     const v = probe.video
-    if (!v) throw new Error('文件里没有视频画面')
-    if (v.hdr || v.dolbyVision) throw new Error(HDR_BLOCKER)
+    if (!v) throw new Error(tr('wm.noVideoInFile'))
+    if (v.hdr || v.dolbyVision) throw new Error(tr('wm.hdrUnsupported'))
     const region = clampRegion(o.region, v.width, v.height)
-    if (!region) throw new Error('水印区域太小')
+    if (!region) throw new Error(tr('wm.regionTooSmall'))
     const duration = probe.duration ?? o.durationHint ?? 0
     const a = await analyze({ path: o.input, v, duration, region, signal: o.signal })
     const codec = makeCodec(a)

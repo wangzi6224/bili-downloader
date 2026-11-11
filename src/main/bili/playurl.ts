@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { AudioPref, CodecPref, Container, MediaItem, OutputKind, QualityOption, StreamInfo } from '@shared/types'
 import { api, AuthExpiredError, BiliError, isTransient, UnsupportedError } from './http'
 
@@ -78,15 +79,15 @@ export async function getPlayInfo(item: MediaItem, qn: number): Promise<PlayInfo
     } catch (e) {
       // 登录过期要让任务等重新登录，网络、服务器问题要能重试，其余的业务错误才是没有权限
       if (e instanceof BiliError && !(e instanceof AuthExpiredError) && !isTransient(e)) {
-        throw new UnsupportedError(`没有这节课的观看权限（可能需要购买）：${e.message}`, e.code)
+        throw new UnsupportedError(t('bili.courseNoAccess', { reason: e.message }), e.code)
       }
       throw e
     }
-    if (c.is_drm || c.drm_type) throw new UnsupportedError('这节课使用了 DRM 加密，不支持下载')
-    if (c.is_preview === 1) throw new UnsupportedError('当前账号只能试看这节课（需要购买）')
+    if (c.is_drm || c.drm_type) throw new UnsupportedError(t('bili.courseDrm'))
+    if (c.is_preview === 1) throw new UnsupportedError(t('bili.coursePreview'))
     return c
   }
-  if (item.kind === 'audio') throw new UnsupportedError('音频不走视频取流接口')
+  if (item.kind === 'audio') throw new UnsupportedError(t('bili.audioNotVideo'))
   let r: PlayInfo & { video_info?: PlayInfo; play_check?: { play_detail?: string } }
   try {
     r = await api('https://api.bilibili.com/pgc/player/web/v2/playurl', {
@@ -97,14 +98,14 @@ export async function getPlayInfo(item: MediaItem, qn: number): Promise<PlayInfo
     })
   } catch (e) {
     if (e instanceof BiliError && (e.code === -10403 || e.code === 6002003)) {
-      throw new UnsupportedError(e.message.includes('地区') ? `地区限制：${e.message}` : `需要大会员：${e.message}`, e.code)
+      throw new UnsupportedError(t(e.message.includes('地区') ? 'bili.regionLocked' : 'bili.needVip', { reason: e.message }), e.code)
     }
     throw e
   }
   const info: PlayInfo = r.video_info ?? r
-  if (info.is_drm || info.drm_type || r.drm_type) throw new UnsupportedError('该内容使用了 DRM 加密，不支持下载')
+  if (info.is_drm || info.drm_type || r.drm_type) throw new UnsupportedError(t('bili.drm'))
   if (info.is_preview === 1 || r.play_check?.play_detail === 'PLAY_PREVIEW') {
-    throw new UnsupportedError('当前账号只能试看该内容（需要大会员或购买）')
+    throw new UnsupportedError(t('bili.previewOnly'))
   }
   return info
 }
@@ -139,9 +140,9 @@ export function streamInfoFromPlay(info: PlayInfo): StreamInfo {
     qualities: qualitiesFromInfo(info),
     hasAudio: aacIds.size > 0 || flac || dolby,
     audios: [
-      { id: 'best', label: '最佳', available: true },
-      { id: 'flac', label: 'Hi-Res 无损', available: flac },
-      { id: 'dolby', label: '杜比全景声', available: dolby },
+      { id: 'best', label: t('bili.audioBest'), available: true },
+      { id: 'flac', label: t('bili.audioFlac'), available: flac },
+      { id: 'dolby', label: t('bili.audioDolby'), available: dolby },
       { id: '192k', label: '192K', available: aacIds.has(AAC_ID['192k']) },
       { id: '132k', label: '132K', available: aacIds.has(AAC_ID['132k']) },
       { id: '64k', label: '64K', available: aacIds.has(AAC_ID['64k']) }
@@ -200,31 +201,35 @@ const CODEC_LABEL: Record<CodecPref, string> = { avc: 'AVC', hevc: 'HEVC', av1: 
 /** 按“不高于目标清晰度的最高档 + 编码优先级 + 音质偏好”选流 */
 export function pickStreams(info: PlayInfo, o: PickOptions): Picked {
   const dash = info.dash
-  if (!dash) throw new UnsupportedError('该视频只有旧版 FLV 格式，暂不支持')
+  if (!dash) throw new UnsupportedError(t('bili.flvOnly'))
   const notes: string[] = []
   let container = o.container
 
   const a = o.output === 'video' ? undefined : pickAudio(dash, o.audio, o.output, container)
   if (o.output === 'audio') {
-    if (!a) throw new UnsupportedError('该视频没有独立音轨')
-    const label = a.kind === 'flac' ? 'Hi-Res 无损' : a.kind === 'eac3' ? '杜比全景声' : `音频 ${Math.round(a.audio.bandwidth / 1000)}K`
-    return { audio: a.audio, audioKind: a.kind, qualityLabel: label, quality: label, codec: '', container, notes }
+    if (!a) throw new UnsupportedError(t('bili.noAudioTrack'))
+    const kbps = `${Math.round(a.audio.bandwidth / 1000)}K`
+    // quality 是文件名模板的 {quality}，保持中文；qualityLabel 给界面看
+    const quality = a.kind === 'flac' ? 'Hi-Res 无损' : a.kind === 'eac3' ? '杜比全景声' : `音频 ${kbps}`
+    const qualityLabel =
+      a.kind === 'flac' ? t('bili.audioFlac') : a.kind === 'eac3' ? t('bili.audioDolby') : t('bili.audioQuality', { label: kbps })
+    return { audio: a.audio, audioKind: a.kind, qualityLabel, quality, codec: '', container, notes }
   }
 
   const levels = [...new Set(dash.video.map((v) => v.id))].sort((x, y) => y - x)
-  if (!levels.length) throw new UnsupportedError('没有可用的视频流')
+  if (!levels.length) throw new UnsupportedError(t('bili.noVideoStream'))
   const target = levels.find((q) => q <= o.qn) ?? levels[levels.length - 1]
   const candidates = dash.video.filter((v) => v.id === target)
   const video = o.codecOrder.map((c) => candidates.find((v) => codecOf(v) === c)).find(Boolean) ?? candidates[0]
   const codec = codecOf(video)
   if (codec && codec !== o.codecOrder[0]) {
-    notes.push(`该清晰度没有 ${CODEC_LABEL[o.codecOrder[0]]}，已改用 ${CODEC_LABEL[codec]}`)
+    notes.push(t('bili.codecFallback', { wanted: CODEC_LABEL[o.codecOrder[0]], actual: CODEC_LABEL[codec] }))
   }
 
-  if (o.output === 'full' && !a) notes.push('该视频没有独立音轨')
+  if (o.output === 'full' && !a) notes.push(t('bili.noAudioTrack'))
   if (a?.kind === 'flac' && container === 'mp4') {
     container = 'mkv'
-    notes.push('Hi-Res 无损音轨放进 MP4 兼容性差，已改用 MKV')
+    notes.push(t('bili.flacToMkv'))
   }
 
   const quality = qualitiesFromInfo(info).find((q) => q.qn === target)?.label ?? String(target)
@@ -233,7 +238,7 @@ export function pickStreams(info: PlayInfo, o: PickOptions): Picked {
     video,
     audio: a?.audio,
     audioKind: a?.kind ?? 'aac',
-    qualityLabel: `${quality} · ${codecText}${o.output === 'video' ? ' · 无声' : ''}`,
+    qualityLabel: `${quality} · ${codecText}${o.output === 'video' ? ` · ${t('bili.mute')}` : ''}`,
     quality,
     codec: codecText,
     container,

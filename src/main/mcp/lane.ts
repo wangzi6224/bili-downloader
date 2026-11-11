@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import { describeError, ToolError } from './format'
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -47,7 +48,7 @@ export class Lane {
   private async step<T>(fn: () => Promise<T>): Promise<T> {
     const cooling = this.coolUntil - this.now()
     if (cooling > 0) {
-      throw new ToolError('RATE_LIMITED', `刚触发过 B站风控，${Math.ceil(cooling / 1000)} 秒内不再请求`, '等冷却结束再试，不要连续重试')
+      throw new ToolError('RATE_LIMITED', t('mcp.coolingDown', { seconds: Math.ceil(cooling / 1000) }), t('mcp.coolingDownHint'))
     }
     const wait = this.last + this.gapMs - this.now()
     if (wait > 0) await this.sleep(wait)
@@ -64,7 +65,7 @@ export class Lane {
   /** 超时后放开通道，原请求留在后台自然结束 */
   private limited<T>(fn: () => Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new ToolError('FAILED', 'B站接口长时间没有响应，请稍后再试')), this.timeoutMs)
+      const timer = setTimeout(() => reject(new ToolError('FAILED', t('mcp.laneTimeout'))), this.timeoutMs)
       fn()
         .then(resolve, reject)
         .finally(() => clearTimeout(timer))

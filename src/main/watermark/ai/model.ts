@@ -6,6 +6,7 @@ import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, ren
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { joinList, t as tr } from '@shared/i18n'
 import type { AiModelStatus } from '@shared/types'
 import { AbortError } from '../../download/errors'
 import { fetchFile } from '../../download/fetchFile'
@@ -157,8 +158,8 @@ export class AiModel extends EventEmitter {
       const ranked = await rankSources(this.spec.sources, this.spec.size, headers, ac.signal)
       if (ac.signal.aborted) throw new AbortError()
       if (!ranked.length) {
-        const names = this.spec.sources.map((x) => x.name).join('、')
-        throw new Error(`连不上模型的下载地址（${names}），请检查网络或在设置里配置代理`)
+        const names = joinList(this.spec.sources.map((x) => x.name))
+        throw new Error(tr('wm.modelUnreachable', { names }))
       }
       const source = ranked[0].name
       const urls = ranked.map((x) => x.url)
@@ -183,7 +184,7 @@ export class AiModel extends EventEmitter {
       const sum = await sha256File(tmp, ac.signal)
       if (sum !== this.spec.sha256) {
         rmSync(tmp, { force: true })
-        throw new Error('下载的模型文件校验不通过，请重试')
+        throw new Error(tr('wm.modelChecksum'))
       }
       renameSync(tmp, this.path)
       writeFileSync(this.marker, this.spec.sha256)
@@ -225,7 +226,7 @@ export class AiModel extends EventEmitter {
 
   /** 改写成固定输入尺寸的模型路径；同一尺寸用过就直接用缓存 */
   async fixed(height: number, width: number): Promise<string> {
-    if (!this.ready()) throw new Error('还没有下载 AI 模型')
+    if (!this.ready()) throw new Error(tr('wm.modelMissing'))
     mkdirSync(this.cacheDir, { recursive: true })
     const name = `lama-${height}x${width}.onnx`
     const dest = join(this.cacheDir, name)

@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: '최고',
+  audioFlac: 'Hi-Res 무손실',
+  audioDolby: '돌비 애트모스',
+  tagVideo: '영상({container})',
+  tagAudio: '오디오({audio})',
+  tagMuted: '소리 없음',
+  tagCover: '표지',
+  tagSubtitle: '자막',
+  tagChapters: '챕터',
+  tagDanmaku: '탄막',
+  tagWatermark: '워터마크 제거',
+  updateIdle: '아직 확인하지 않았습니다',
+  updateChecking: '확인 중…',
+  updateLatest: '최신 버전입니다',
+  updateLatestAt: '최신 버전입니다({time} 확인)',
+  updateAvailable: '새 버전 {version}이(가) 있습니다',
+  updateAvailableSkipped: '새 버전 {version}이(가) 있습니다(건너뜀)',
+  updateDownloading: '{version} 다운로드 중',
+  updateReady: '{version}을(를) 다운로드했습니다. 다시 시작하면 업데이트가 완료됩니다',
+  updateInstalling: '설치 중…',
+  entryAvailable: '새 버전 {version}',
+  entryDownloading: '업데이트 다운로드 {pct}%',
+  entryRestart: '다시 시작하여 업데이트 완료',
+  entryInstalling: '업데이트 설치 중…',
+  entryError: '업데이트 실패',
+  pingFailed: '연결 안 됨'
+} satisfies Messages['view']

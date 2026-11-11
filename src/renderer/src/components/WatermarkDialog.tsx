@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Download, Eye, EyeOff, Loader2, RefreshCw, RotateCcw, Sparkles, X } from 'lucide-react'
+import type { Key } from '@shared/i18n'
 import { cornerName } from '@shared/watermark'
 import type { AiEstimate, AiModelStatus, WatermarkMethod, WatermarkPrep, WatermarkRegion } from '@shared/types'
 import { estimateHints, estimateText, modelPct, modelText } from '../aiRefine'
 import { fmtDuration } from '../format'
+import { useT } from '../i18n'
 import { WatermarkOff } from '../icons'
 import { api, useStore } from '../store'
 import { dragRect, handleStyle, HANDLES, nextFrameTime, nudge, toView, type Handle } from '../watermarkBox'
@@ -12,9 +14,9 @@ import { Banner, Button, Modal, ModalFooter, ModalHeader, Progress, Segmented, S
 /** 框停止变化这么久之后再估算 AI 精修的耗时（估算要重新分析画面） */
 const ESTIMATE_DELAY = 800
 
-const METHODS: { value: WatermarkMethod; label: string; hint: string; icon?: typeof Sparkles }[] = [
-  { value: 'fast', label: '快速', hint: '用周围的画面填补，几分钟内完成，水印处会有些糊' },
-  { value: 'ai', label: 'AI 精修', icon: Sparkles, hint: '用 AI 模型逐帧补出水印下面的画面，清楚得多，但慢' }
+const METHODS: { value: WatermarkMethod; label: Key; hint: Key; icon?: typeof Sparkles }[] = [
+  { value: 'fast', label: 'wmDialog.methodFast', hint: 'wmDialog.methodFastHint' },
+  { value: 'ai', label: 'wmDialog.methodAi', icon: Sparkles, hint: 'wmDialog.methodAiHint' }
 ]
 
 interface Drag {
@@ -26,6 +28,7 @@ interface Drag {
 
 /** 在一帧画面上框选水印，确认后重新编码去掉它，替换原视频 */
 export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+  const t = useT()
   const title = useStore((s) => s.tasks.find((t) => t.id === taskId)?.title)
   const [prep, setPrep] = useState<WatermarkPrep | null>(null)
   const [region, setRegion] = useState<WatermarkRegion | null>(null)
@@ -128,9 +131,9 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
 
   const nextFrame = (): Promise<void> =>
     run(async () => {
-      const t = nextFrameTime(prep!.duration, time)
-      setImage(await api.watermark.frame(taskId, t))
-      setTime(t)
+      const next = nextFrameTime(prep!.duration, time)
+      setImage(await api.watermark.frame(taskId, next))
+      setTime(next)
       setPreview(null)
     })
 
@@ -174,8 +177,8 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
     <Modal onClose={onClose} className="flex max-h-full max-w-3xl flex-col">
       <ModalHeader
         icon={WatermarkOff}
-        title="去水印"
-        subtitle="拖动方框盖住水印，拖四角和四边调整大小。处理时会重新编码视频，完成后替换原文件。"
+        title={t('wmDialog.title')}
+        subtitle={t('wmDialog.subtitle')}
         onClose={onClose}
       />
       <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 pt-4">
@@ -183,13 +186,13 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
         {error && <Banner tone="error">{error}</Banner>}
         {prep?.blocker && <Banner tone="warn">{prep.blocker}</Banner>}
         {prep && !prep.blocker && prep.applied && (
-          <Banner tone="warn">这个视频已经去过一次水印，再处理会再重新编码一次，画质会略有损失。</Banner>
+          <Banner tone="warn">{t('wmDialog.alreadyApplied')}</Banner>
         )}
         {prep && !prep.blocker && !prep.applied && (
           <Banner tone="info">
             {prep.detected
-              ? `已识别到${cornerName(prep.region, prep.width, prep.height)}的水印，可以再调整方框。`
-              : '没有自动识别到水印，请把方框拖到水印上。'}
+              ? t('wmDialog.detected', { corner: cornerName(prep.region, prep.width, prep.height) })
+              : t('wmDialog.notDetected')}
           </Banner>
         )}
 
@@ -199,7 +202,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
               <img
                 ref={imgRef}
                 src={preview ?? image}
-                alt="视频画面"
+                alt={t('wmDialog.frameAlt')}
                 draggable={false}
                 className="block max-h-[46vh] max-w-full"
                 onLoad={(e) => setViewW(e.currentTarget.clientWidth)}
@@ -208,7 +211,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
                 <div
                   role="slider"
                   tabIndex={0}
-                  aria-label="水印区域，方向键移动，按住 Shift 一次移 10 像素"
+                  aria-label={t('wmDialog.regionLabel')}
                   aria-valuetext={`${region!.x},${region!.y} ${region!.w}×${region!.h}`}
                   className="absolute cursor-move border-2 border-bili bg-bili/20 outline-none focus-visible:ring-2 focus-visible:ring-white"
                   style={{ left: view.x, top: view.y, width: view.w, height: view.h }}
@@ -243,7 +246,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
             !error && (
               <div className="flex items-center gap-2 py-16 text-[13px] text-white/70">
                 <Loader2 size={16} strokeWidth={STROKE} className="animate-spin" />
-                正在识别水印…
+                {t('wmDialog.detecting')}
               </div>
             )
           )}
@@ -251,13 +254,13 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
 
         <div className="flex items-center gap-1.5 text-xs text-muted">
           <Button size="sm" icon={RefreshCw} disabled={!prep || busy} onClick={nextFrame}>
-            换一帧
+            {t('wmDialog.nextFrame')}
           </Button>
           <Button size="sm" icon={preview ? EyeOff : Eye} disabled={!region || busy || Boolean(prep?.blocker)} onClick={togglePreview}>
-            {preview ? '看原画面' : '预览效果'}
+            {preview ? t('wmDialog.showOriginal') : t('wmDialog.preview')}
           </Button>
           <Button size="sm" icon={RotateCcw} disabled={!prep || busy} onClick={() => prep && change(prep.region)}>
-            重置
+            {t('wmDialog.reset')}
           </Button>
           <div className="flex-1" />
           {prep && <span className="tabular-nums">{fmtDuration(time) || '0:00'}</span>}
@@ -266,7 +269,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
               · {region.w}×{region.h}
             </span>
           )}
-          <Segmented size="sm" value={method} options={METHODS} onChange={switchMethod} disabled={busy} />
+          <Segmented size="sm" value={method} options={METHODS.map((m) => ({ ...m, label: t(m.label), hint: t(m.hint) }))} onChange={switchMethod} disabled={busy} />
         </div>
 
         {ai && model && !modelReady && (
@@ -277,11 +280,11 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
             actions={
               model.state === 'downloading' ? (
                 <Button size="sm" variant="ghost" icon={X} disabled={model.verifying} onClick={() => void api.watermark.aiCancelDownload()}>
-                  取消
+                  {t('wmDialog.cancel')}
                 </Button>
               ) : (
                 <Button size="sm" icon={Download} onClick={() => void api.watermark.aiDownload()}>
-                  {model.state === 'error' ? '重试' : '下载模型'}
+                  {model.state === 'error' ? t('wmDialog.retry') : t('wmDialog.downloadModel')}
                 </Button>
               )
             }
@@ -294,7 +297,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
           <>
             {estimating && (
               <Banner icon={Loader2} spin>
-                正在估算耗时（第一次要加载模型、试跑几帧，十几秒）…
+                {t('wmDialog.estimating')}
               </Banner>
             )}
             {estimateError && <Banner tone="error">{estimateError}</Banner>}
@@ -313,7 +316,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
       </div>
       <ModalFooter>
         <Button variant="ghost" onClick={onClose}>
-          取消
+          {t('wmDialog.cancel')}
         </Button>
         <Button
           variant="primary"
@@ -321,7 +324,7 @@ export function WatermarkDialog({ taskId, onClose }: { taskId: string; onClose: 
           disabled={!region || busy || Boolean(prep?.blocker) || (ai && !modelReady)}
           onClick={start}
         >
-          {ai ? '开始 AI 精修' : '开始处理'}
+          {ai ? t('wmDialog.startAi') : t('wmDialog.start')}
         </Button>
       </ModalFooter>
     </Modal>

@@ -1,4 +1,5 @@
 import { app, powerMonitor } from 'electron'
+import { t } from '@shared/i18n'
 import { hideMainWindow, showDialog } from './windows'
 
 /** 这次退出已经确认过 */
@@ -35,9 +36,9 @@ export function allowQuit(e: Electron.Event, pending: number): boolean {
 async function ask(pending: number): Promise<void> {
   const { response } = await showDialog({
     type: 'warning',
-    message: `还有 ${pending} 个任务没完成，确定要退出吗？`,
-    detail: '没下载完的任务会暂停，下次打开后点“全部继续”就能接着下载，已下载的部分不会丢；正在去水印的视频保持原样。',
-    buttons: ['后台运行', '退出', '取消'],
+    message: t('dialogs.quitPending', { count: pending }),
+    detail: t('dialogs.quitPendingDetail'),
+    buttons: [t('dialogs.runInBackground'), t('dialogs.quit'), t('dialogs.cancel')],
     defaultId: 0,
     cancelId: 2
   })

@@ -1,3 +1,4 @@
+import { t as tr } from '@shared/i18n'
 import type { MediaGroup, MediaItem, MediaMeta, ParseResult } from '@shared/types'
 import { api } from './http'
 
@@ -36,6 +37,7 @@ async function steinNodes(v: ViewData): Promise<MediaItem[]> {
     items.push({
       key: `ugc:${v.bvid}:${node.cid}`,
       kind: 'ugc',
+      // 标题是文件名模板的 {title}、简介会写进 NFO，保持中文
       title: e.title || node.option || `片段 ${items.length + 1}`,
       index: items.length + 1,
       cid: node.cid,
@@ -121,7 +123,7 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
         cover: v.pic,
         owner: v.owner?.name,
         meta,
-        groups: [{ id: 'stein', title: '互动视频剧情片段', items: nodes }],
+        groups: [{ id: 'stein', title: tr('bili.groupStein'), items: nodes }],
         defaultSelected: nodes.map((i) => i.key)
       }
     }
@@ -184,7 +186,7 @@ export async function parseUgc(t: { bvid?: string; aid?: number; page?: number }
     cover: v.pic,
     owner: v.owner?.name,
     meta,
-    groups: [{ id: 'pages', title: multi ? '分P' : v.title, items }],
+    groups: [{ id: 'pages', title: multi ? tr('bili.groupPages') : v.title, items }],
     defaultSelected: (currentPage ? items.filter((i) => i.cid === currentPage.cid) : items).map((i) => i.key)
   }
 }

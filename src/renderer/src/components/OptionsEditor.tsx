@@ -1,13 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowUp, Download, X } from 'lucide-react'
 import type { AiModelStatus, AudioPref, CodecPref, Container, DanmakuFormat, OutputKind, StreamInfo, WatermarkMode } from '@shared/types'
+import { t } from '@shared/i18n'
 import { modelPct, modelText, WATERMARK_MODES } from '../aiRefine'
+import { useT } from '../i18n'
 import { api, sysText } from '../store'
 import { actualCodec, AUDIO_LABEL, moveUp, type EditableOptions } from '../viewLogic'
 import { Button, IconButton, Progress, Segmented, Select } from './ui'
 
 /** 选了 AI 精修时：模型下载好没有，没下载可以先下好 */
 function AiModelLine() {
+  const t = useT()
   const [m, setM] = useState<AiModelStatus | null>(null)
   useEffect(() => {
     void api.watermark.aiStatus().then(setM)
@@ -17,16 +20,16 @@ function AiModelLine() {
   return (
     <div className="mt-1.5 flex items-center gap-2 text-xs text-muted">
       <div className="min-w-0 flex-1">
-        <div>{m.state === 'missing' ? `${modelText(m)}；也可以等到第一次去水印时再自动下载` : modelText(m)}</div>
+        <div>{m.state === 'missing' ? t('options.modelMissing', { text: modelText(m) }) : modelText(m)}</div>
         {m.state === 'downloading' && <Progress value={modelPct(m)} className="mt-1" />}
       </div>
       {m.state === 'downloading' ? (
         <Button size="sm" variant="ghost" icon={X} disabled={m.verifying} onClick={() => void api.watermark.aiCancelDownload()}>
-          取消
+          {t('options.cancel')}
         </Button>
       ) : (
         <Button size="sm" icon={Download} onClick={() => void api.watermark.aiDownload()}>
-          {m.state === 'error' ? '重试' : '下载模型'}
+          {m.state === 'error' ? t('options.retry') : t('options.downloadModel')}
         </Button>
       )}
     </div>
@@ -34,12 +37,14 @@ function AiModelLine() {
 }
 
 const CODEC_LABEL: Record<CodecPref, string> = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' }
-const CODEC_HINT: Record<CodecPref, string> = { avc: '兼容性最好', hevc: '体积更小', av1: sysText.av1Hint }
+// 文案在渲染时取，切换语言后跟着变
+const codecHint = (c: CodecPref): string =>
+  c === 'avc' ? t('options.codecAvcHint') : c === 'hevc' ? t('options.codecHevcHint') : sysText.av1Hint
 
-const OUTPUTS: { value: OutputKind; label: string; hint: string }[] = [
-  { value: 'full', label: '完整视频', hint: '画面和声音合成一个文件' },
-  { value: 'audio', label: '仅音频', hint: '只保存声音（m4a，无损为 flac）' },
-  { value: 'video', label: '仅视频', hint: '只保存画面，没有声音' }
+const outputs = (): { value: OutputKind; label: string; hint: string }[] => [
+  { value: 'full', label: t('options.outputFull'), hint: t('options.outputFullHint') },
+  { value: 'audio', label: t('options.outputAudio'), hint: t('options.outputAudioHint') },
+  { value: 'video', label: t('options.outputVideo'), hint: t('options.outputVideoHint') }
 ]
 
 export function Section({ title, children, dim }: { title: string; children: ReactNode; dim?: boolean }) {
@@ -88,6 +93,7 @@ function CodecOrder({
   onChange: (o: CodecPref[]) => void
   disabled?: boolean
 }) {
+  const t = useT()
   const move = (i: number): void => {
     const next = moveUp(order, i)
     if (next) onChange(next)
@@ -105,15 +111,15 @@ function CodecOrder({
             >
               <span className="w-3 text-subtle tabular-nums">{i + 1}</span>
               <span className={`font-medium ${missing ? 'text-subtle line-through' : ''}`}>{CODEC_LABEL[c]}</span>
-              <span className="min-w-0 flex-1 truncate text-muted">{CODEC_HINT[c]}</span>
-              {i > 0 && <IconButton icon={ArrowUp} label="提高优先级" size="sm" disabled={disabled} onClick={() => move(i)} />}
+              <span className="min-w-0 flex-1 truncate text-muted">{codecHint(c)}</span>
+              {i > 0 && <IconButton icon={ArrowUp} label={t('options.raisePriority')} size="sm" disabled={disabled} onClick={() => move(i)} />}
             </div>
           )
         })}
       </div>
       {actual && actual !== order[0] && (
         <div className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
-          该清晰度没有 {CODEC_LABEL[order[0]]}，将下载 {CODEC_LABEL[actual]}
+          {t('options.codecFallback', { wanted: CODEC_LABEL[order[0]], actual: CODEC_LABEL[actual] })}
         </div>
       )}
     </div>
@@ -135,20 +141,24 @@ export function OptionsEditor({
   info?: StreamInfo | null
   codecsForQuality?: CodecPref[]
 }) {
+  const t = useT()
   const set = (patch: Partial<EditableOptions>): void => onChange({ ...o, ...patch })
+  const outputOptions = outputs()
   const audioOnly = o.output === 'audio'
   const noAudio = info ? !info.hasAudio : false
   const audioAvailable = (id: AudioPref): boolean => !info || (info.audios.find((a) => a.id === id)?.available ?? false)
 
   return (
     <div className="flex flex-col gap-5">
-      <Section title="下载内容">
-        <Segmented fill value={o.output} options={OUTPUTS} onChange={(output) => set({ output })} />
-        <div className="mt-1.5 text-xs text-muted">{OUTPUTS.find((x) => x.value === o.output)?.hint}</div>
-        {noAudio && o.output !== 'video' && <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">这个视频没有独立音轨</div>}
+      <Section title={t('options.content')}>
+        <Segmented fill value={o.output} options={outputOptions} onChange={(output) => set({ output })} />
+        <div className="mt-1.5 text-xs text-muted">{outputOptions.find((x) => x.value === o.output)?.hint}</div>
+        {noAudio && o.output !== 'video' && (
+          <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('options.noAudioTrack')}</div>
+        )}
       </Section>
 
-      <Section title="编码优先级" dim={audioOnly}>
+      <Section title={t('options.codecOrder')} dim={audioOnly}>
         <CodecOrder
           order={o.codecOrder}
           available={codecsForQuality}
@@ -157,7 +167,7 @@ export function OptionsEditor({
         />
       </Section>
 
-      <Section title="音质" dim={o.output === 'video' || noAudio}>
+      <Section title={t('options.audio')} dim={o.output === 'video' || noAudio}>
         <Select
           value={o.audio}
           disabled={o.output === 'video' || noAudio}
@@ -167,68 +177,61 @@ export function OptionsEditor({
           {(Object.keys(AUDIO_LABEL) as AudioPref[]).map((id) => (
             <option key={id} value={id} disabled={!audioAvailable(id)}>
               {AUDIO_LABEL[id]}
-              {!audioAvailable(id) ? '（这个视频没有）' : ''}
+              {!audioAvailable(id) ? t('options.audioUnavailable') : ''}
             </option>
           ))}
         </Select>
-        <div className="mt-1.5 text-xs leading-relaxed text-muted">
-          “最佳”：完整视频优先杜比（MKV 时优先无损），仅音频优先无损；指定档位没有时自动降档
-        </div>
+        <div className="mt-1.5 text-xs leading-relaxed text-muted">{t('options.audioHint')}</div>
       </Section>
 
-      <Section title="封装格式" dim={audioOnly}>
+      <Section title={t('options.container')} dim={audioOnly}>
         <Segmented<Container>
           fill
           value={o.container}
           disabled={audioOnly}
           onChange={(container) => set({ container })}
           options={[
-            { value: 'mp4', label: 'MP4', hint: 'QuickTime、iPhone 都能直接播放' },
-            { value: 'mkv', label: 'MKV', hint: '能放无损音轨，字幕和杜比视界兼容更好' }
+            { value: 'mp4', label: 'MP4', hint: t('options.mp4Hint') },
+            { value: 'mkv', label: 'MKV', hint: t('options.mkvHint') }
           ]}
         />
       </Section>
 
-      <Section title="水印" dim={audioOnly}>
+      <Section title={t('options.watermark')} dim={audioOnly}>
         <Segmented<WatermarkMode> fill value={o.watermark} disabled={audioOnly} onChange={(watermark) => set({ watermark })} options={WATERMARK_MODES} />
         {o.watermark === 'auto' && !audioOnly && (
-          <div className="mt-1.5 text-xs leading-relaxed text-muted">
-            识别到水印才处理，要重新编码视频，比直接下载慢不少；成功后只保留去水印的版本。HDR、杜比视界视频不处理。
-          </div>
+          <div className="mt-1.5 text-xs leading-relaxed text-muted">{t('options.watermarkAutoHint')}</div>
         )}
         {o.watermark === 'ai' && !audioOnly && (
           <>
-            <div className="mt-1.5 text-xs leading-relaxed text-muted">
-              识别到水印才处理，用 AI 模型逐帧补出水印下面的画面，比快速去除清楚得多，但慢很多：有显卡时大约是视频时长的
-              2～4 倍，没有显卡更慢。模型下不下来或精修失败时，这次改用快速去除。HDR、杜比视界视频不处理。
-            </div>
+            <div className="mt-1.5 text-xs leading-relaxed text-muted">{t('options.watermarkAiHint')}</div>
             <AiModelLine />
           </>
         )}
       </Section>
 
-      <Section title="附加内容">
+      <Section title={t('options.extras')}>
         <div className="grid grid-cols-2 gap-x-3">
           <Check checked={o.embedCover} onChange={(embedCover) => set({ embedCover })}>
-            封面写入文件
+            {t('options.embedCover')}
           </Check>
           <Check checked={o.cover} onChange={(cover) => set({ cover })}>
-            封面另存图片
+            {t('options.cover')}
           </Check>
           <Check checked={o.embedSubtitle} disabled={audioOnly} onChange={(embedSubtitle) => set({ embedSubtitle })}>
-            字幕写入视频
+            {t('options.embedSubtitle')}
           </Check>
           <Check checked={o.subtitle} disabled={audioOnly} onChange={(subtitle) => set({ subtitle })}>
-            字幕另存 .srt
+            {t('options.subtitle')}
           </Check>
           <Check checked={o.chapters} disabled={audioOnly} onChange={(chapters) => set({ chapters })}>
-            章节（进度条分段）
+            {t('options.chapters')}
           </Check>
           <Check checked={o.nfo} onChange={(nfo) => set({ nfo })}>
-            NFO 元数据
+            {t('options.nfo')}
           </Check>
           <Check checked={o.danmaku} disabled={audioOnly} onChange={(danmaku) => set({ danmaku })}>
-            弹幕
+            {t('options.danmaku')}
           </Check>
           {o.danmaku && !audioOnly && (
             <Select
@@ -237,13 +240,13 @@ export function OptionsEditor({
               onChange={(e) => set({ danmakuFormat: e.target.value as DanmakuFormat })}
               className="my-0.5"
             >
-              <option value="ass">ASS（播放器叠加）</option>
-              <option value="xml">XML（原始）</option>
+              <option value="ass">{t('options.danmakuAss')}</option>
+              <option value="xml">{t('options.danmakuXml')}</option>
               <option value="both">ASS + XML</option>
             </Select>
           )}
         </div>
-        {o.nfo && <div className="mt-1 text-xs leading-relaxed text-muted">生成 Kodi / Jellyfin / Emby 能识别的 .nfo，番剧额外生成 tvshow.nfo 和海报</div>}
+        {o.nfo && <div className="mt-1 text-xs leading-relaxed text-muted">{t('options.nfoHint')}</div>}
       </Section>
     </div>
   )

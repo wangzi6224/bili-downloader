@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: 'Best',
+  audioFlac: 'Hi-Res Lossless',
+  audioDolby: 'Dolby Atmos',
+  tagVideo: 'Video ({container})',
+  tagAudio: 'Audio ({audio})',
+  tagMuted: 'No audio',
+  tagCover: 'Cover',
+  tagSubtitle: 'Subtitles',
+  tagChapters: 'Chapters',
+  tagDanmaku: 'Danmaku',
+  tagWatermark: 'Watermark removal',
+  updateIdle: 'Not checked yet',
+  updateChecking: 'Checking…',
+  updateLatest: 'You’re up to date',
+  updateLatestAt: 'You’re up to date (checked at {time})',
+  updateAvailable: 'New version {version} available',
+  updateAvailableSkipped: 'New version {version} available (skipped)',
+  updateDownloading: 'Downloading {version}',
+  updateReady: '{version} downloaded. Restart to finish updating',
+  updateInstalling: 'Installing…',
+  entryAvailable: 'New version {version}',
+  entryDownloading: 'Downloading update {pct}%',
+  entryRestart: 'Restart to finish updating',
+  entryInstalling: 'Installing update…',
+  entryError: 'Update failed',
+  pingFailed: 'Unreachable'
+} satisfies Messages['view']

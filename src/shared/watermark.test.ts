@@ -5,9 +5,11 @@ import {
   defaultRegion,
   delogoFilter,
   isVideoTask,
+  markWatermarkText,
   padRegion,
   stripWatermarkNotes,
   withWatermarkNote,
+  WM_MARK,
   WM_NOTE
 } from './watermark'
 
@@ -64,20 +66,35 @@ describe('其他', () => {
 })
 
 describe('提示', () => {
-  it('失败原因已经以“去水印”开头时不重复', () => {
-    expect(WM_NOTE.failed('去水印失败：磁盘空间不足')).toBe('去水印失败：磁盘空间不足，已保留原视频')
-    expect(WM_NOTE.failed('没找到视频画面')).toBe('去水印失败：没找到视频画面，已保留原视频')
+  it('提示都带去水印标记，文案不变', () => {
+    expect(WM_NOTE.hdr()).toBe(`${WM_MARK}去水印：暂不支持 HDR 和杜比视界视频，已保留原视频`)
+    expect(WM_NOTE.none()).toBe(`${WM_MARK}去水印：没有识别到水印，已保留原视频（可以在任务上点“去水印…”手动框选）`)
+    expect(markWatermarkText(WM_NOTE.moved())).toBe(WM_NOTE.moved())
+  })
+
+  it('失败原因已经是去水印报错时不重复前缀', () => {
+    expect(WM_NOTE.failed(`${WM_MARK}去水印失败：磁盘空间不足`)).toBe(`${WM_MARK}去水印失败：磁盘空间不足，已保留原视频`)
+    // 没带标记的旧写法也认
+    expect(WM_NOTE.failed('去水印失败：磁盘空间不足')).toBe(`${WM_MARK}去水印失败：磁盘空间不足，已保留原视频`)
+    expect(WM_NOTE.failed('没找到视频画面')).toBe(`${WM_MARK}去水印失败：没找到视频画面，已保留原视频`)
+    expect(WM_NOTE.aiFailed(`${WM_MARK}去水印失败：编码器不可用`)).toBe(`${WM_MARK}去水印：AI 精修没能完成（去水印失败：编码器不可用），这次改用了快速去除`)
   })
 
   it('stripWatermarkNotes 只去掉去水印的提示', () => {
     expect(stripWatermarkNotes(undefined)).toBeUndefined()
-    expect(stripWatermarkNotes(WM_NOTE.none)).toBeUndefined()
-    expect(stripWatermarkNotes(`没有 CC 字幕；${WM_NOTE.hdr}；该清晰度没有 AVC`)).toBe('没有 CC 字幕；该清晰度没有 AVC')
+    expect(stripWatermarkNotes(WM_NOTE.none())).toBeUndefined()
+    expect(stripWatermarkNotes(`没有 CC 字幕；${WM_NOTE.hdr()}；该清晰度没有 AVC`)).toBe('没有 CC 字幕；该清晰度没有 AVC')
+  })
+
+  it('stripWatermarkNotes 不看界面语言：别的语言的提示靠标记认出，旧数据靠中文前缀认出', () => {
+    const en = markWatermarkText('Watermark removal did not finish, original video kept')
+    expect(stripWatermarkNotes(`No CC subtitles；${en}`)).toBe('No CC subtitles')
+    expect(stripWatermarkNotes('No CC subtitles；去水印没有完成（应用中途退出了），已保留原视频')).toBe('No CC subtitles')
   })
 
   it('withWatermarkNote 替换旧的去水印提示', () => {
     expect(withWatermarkNote(undefined, undefined)).toBeUndefined()
-    expect(withWatermarkNote(`没有 CC 字幕；${WM_NOTE.none}`, WM_NOTE.interrupted)).toBe(`没有 CC 字幕；${WM_NOTE.interrupted}`)
-    expect(withWatermarkNote(WM_NOTE.none, undefined)).toBeUndefined()
+    expect(withWatermarkNote(`没有 CC 字幕；${WM_NOTE.none()}`, WM_NOTE.interrupted())).toBe(`没有 CC 字幕；${WM_NOTE.interrupted()}`)
+    expect(withWatermarkNote(WM_NOTE.none(), undefined)).toBeUndefined()
   })
 })

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { t as tr } from '@shared/i18n'
 import { clampRegion, defaultRegion, isVideoTask } from '@shared/watermark'
 import type { ProcessingInfo, TaskInfo, WatermarkPrep, WatermarkRegion } from '@shared/types'
 import { buildCoverExtractArgs, buildReplaceArgs, coverFileName } from './delogo'
@@ -10,7 +11,7 @@ import { isConfident, locateWatermark } from './locate'
 import { probeMedia, type MediaProbe, type ProbeVideo } from './probe'
 import { encodeWithFallback } from './transcode'
 
-const HDR_BLOCKER = '暂不支持 HDR 和杜比视界视频'
+const hdrBlocker = (): string => tr('wm.hdrUnsupported')
 
 /** 对话框默认展示的那一帧 */
 const PREVIEW_AT = 0.3
@@ -19,16 +20,16 @@ export type DoneVideoTask = TaskInfo & { outputPath: string }
 
 /** 只有下载完成、文件还在的视频任务才能手动去水印 */
 export function requireVideoTask(t: TaskInfo | undefined): DoneVideoTask {
-  if (!t) throw new Error('任务不存在')
-  if (t.status !== 'done' || !t.outputPath) throw new Error('只能处理已经下载完成的视频')
-  if (!isVideoTask(t)) throw new Error('这个任务只有音频，没有画面')
-  if (!existsSync(t.outputPath)) throw new Error('找不到视频文件，可能已被移动或删除')
+  if (!t) throw new Error(tr('wm.taskMissing'))
+  if (t.status !== 'done' || !t.outputPath) throw new Error(tr('wm.notDone'))
+  if (!isVideoTask(t)) throw new Error(tr('wm.audioOnly'))
+  if (!existsSync(t.outputPath)) throw new Error(tr('wm.fileMissing'))
   return t as DoneVideoTask
 }
 
 async function probeVideo(path: string, signal?: AbortSignal): Promise<{ probe: MediaProbe; v: ProbeVideo }> {
   const probe = await probeMedia(path, signal)
-  if (!probe.video) throw new Error('文件里没有视频画面')
+  if (!probe.video) throw new Error(tr('wm.noVideoInFile'))
   return { probe, v: probe.video }
 }
 
@@ -36,7 +37,7 @@ async function probeVideo(path: string, signal?: AbortSignal): Promise<{ probe: 
 export async function prepareManual(t: DoneVideoTask, signal?: AbortSignal): Promise<WatermarkPrep> {
   const { probe, v } = await probeVideo(t.outputPath, signal)
   const duration = probe.duration ?? t.item.duration ?? 0
-  const blocker = v.hdr || v.dolbyVision ? HDR_BLOCKER : undefined
+  const blocker = v.hdr || v.dolbyVision ? hdrBlocker() : undefined
   const known = t.watermark?.width === v.width && t.watermark.height === v.height ? t.watermark.detected : undefined
   // 已经去过一次的文件，原来的水印位置已经糊掉了，再识别也认不出来
   const region = known ?? (t.watermark?.applied ? undefined : (await locateWatermark(t.outputPath, v, duration, signal)).region)
@@ -76,7 +77,7 @@ export async function inspectWatermark(t: DoneVideoTask, signal?: AbortSignal): 
   const { probe, v } = await probeVideo(t.outputPath, signal)
   const duration = probe.duration ?? t.item.duration ?? 0
   const base = { width: v.width, height: v.height, duration, fps: v.fps }
-  if (v.hdr || v.dolbyVision) return { ...base, found: false, known: false, blocker: HDR_BLOCKER }
+  if (v.hdr || v.dolbyVision) return { ...base, found: false, known: false, blocker: hdrBlocker() }
   const wm = t.watermark
   const same = wm?.width === v.width && wm.height === v.height
   // 已经去过一次的文件，原来的水印位置已经糊掉了，再识别也认不出来；还要处理（例如换成 AI 精修）就用当时的位置
@@ -92,7 +93,7 @@ export async function previewFrame(t: DoneVideoTask, time: number, region?: Wate
   const { probe, v } = await probeVideo(t.outputPath)
   const at = Math.min(Math.max(0, Number.isFinite(time) ? time : 0), Math.max(0, (probe.duration ?? 0) - 0.1))
   const r = region && clampRegion(region, v.width, v.height)
-  if (region && !r) throw new Error('水印区域太小')
+  if (region && !r) throw new Error(tr('wm.regionTooSmall'))
   return grabJpeg(t.outputPath, v.index, at, { region: r ?? undefined })
 }
 
@@ -112,9 +113,9 @@ export interface ReplaceInput {
 export async function replaceVideo(o: ReplaceInput): Promise<{ codec: Encoder['codec']; width: number; height: number; region: WatermarkRegion }> {
   o.onStage({ manual: true, stage: 'queue' })
   const { probe, v } = await probeVideo(o.input, o.signal)
-  if (v.hdr || v.dolbyVision) throw new Error(HDR_BLOCKER)
+  if (v.hdr || v.dolbyVision) throw new Error(hdrBlocker())
   const region = clampRegion(o.region, v.width, v.height)
-  if (!region) throw new Error('水印区域太小')
+  if (!region) throw new Error(tr('wm.regionTooSmall'))
 
   // MKV 的封面附件复制过去会变成一条视频轨，先导出成图片再挂回去
   let coverFile: string | undefined

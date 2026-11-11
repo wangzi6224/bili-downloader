@@ -5,6 +5,7 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream } from 'node:stream/web'
 import { app, shell } from 'electron'
+import { t } from '@shared/i18n'
 import type { UpdateInfo, UpdateState } from '@shared/types'
 import { logDir } from '../logger'
 import { quitConfirmed } from '../quitGuard'
@@ -103,7 +104,7 @@ export class Updater {
     if (manual || !('info' in prev && prev.info)) this.set({ status: 'checking' })
     try {
       const res = await fetch(FEED, { signal: AbortSignal.timeout(20_000), headers: { 'Cache-Control': 'no-cache' } })
-      if (res.status === 404) throw new Error('服务器上还没有发布任何版本')
+      if (res.status === 404) throw new Error(t('updateErr.noRelease'))
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const m = parseManifest(await res.json(), Boolean(TEST_FEED))
       const checkedAt = Date.now()
@@ -113,7 +114,7 @@ export class Updater {
       }
       const key = assetKey(process.platform, process.arch)
       const file = m.files[key]
-      if (!file) throw new Error(`新版本 ${m.version} 没有 ${key} 的安装包`)
+      if (!file) throw new Error(t('updateErr.noPackage', { version: m.version, key }))
       this.file = file
       const info: UpdateInfo = {
         version: m.version,
@@ -136,7 +137,7 @@ export class Updater {
       console.warn('检查更新失败', e)
       // 自动检查失败时不打扰：之前发现的新版本照样保留
       if (!manual && 'info' in prev && prev.info) this.set(prev, prev.checkedAt)
-      else this.set({ status: 'error', error: `检查更新失败：${message(e)}` }, Date.now())
+      else this.set({ status: 'error', error: t('updateErr.checkFailed', { reason: message(e) }) }, Date.now())
     }
     return this.state
   }
@@ -155,14 +156,14 @@ export class Updater {
 
   async install(): Promise<void> {
     const s = this.state
-    if (s.status !== 'ready' || !this.file) throw new Error('更新还没有下载完成')
+    if (s.status !== 'ready' || !this.file) throw new Error(t('updateErr.notReady'))
     const blocker = installBlocker()
     if (blocker) throw new Error(blocker)
     const { info } = s
     this.set({ status: 'installing', info })
     try {
       const pkg = this.packagePath(info.version)
-      if (!(await matches(pkg, this.file))) throw new Error('安装包已损坏，请重新下载')
+      if (!(await matches(pkg, this.file))) throw new Error(t('updateErr.corrupted'))
       const next = await prepare(pkg, join(this.dir, 'stage'), info.version)
       replaceAfterExit(next, this.dir, join(logDir(), 'update.log'))
       console.info(`更新：退出并安装 ${info.version}`)
@@ -170,7 +171,7 @@ export class Updater {
       quitConfirmed()
     } catch (e) {
       console.error('安装更新失败', e)
-      this.set({ status: 'error', error: `安装更新失败：${message(e)}`, info })
+      this.set({ status: 'error', error: t('updateErr.installFailed', { reason: message(e) }), info })
     }
   }
 
@@ -222,7 +223,7 @@ export class Updater {
         }
         if (!(await matches(part, file))) {
           rmSync(part, { force: true })
-          throw new Error('安装包校验不通过（文件损坏或被篡改），请重试')
+          throw new Error(t('updateErr.verifyFailed'))
         }
         renameSync(part, dest)
       }
@@ -232,7 +233,7 @@ export class Updater {
       if (abort.signal.aborted) this.set({ status: 'available', info })
       else {
         console.error('下载更新失败', e)
-        this.set({ status: 'error', error: `下载更新失败：${message(e)}`, info })
+        this.set({ status: 'error', error: t('updateErr.downloadFailed', { reason: message(e) }), info })
       }
     } finally {
       if (this.abort === abort) this.abort = undefined
@@ -249,7 +250,7 @@ export class Updater {
     const stall = new AbortController()
     let last = Date.now()
     const watch = setInterval(() => {
-      if (Date.now() - last > STALL_MS) stall.abort(new Error('连接超时'))
+      if (Date.now() - last > STALL_MS) stall.abort(new Error(t('updateErr.stalled')))
     }, 5000)
     try {
       const both = AbortSignal.any([signal, stall.signal])

@@ -8,7 +8,7 @@ vi.mock('electron', () => ({}))
 vi.mock('./http', async (orig) => ({ ...(await orig<typeof import('./http')>()), api }))
 
 const { UnsupportedError } = await import('./http')
-const { parseAudio, parseAudioMenu, getAudioStream, AUDIO_STREAM_INFO } = await import('./audio')
+const { parseAudio, parseAudioMenu, getAudioStream, audioStreamInfo } = await import('./audio')
 
 const BASE = 'https://www.bilibili.com/audio/music-service-c/web'
 
@@ -126,6 +126,7 @@ describe('getAudioStream', () => {
       urls: ['https://cdn/a.m4a', 'https://cdn2/a.m4a'],
       size: 1234,
       label: '192K',
+      text: '192K',
       flac: false
     })
     expect(qualities()).toEqual([3, 2, 1])
@@ -156,7 +157,9 @@ describe('getAudioStream', () => {
   })
 
   it('音频的可选音质', () => {
-    expect(AUDIO_STREAM_INFO.hasAudio).toBe(true)
-    expect(AUDIO_STREAM_INFO.audios.filter((a) => a.available).map((a) => a.id)).toEqual(['best', 'flac', '192k', '64k'])
+    const info = audioStreamInfo()
+    expect(info.hasAudio).toBe(true)
+    expect(info.audios.filter((a) => a.available).map((a) => a.id)).toEqual(['best', 'flac', '192k', '64k'])
+    expect(info.audios[1].label).toBe('Hi-Res 无损')
   })
 })

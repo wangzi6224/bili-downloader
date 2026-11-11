@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import { FfmpegError } from '../download/errors'
 import { ffmpegCapture } from './ffmpegJob'
 
@@ -185,6 +186,6 @@ export async function probeMedia(path: string, signal?: AbortSignal): Promise<Me
   const r = await ffmpegCapture(['-i', path], { signal, loglevel: 'info' })
   const p = parseProbe(r.stderr)
   if (p) return p
-  const reason = /no such file or directory/i.test(r.stderr) ? '：文件不存在' : ''
-  throw new FfmpegError(`无法读取视频信息${reason}`, r.stderr)
+  const missing = /no such file or directory/i.test(r.stderr)
+  throw new FfmpegError(t(missing ? 'wm.probeFailedNoFile' : 'wm.probeFailed'), r.stderr)
 }

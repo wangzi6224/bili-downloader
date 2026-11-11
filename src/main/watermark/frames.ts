@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { WatermarkRegion } from '@shared/types'
 import { delogoFilter } from '@shared/watermark'
 import { FfmpegError } from '../download/errors'
@@ -71,7 +72,7 @@ export async function grabJpeg(
   )
   // JPEG 以 FF D8 开头
   if (r.stdout.length < 2 || r.stdout[0] !== 0xff || r.stdout[1] !== 0xd8) {
-    throw new FfmpegError('没能从视频里取出画面', r.stderr)
+    throw new FfmpegError(t('wm.grabFailed'), r.stderr)
   }
   return `data:image/jpeg;base64,${r.stdout.toString('base64')}`
 }

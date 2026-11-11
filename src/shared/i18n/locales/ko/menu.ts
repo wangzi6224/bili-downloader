@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  file: '파일',
+  quit: '종료',
+  edit: '편집',
+  undo: '실행 취소',
+  redo: '다시 실행',
+  cut: '잘라내기',
+  copy: '복사',
+  paste: '붙여넣기',
+  selectAll: '모두 선택',
+  view: '보기',
+  reload: '새로고침',
+  forceReload: '강제 새로고침',
+  devTools: '개발자 도구',
+  actualSize: '실제 크기',
+  zoomIn: '확대',
+  zoomOut: '축소',
+  fullscreen: '전체 화면',
+  help: '도움말',
+  openLogDir: '로그 폴더 열기',
+  openDataDir: '데이터 폴더 열기',
+  debug: '디버그',
+  simulateExpiry: '로그인 만료 시뮬레이션',
+  restoreLogin: '실제 로그인 복원',
+  trayShow: '창 보기',
+  traySettings: '설정',
+  trayCheckUpdate: '업데이트 확인',
+  trayLogin: '로그인',
+  trayLogout: '로그아웃',
+  trayQuit: '종료'
+} satisfies Messages['menu']

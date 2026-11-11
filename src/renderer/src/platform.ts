@@ -1,54 +1,74 @@
-/** 和系统有关的文案；platform 是 preload 传过来的 process.platform */
+import { joinList, t, type Key } from '@shared/i18n'
+
+/**
+ * 和系统有关的文案；platform 是 preload 传过来的 process.platform。
+ * 文字都是 getter，每次读取按当前界面语言取，切换语言后不用重新生成
+ */
 export interface PlatformText {
   isMac: boolean
   /** “在访达中显示” */
-  fileManager: string
+  readonly fileManager: string
   /** 窗口转到后台后从哪里重新打开 */
-  reopenFrom: string
+  readonly reopenFrom: string
   quitKey: string
   pasteKey: string
-  av1Hint: string
+  readonly av1Hint: string
   /** 能从哪些浏览器导入登录 */
-  browsers: string
+  readonly browsers: string
   /** 导入 Chrome 系浏览器时系统可能弹出的授权 */
-  chromiumAuthHint: string
+  readonly chromiumAuthHint: string
 }
 
-const MAC: PlatformText = {
-  isMac: true,
-  fileManager: '访达',
-  reopenFrom: '程序坞或菜单栏图标',
-  quitKey: '⌘Q',
-  pasteKey: '⌘V',
-  av1Hint: '最省空间，需 M1 以后的 Mac',
-  browsers: 'Chrome、Edge、Brave、Arc、Vivaldi、Opera、Chromium、Firefox、Safari',
-  chromiumAuthHint: '导入 Chrome 系浏览器时 macOS 会弹出钥匙串授权，请点“允许”。'
+type Os = 'mac' | 'linux' | 'win'
+
+const TEXT: Record<Os, { fileManager: Key; reopenFrom: Key; av1Hint: Key; chromiumAuthHint: Key; browsers: string[] }> = {
+  mac: {
+    fileManager: 'platform.macFileManager',
+    reopenFrom: 'platform.macReopenFrom',
+    av1Hint: 'platform.macAv1Hint',
+    chromiumAuthHint: 'platform.macChromiumAuthHint',
+    browsers: ['Chrome', 'Edge', 'Brave', 'Arc', 'Vivaldi', 'Opera', 'Chromium', 'Firefox', 'Safari']
+  },
+  linux: {
+    fileManager: 'platform.linuxFileManager',
+    reopenFrom: 'platform.trayIcon',
+    av1Hint: 'platform.av1Hint',
+    chromiumAuthHint: 'platform.linuxChromiumAuthHint',
+    browsers: ['Chrome', 'Edge', 'Brave', 'Vivaldi', 'Opera', 'Chromium', 'Firefox']
+  },
+  win: {
+    fileManager: 'platform.winFileManager',
+    reopenFrom: 'platform.trayIcon',
+    av1Hint: 'platform.av1Hint',
+    chromiumAuthHint: 'platform.winChromiumAuthHint',
+    browsers: ['Chrome', 'Edge', 'Brave', 'Vivaldi', 'Opera', 'Chromium', 'Firefox']
+  }
 }
 
-const LINUX: PlatformText = {
-  isMac: false,
-  fileManager: '文件管理器',
-  reopenFrom: '托盘图标',
-  quitKey: 'Ctrl+Q',
-  pasteKey: 'Ctrl+V',
-  av1Hint: '最省空间，较旧的电脑播放可能卡顿',
-  browsers: 'Chrome、Edge、Brave、Vivaldi、Opera、Chromium、Firefox',
-  chromiumAuthHint: 'Chrome 系浏览器的登录信息存在系统密钥环里，导入时如果弹出解锁密钥环，请输入登录密码。'
+export function platformText(platform: string): PlatformText {
+  const os: Os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : 'linux'
+  const k = TEXT[os]
+  return {
+    isMac: os === 'mac',
+    quitKey: os === 'mac' ? '⌘Q' : 'Ctrl+Q',
+    pasteKey: os === 'mac' ? '⌘V' : 'Ctrl+V',
+    get fileManager() {
+      return t(k.fileManager)
+    },
+    get reopenFrom() {
+      return t(k.reopenFrom)
+    },
+    get av1Hint() {
+      return t(k.av1Hint)
+    },
+    get browsers() {
+      return joinList(k.browsers)
+    },
+    get chromiumAuthHint() {
+      return t(k.chromiumAuthHint)
+    }
+  }
 }
-
-const WINDOWS: PlatformText = {
-  isMac: false,
-  fileManager: '文件资源管理器',
-  reopenFrom: '托盘图标',
-  quitKey: 'Ctrl+Q',
-  pasteKey: 'Ctrl+V',
-  av1Hint: '最省空间，较旧的电脑播放可能卡顿',
-  browsers: 'Chrome、Edge、Brave、Vivaldi、Opera、Chromium、Firefox',
-  chromiumAuthHint: 'Windows 使用当前用户的 DPAPI 保护浏览器密钥；新版 Chrome 或 Edge 的应用绑定加密无法导入，请改用应用内登录或手动粘贴 Cookie。'
-}
-
-export const platformText = (platform: string): PlatformText =>
-  platform === 'darwin' ? MAC : platform === 'win32' ? WINDOWS : LINUX
 
 /** ⌘,（macOS）/ Ctrl+,（Windows、Linux）打开设置 */
 export function isSettingsShortcut(e: { metaKey: boolean; ctrlKey: boolean; key: string }, platform: string): boolean {

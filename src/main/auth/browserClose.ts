@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { win32 } from 'node:path'
+import { t } from '@shared/i18n'
 import { encodeCommand, POWERSHELL } from '../powershell'
 import { showDialog } from '../windows'
 
@@ -35,13 +36,13 @@ export type CloseChoice = 'close' | 'qr' | 'cancel'
 export async function confirmCloseBrowser(browser: string, appBound: boolean, signal: AbortSignal): Promise<CloseChoice> {
   const { response } = await showDialog({
     type: 'warning',
-    message: `要关闭 ${browser} 来导入 B站登录信息吗？`,
+    message: t('dialogs.closeBrowserMessage', { browser }),
     detail: [
-      `AI 助手请求导入 B站登录信息，但 ${browser} 正在运行，读不到它的数据。`,
-      `关闭后没有保存的内容可能丢失；如果 ${browser} 没有及时退出，会被强制结束。`,
-      appBound ? `${browser} 启用了应用绑定加密，关闭后也可能读不出登录信息。` : `现在还不确定 ${browser} 里有没有 B站登录信息。`
+      t('dialogs.closeBrowserRequest', { browser }),
+      t('dialogs.closeBrowserRisk', { browser }),
+      t(appBound ? 'dialogs.closeBrowserAppBound' : 'dialogs.closeBrowserUnknown', { browser })
     ].join('\n'),
-    buttons: [`关闭 ${browser} 并导入`, '改用扫码', '取消'],
+    buttons: [t('dialogs.closeBrowserConfirm', { browser }), t('dialogs.useQrInstead'), t('dialogs.cancel')],
     defaultId: 2,
     cancelId: 2,
     noLink: true,

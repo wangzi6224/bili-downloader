@@ -18,14 +18,14 @@ import { importCookieText } from './auth/cookieImport'
 import { FULL_DISK_ACCESS_URL } from './auth/importError'
 import { openLoginWindow } from './auth/loginWindow'
 import { biliSession } from './auth/session'
-import { AUDIO_STREAM_INFO } from './bili/audio'
+import { audioStreamInfo } from './bili/audio'
 import { expandLazy, loadPage, myFavFolders } from './bili/lists'
 import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
 import { resolveBatch, resolveInput } from './bili/resolve'
 import { exportConfig, importConfig } from './config'
 import type { DownloadManager } from './download/manager'
 import type { McpServer } from './mcp/server'
-import { CDN_HOSTS, pingHost } from './net/cdn'
+import { cdnHosts, pingHost } from './net/cdn'
 import { networkStatus } from './net/network'
 import type { SubscriptionManager } from './subscriptions'
 import type { Updater } from './update/updater'
@@ -41,6 +41,7 @@ import { quitConfirmed } from './quitGuard'
 import { aiModel, aiSessions } from './watermark/ai'
 import { prepareManual, previewFrame, requireVideoTask } from './watermark/manual'
 import { speedRatio } from './watermark/speed'
+import { getLanguage, t } from '@shared/i18n'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
 
@@ -134,7 +135,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
     return resolveBatch(inputs, progress)
   })
   handle('streamInfo', async (item: MediaItem) => {
-    if (item.kind === 'audio') return AUDIO_STREAM_INFO
+    if (item.kind === 'audio') return audioStreamInfo()
     // 列表里的视频还没有 cid，先查一次详情（只取第一个分P）
     const probe = item.lazy ? (await expandLazy([item]))[0] : item
     if (probe.unavailable) throw new Error(probe.unavailable)
@@ -142,7 +143,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   })
   handle('myFavFolders', async () => {
     const s = await checkAuth().catch(() => getAuthState())
-    if (!s.loggedIn) throw new Error('请先登录')
+    if (!s.loggedIn) throw new Error(t('authErr.loginRequired'))
     return myFavFolders(s.user.mid)
   })
 
@@ -197,12 +198,13 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   handle('wm:speed', () => ({ fast: speedRatio('fast'), ai: speedRatio('ai') }))
   aiModel().on('status', (s) => send('wm:ai:status', s))
 
+  handle('i18n:get', () => getLanguage())
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch: Partial<Settings>) => updateSettings(patch))
   handle('settings:chooseDir', async () => {
     const win = getMainWindow()
     const opts = {
-      title: '选择下载目录',
+      title: t('dialogs.chooseDownloadDir'),
       defaultPath: getSettings().downloadDir,
       properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
     }
@@ -225,8 +227,8 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
     await res.body?.cancel()
     return Date.now() - t
   })
-  handle('net:cdnHosts', () => CDN_HOSTS)
-  handle('net:pingCdn', () => Promise.all(CDN_HOSTS.map(async (h) => ({ host: h.host, ms: await pingHost(h.host) }))))
+  handle('net:cdnHosts', () => cdnHosts())
+  handle('net:pingCdn', () => Promise.all(cdnHosts().map(async (h) => ({ host: h.host, ms: await pingHost(h.host) }))))
 
   handle('config:export', () => exportConfig(getMainWindow(), subs))
   handle('config:import', () => importConfig(getMainWindow(), subs))

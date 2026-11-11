@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { ReleaseNote } from '@shared/types'
 
 /** 发布脚本生成的 update.json，随每个 Release 一起上传 */
@@ -28,7 +29,7 @@ const VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 export function compareVersions(a: string, b: string): number {
   const pa = VERSION_RE.exec(a.trim())
   const pb = VERSION_RE.exec(b.trim())
-  if (!pa || !pb) throw new Error(`版本号格式不对：${pa ? b : a}`)
+  if (!pa || !pb) throw new Error(t('updateErr.badVersion', { version: pa ? b : a }))
   for (let i = 1; i <= 3; i++) {
     const d = Number(pa[i]) - Number(pb[i])
     if (d) return Math.sign(d)
@@ -50,7 +51,7 @@ export function compareVersions(a: string, b: string): number {
 const isStr = (v: unknown): v is string => typeof v === 'string'
 
 function invalid(what: string): never {
-  throw new Error(`更新信息格式不对：${what}`)
+  throw new Error(t('updateErr.badManifest', { what }))
 }
 
 /** 只接受 https；allowLocal 时额外放行本机 http，用于在本地测试更新流程 */
@@ -59,7 +60,7 @@ const safeUrl = (u: unknown, allowLocal: boolean): u is string =>
 
 /** 校验下载到的 update.json，格式不对时抛错 */
 export function parseManifest(data: unknown, allowLocal = false): Manifest {
-  if (!data || typeof data !== 'object') invalid('不是 JSON 对象')
+  if (!data || typeof data !== 'object') invalid(t('updateErr.notJsonObject'))
   const m = data as Record<string, unknown>
   if (!isStr(m.version) || !VERSION_RE.test(m.version)) invalid('version')
   if (!safeUrl(m.page, allowLocal)) invalid('page')

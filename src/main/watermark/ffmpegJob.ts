@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { t } from '@shared/i18n'
+import { markWatermarkText } from '@shared/watermark'
 import { AbortError, FfmpegError } from '../download/errors'
 import { explainFfmpegError, ffmpegPath } from '../download/mux'
 import { trackJob } from './orphans'
@@ -110,7 +112,7 @@ export function ffmpegCapture(
     }
     const onAbort = (): void => stop(new AbortError())
     signal?.addEventListener('abort', onAbort, { once: true })
-    const timer = awakeTimer(timeoutMs, () => stop(new FfmpegError('ffmpeg 没有响应', stderr)))
+    const timer = awakeTimer(timeoutMs, () => stop(new FfmpegError(t('wm.ffNoResponse'), stderr)))
     const cleanup = (): void => {
       timer.stop()
       signal?.removeEventListener('abort', onAbort)
@@ -118,7 +120,7 @@ export function ffmpegCapture(
     proc.stdout.on('data', (d: Buffer) => {
       if (failure) return
       size += d.length
-      if (size > maxBytes) return stop(new FfmpegError('ffmpeg 输出的数据超出预期', stderr))
+      if (size > maxBytes) return stop(new FfmpegError(t('wm.ffTooMuchOutput'), stderr))
       chunks.push(d)
     })
     proc.stderr.on('data', (d) => {
@@ -126,7 +128,7 @@ export function ffmpegCapture(
     })
     proc.on('error', (e) => {
       cleanup()
-      reject(new FfmpegError(`无法运行 ffmpeg：${e.message}`))
+      reject(new FfmpegError(t('download.ffSpawn', { error: e.message })))
     })
     proc.on('close', (code) => {
       cleanup()
@@ -245,14 +247,14 @@ function spawnTranscode(args: string[], o: TranscodeOptions): Promise<void> {
     }
     proc.on('error', (e) => {
       cleanup()
-      reject(new FfmpegError(`无法运行 ffmpeg：${e.message}`))
+      reject(new FfmpegError(t('download.ffSpawn', { error: e.message })))
     })
     proc.on('close', (code) => {
       cleanup()
       if (signal?.aborted) reject(new AbortError())
-      else if (stalled) reject(new FfmpegError('去水印超时：ffmpeg 长时间没有进展', stderr))
+      else if (stalled) reject(new FfmpegError(markWatermarkText(t('wm.ffStalled')), stderr))
       else if (code === 0) resolve()
-      else reject(new FfmpegError(explainFfmpegError(stderr, code, '去水印'), stderr))
+      else reject(new FfmpegError(explainFfmpegError(stderr, code, 'watermark'), stderr))
     })
   })
 }

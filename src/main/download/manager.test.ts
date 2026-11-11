@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_TEMPLATES } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
 import type { DownloadOptions, EnqueueRequest, MediaItem, Settings, TaskInfo } from '@shared/types'
-import { WM_NOTE } from '@shared/watermark'
+import { WM_MARK, WM_NOTE } from '@shared/watermark'
 import type { DashStream, PlayInfo } from '../bili/playurl'
 import type { PreparedExtras } from './extras'
 
@@ -937,7 +937,7 @@ describe('输出', () => {
 
 describe('纯音频', () => {
   it('音频区只有一个分片，无损输出 flac，合并时没有视频', async () => {
-    vi.mocked(getAudioStream).mockResolvedValue({ urls: ['https://au/1.flac'], size: 3000, label: '无损', flac: true })
+    vi.mocked(getAudioStream).mockResolvedValue({ urls: ['https://au/1.flac'], size: 3000, label: '无损', text: '无损', flac: true })
     const m = make()
     m.enqueue(req([item(1, { key: 'audio:1', kind: 'audio', bvid: undefined })], { kind: 'audio' }))
     await settle()
@@ -957,7 +957,7 @@ describe('纯音频', () => {
   })
 
   it('有损音频输出 m4a', async () => {
-    vi.mocked(getAudioStream).mockResolvedValue({ urls: ['https://au/1.m4a'], size: 3000, label: '320K', flac: false })
+    vi.mocked(getAudioStream).mockResolvedValue({ urls: ['https://au/1.m4a'], size: 3000, label: '320K', text: '320K', flac: false })
     const m = make()
     m.enqueue(req([item(1, { key: 'audio:1', kind: 'audio', bvid: undefined })], { kind: 'audio' }))
     await settle()
@@ -1395,13 +1395,13 @@ describe('手动去水印', () => {
     expect(readFileSync(out, 'utf8')).toBe('orig')
     expect(existsSync(`${out}.wm.tmp`)).toBe(false)
     expect(existsSync(tmpOf('t1'))).toBe(false)
-    expect(t).toMatchObject({ status: 'done', note: '去水印失败：磁盘空间不足，已保留原视频', processing: undefined })
+    expect(t).toMatchObject({ status: 'done', note: `${WM_MARK}去水印失败：磁盘空间不足，已保留原视频`, processing: undefined })
 
     // 不是 Error 的异常也转成文字
     vi.mocked(replaceVideo).mockRejectedValue('坏了')
     m.startWatermark('t1', R)
     await settle()
-    expect(t.note).toBe('去水印失败：坏了，已保留原视频')
+    expect(t.note).toBe(`${WM_MARK}去水印失败：坏了，已保留原视频`)
   })
 
   it('原视频被占用、目录不能写时提示原因', async () => {
@@ -1418,14 +1418,14 @@ describe('手动去水印', () => {
       throw Object.assign(new Error('busy'), { code: 'EBUSY' })
     })
     await settle()
-    expect(t.note).toBe('去水印失败：原视频正被其他程序占用，没能替换，已保留原视频')
+    expect(t.note).toBe(`${WM_MARK}去水印失败：原视频正被其他程序占用，没能替换，已保留原视频`)
 
     m.startWatermark('t1', R)
     vi.mocked(renameSync).mockImplementationOnce(() => {
       throw Object.assign(new Error('nospace'), { code: 'ENOSPC' })
     })
     await settle()
-    expect(t.note).toBe('去水印失败：磁盘空间不足，已保留原视频')
+    expect(t.note).toBe(`${WM_MARK}去水印失败：磁盘空间不足，已保留原视频`)
     expect(readFileSync(out, 'utf8')).toBe('orig')
   })
 
@@ -1462,7 +1462,7 @@ describe('手动去水印', () => {
     await settle()
     expect(existsSync(out)).toBe(false)
     expect(existsSync(`${out}.wm.tmp`)).toBe(false)
-    expect(m.list()[0].note).toBe('去水印没有完成：处理期间原视频被移动或删除了')
+    expect(m.list()[0].note).toBe(`${WM_MARK}去水印没有完成：处理期间原视频被移动或删除了`)
     const saved = JSON.parse(readFileSync(stateFile(), 'utf8'))[0]
     expect(saved.processing).toBeUndefined()
     expect(saved.tmpOutput).toBeUndefined()
@@ -1623,9 +1623,9 @@ describe('手动去水印', () => {
       status: 'done',
       processing: undefined,
       tmpOutput: undefined,
-      note: '该清晰度没有 AVC；去水印没有完成（应用中途退出了），已保留原视频'
+      note: `该清晰度没有 AVC；${WM_MARK}去水印没有完成（应用中途退出了），已保留原视频`
     })
-    expect(b.note).toBe('去水印没有完成（应用中途退出了），已保留原视频')
+    expect(b.note).toBe(`${WM_MARK}去水印没有完成（应用中途退出了），已保留原视频`)
     expect(existsSync(`${out}.wm.tmp`)).toBe(false)
     expect(existsSync(tmpOf('t1'))).toBe(false)
     expect(readFileSync(out, 'utf8')).toBe('orig')

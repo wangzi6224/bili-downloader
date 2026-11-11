@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Download, ExternalLink, Loader2, RotateCw, SkipForward, Sparkles } from 'lucide-react'
 import { fmtBytes } from '../format'
+import { useT } from '../i18n'
 import { fmtDate, parseMarkdown, type InlineNode } from '../markdown'
 import { api, useStore } from '../store'
 import { unfinishedCount } from '../taskStatus'
@@ -67,6 +68,7 @@ function Markdown({ text }: { text: string }) {
 }
 
 export function UpdateDialog() {
+  const t = useT()
   const u = useStore((s) => s.update)
   const set = useStore((s) => s.set)
   const pending = useStore((s) => unfinishedCount(s.tasks))
@@ -98,19 +100,19 @@ export function UpdateDialog() {
               close()
             })}
           >
-            跳过这个版本
+            {t('updateUi.skipVersion')}
           </Button>
         )}
         <Button variant="ghost" onClick={close}>
-          以后再说
+          {t('updateUi.notNow')}
         </Button>
         {info.blocker ? (
           <Button variant="primary" icon={ExternalLink} autoFocus onClick={openPage}>
-            前往下载页面
+            {t('updateUi.openDownloadPage')}
           </Button>
         ) : (
           <Button variant="primary" icon={Download} autoFocus onClick={run(() => api.update.download())}>
-            下载并安装
+            {t('updateUi.downloadAndInstall')}
           </Button>
         )}
       </>
@@ -119,10 +121,10 @@ export function UpdateDialog() {
     footer = (
       <>
         <Button variant="ghost" className="mr-auto" onClick={run(() => api.update.cancel())}>
-          取消下载
+          {t('updateUi.cancelDownload')}
         </Button>
         <Button variant="primary" onClick={close}>
-          后台下载
+          {t('updateUi.downloadInBackground')}
         </Button>
       </>
     )
@@ -130,30 +132,30 @@ export function UpdateDialog() {
     footer = (
       <>
         <Button variant="ghost" onClick={close}>
-          以后再说
+          {t('updateUi.notNow')}
         </Button>
         <Button variant="primary" icon={RotateCw} autoFocus onClick={run(() => api.update.install())}>
-          重启并安装
+          {t('updateUi.restartAndInstall')}
         </Button>
       </>
     )
   } else if (u.status === 'installing') {
     footer = (
       <Button variant="primary" disabled>
-        正在安装…
+        {t('updateUi.installingButton')}
       </Button>
     )
   } else {
     footer = (
       <>
         <Button variant="ghost" icon={ExternalLink} className="mr-auto" onClick={openPage}>
-          前往下载页面
+          {t('updateUi.openDownloadPage')}
         </Button>
         <Button variant="ghost" onClick={close}>
-          关闭
+          {t('common.close')}
         </Button>
         <Button variant="primary" icon={RotateCw} onClick={run(() => api.update.download())}>
-          重试
+          {t('updateUi.retry')}
         </Button>
       </>
     )
@@ -163,8 +165,12 @@ export function UpdateDialog() {
     <Modal onClose={u.status === 'installing' ? undefined : close} className="max-w-lg">
       <ModalHeader
         icon={Sparkles}
-        title={`发现新版本 ${info.version}`}
-        subtitle={`当前版本 ${u.current}${info.date ? ` · ${fmtDate(info.date)} 发布` : ''} · 安装包 ${fmtBytes(info.size)}`}
+        title={t('updateUi.title', { version: info.version })}
+        subtitle={[
+          t('updateUi.currentVersion', { version: u.current }),
+          ...(info.date ? [t('updateUi.releasedOn', { date: fmtDate(info.date) })] : []),
+          t('updateUi.packageSize', { size: fmtBytes(info.size) })
+        ].join(' · ')}
         onClose={u.status === 'installing' ? undefined : close}
       />
       <div className="flex flex-col gap-3 px-6 pt-4">
@@ -184,16 +190,16 @@ export function UpdateDialog() {
               ))}
             </div>
           ) : (
-            <div className="text-[13px] text-muted">这个版本没有填写更新说明。</div>
+            <div className="text-[13px] text-muted">{t('updateUi.noNotes')}</div>
           )}
         </div>
-        {u.status === 'available' && info.blocker && <Banner tone="warn">{info.blocker}，或者去下载页面手动安装。</Banner>}
-        {u.status === 'available' && info.skipped && <Banner>你之前跳过了这个版本，自动检查时不再提醒。</Banner>}
+        {u.status === 'available' && info.blocker && <Banner tone="warn">{t('updateUi.blocker', { blocker: info.blocker })}</Banner>}
+        {u.status === 'available' && info.skipped && <Banner>{t('updateUi.skipped')}</Banner>}
         {u.status === 'downloading' && (
           <div>
             <Progress value={u.total ? (u.done / u.total) * 100 : 0} />
             <div className="mt-1.5 flex justify-between text-xs text-muted tabular-nums">
-              <span>正在下载…关掉窗口也会继续</span>
+              <span>{t('updateUi.downloading')}</span>
               <span>
                 {fmtBytes(u.done)} / {fmtBytes(u.total)}
               </span>
@@ -201,12 +207,12 @@ export function UpdateDialog() {
           </div>
         )}
         {u.status === 'ready' && pending > 0 && (
-          <Banner tone="warn">还有 {pending} 个任务未完成，重启会暂停它们，更新后可以继续。</Banner>
+          <Banner tone="warn">{t('updateUi.pendingTasks', { count: pending })}</Banner>
         )}
-        {u.status === 'ready' && !pending && <Banner>新版本已下载并校验完成，重启后即可使用。</Banner>}
+        {u.status === 'ready' && !pending && <Banner>{t('updateUi.ready')}</Banner>}
         {u.status === 'installing' && (
           <Banner icon={Loader2} spin>
-            正在安装，应用马上会自动重新打开…
+            {t('updateUi.installing')}
           </Banner>
         )}
         {u.status === 'error' && <Banner tone="error">{u.error}</Banner>}

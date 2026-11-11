@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+    setupFiles: ['src/test/setup.ts'],
     // Windows runners have fewer cores; cap workers to keep network/timer tests stable.
     maxWorkers: process.platform === 'win32' ? 4 : undefined,
     // 用假计时器推进、同时有真实文件读写的下载测试在 Windows runner 上慢得多，默认的 5 秒不够

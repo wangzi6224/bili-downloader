@@ -1,4 +1,5 @@
 import { sanitize } from './filename'
+import { t, type Key } from './i18n'
 
 /**
  * 命名模板：
@@ -11,25 +12,34 @@ export type NamingKind = 'text' | 'number' | 'date'
 
 export interface NamingVar {
   name: string
-  label: string
+  /** 说明文字，读取时按当前界面语言生成 */
+  readonly label: string
   kind: NamingKind
 }
 
+const namingVar = (name: string, labelKey: Key, kind: NamingKind): NamingVar => ({
+  name,
+  kind,
+  get label() {
+    return t(labelKey)
+  }
+})
+
 export const NAMING_VARS: NamingVar[] = [
-  { name: 'title', label: '标题（分P / 单集标题）', kind: 'text' },
-  { name: 'series', label: '合集、剧集或多P视频的总标题，单个视频时为空', kind: 'text' },
-  { name: 'index', label: '序号', kind: 'number' },
-  { name: 'owner', label: 'UP 主', kind: 'text' },
-  { name: 'owner_mid', label: 'UP 主 UID', kind: 'number' },
-  { name: 'pubdate', label: '发布时间', kind: 'date' },
-  { name: 'date', label: '创建任务的时间', kind: 'date' },
-  { name: 'quality', label: '画质', kind: 'text' },
-  { name: 'codec', label: '编码', kind: 'text' },
-  { name: 'bvid', label: 'BV 号', kind: 'text' },
-  { name: 'aid', label: 'av 号', kind: 'number' },
-  { name: 'cid', label: 'cid', kind: 'number' },
-  { name: 'ep_id', label: '番剧单集 ID', kind: 'number' },
-  { name: 'type', label: '类型（视频 / 番剧影视）', kind: 'text' }
+  namingVar('title', 'naming.varTitle', 'text'),
+  namingVar('series', 'naming.varSeries', 'text'),
+  namingVar('index', 'naming.varIndex', 'number'),
+  namingVar('owner', 'naming.varOwner', 'text'),
+  namingVar('owner_mid', 'naming.varOwnerMid', 'number'),
+  namingVar('pubdate', 'naming.varPubdate', 'date'),
+  namingVar('date', 'naming.varDate', 'date'),
+  namingVar('quality', 'naming.varQuality', 'text'),
+  namingVar('codec', 'naming.varCodec', 'text'),
+  namingVar('bvid', 'naming.varBvid', 'text'),
+  namingVar('aid', 'naming.varAid', 'number'),
+  namingVar('cid', 'naming.varCid', 'number'),
+  namingVar('ep_id', 'naming.varEpId', 'number'),
+  namingVar('type', 'naming.varType', 'text')
 ]
 
 const VAR_KIND = new Map(NAMING_VARS.map((v) => [v.name, v.kind]))
@@ -80,19 +90,19 @@ function formatVar(name: string, value: string | number | undefined, fmt?: strin
 
 /** 返回错误说明，模板合法时返回 null */
 export function validateTemplate(tpl: string): string | null {
-  if (!tpl.trim()) return '模板不能为空'
+  if (!tpl.trim()) return t('naming.empty')
   let depth = 0
   for (const ch of tpl) {
     if (ch === '<') depth++
     if (ch === '>') depth--
-    if (depth > 1) return '可选段 <…> 不能嵌套'
-    if (depth < 0) return '多了一个 >'
+    if (depth > 1) return t('naming.nested')
+    if (depth < 0) return t('naming.extraClose')
   }
-  if (depth !== 0) return '可选段 <…> 没有闭合'
+  if (depth !== 0) return t('naming.unclosed')
   for (const m of tpl.matchAll(VAR_RE)) {
-    if (!VAR_KIND.has(m[1])) return `不认识的变量 {${m[1]}}`
+    if (!VAR_KIND.has(m[1])) return t('naming.unknownVar', { variable: `{${m[1]}}` })
   }
-  if (/\{[^}]*$/.test(tpl) || /\{(?!\w)/.test(tpl)) return '变量的花括号没有写完整'
+  if (/\{[^}]*$/.test(tpl) || /\{(?!\w)/.test(tpl)) return t('naming.unfinishedBrace')
   return null
 }
 

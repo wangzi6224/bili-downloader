@@ -32,6 +32,8 @@ import { initOrphans } from './watermark/orphans'
 import { estimateTime, initSpeed, speedRatio } from './watermark/speed'
 import { closeDecision, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
+import { applyLanguage } from './i18n'
+import { getLanguage, t } from '@shared/i18n'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 const isMac = process.platform === 'darwin'
@@ -57,7 +59,7 @@ function createWindow(): BrowserWindow {
     ...savedBounds(),
     minWidth: 900,
     minHeight: 600,
-    title: 'B站下载器',
+    title: t('common.appName'),
     ...platformWindowOptions(),
     show: false,
     webPreferences: {
@@ -121,57 +123,57 @@ function showMainWindow(): void {
   win.focus()
 }
 
-/** Windows 和 Linux 菜单标签不会按系统语言翻译，自己写中文；macOS 用系统原生菜单 */
-const DESKTOP_MENU: Electron.MenuItemConstructorOptions[] = [
+/** Windows 和 Linux 菜单标签不会按系统语言翻译，按界面语言自己写；macOS 用系统原生菜单 */
+const desktopMenu = (): Electron.MenuItemConstructorOptions[] => [
   // Electron 在 Windows 上不给 quit 绑快捷键，设置页里写着 Ctrl+Q
-  { label: '文件', submenu: [{ label: '退出', role: 'quit', accelerator: 'CmdOrCtrl+Q' }] },
+  { label: t('menu.file'), submenu: [{ label: t('menu.quit'), role: 'quit', accelerator: 'CmdOrCtrl+Q' }] },
   {
-    label: '编辑',
+    label: t('menu.edit'),
     submenu: [
-      { label: '撤销', role: 'undo' },
-      { label: '重做', role: 'redo' },
+      { label: t('menu.undo'), role: 'undo' },
+      { label: t('menu.redo'), role: 'redo' },
       { type: 'separator' },
-      { label: '剪切', role: 'cut' },
-      { label: '复制', role: 'copy' },
-      { label: '粘贴', role: 'paste' },
-      { label: '全选', role: 'selectAll' }
+      { label: t('menu.cut'), role: 'cut' },
+      { label: t('menu.copy'), role: 'copy' },
+      { label: t('menu.paste'), role: 'paste' },
+      { label: t('menu.selectAll'), role: 'selectAll' }
     ]
   },
   {
-    label: '视图',
+    label: t('menu.view'),
     submenu: [
-      { label: '重新加载', role: 'reload' },
-      { label: '强制重新加载', role: 'forceReload' },
-      { label: '开发者工具', role: 'toggleDevTools' },
+      { label: t('menu.reload'), role: 'reload' },
+      { label: t('menu.forceReload'), role: 'forceReload' },
+      { label: t('menu.devTools'), role: 'toggleDevTools' },
       { type: 'separator' },
-      { label: '实际大小', role: 'resetZoom' },
-      { label: '放大', role: 'zoomIn' },
-      { label: '缩小', role: 'zoomOut' },
+      { label: t('menu.actualSize'), role: 'resetZoom' },
+      { label: t('menu.zoomIn'), role: 'zoomIn' },
+      { label: t('menu.zoomOut'), role: 'zoomOut' },
       { type: 'separator' },
-      { label: '全屏', role: 'togglefullscreen' }
+      { label: t('menu.fullscreen'), role: 'togglefullscreen' }
     ]
   }
 ]
 
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
-    ...(isMac ? ([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }] as const) : DESKTOP_MENU),
+    ...(isMac ? ([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }] as const) : desktopMenu()),
     {
       role: 'help',
       // macOS 按系统语言自动翻译
-      label: isMac ? undefined : '帮助',
+      label: isMac ? undefined : t('menu.help'),
       submenu: [
-        { label: '打开日志文件夹', click: () => void shell.openPath(logDir()) },
-        { label: '打开数据文件夹', click: () => void shell.openPath(app.getPath('userData')) }
+        { label: t('menu.openLogDir'), click: () => void shell.openPath(logDir()) },
+        { label: t('menu.openDataDir'), click: () => void shell.openPath(app.getPath('userData')) }
       ]
     }
   ]
   if (isDev) {
     template.push({
-      label: '调试',
+      label: t('menu.debug'),
       submenu: [
-        { label: '模拟登录过期', click: () => void simulateExpiry() },
-        { label: '恢复真实登录', click: () => void restoreSimulatedExpiry() }
+        { label: t('menu.simulateExpiry'), click: () => void simulateExpiry() },
+        { label: t('menu.restoreLogin'), click: () => void restoreSimulatedExpiry() }
       ]
     })
   }
@@ -193,9 +195,9 @@ function showAndSend(channel: string): void {
 async function confirmLogout(): Promise<void> {
   const { response } = await showDialog({
     type: 'warning',
-    message: '确定要退出登录吗？',
-    detail: '退出后需要重新导入或登录。',
-    buttons: ['退出登录', '取消'],
+    message: t('dialogs.logoutMessage'),
+    detail: t('dialogs.logoutDetail'),
+    buttons: [t('dialogs.logoutConfirm'), t('dialogs.cancel')],
     defaultId: 1,
     cancelId: 1
   })
@@ -208,11 +210,14 @@ async function checkUpdateFromTray(updater: Updater): Promise<void> {
   else if (reply) await showDialog(reply)
 }
 
+/** 托盘菜单和提示按当前登录状态和界面语言重建；托盘建好后才有 */
+let refreshTray: (() => void) | undefined
+
 /** 窗口隐藏到后台后靠托盘（macOS 上是菜单栏）图标找回，常用操作也放在它的菜单里 */
 function createTray(updater: Updater): void {
   tray = new Tray(trayImage())
-  tray.setToolTip('B站下载器')
-  const refreshMenu = (): void =>
+  const refreshMenu = (): void => {
+    tray?.setToolTip(t('common.appName'))
     tray?.setContextMenu(
       Menu.buildFromTemplate(
         trayMenu(getAuthState(), {
@@ -226,6 +231,8 @@ function createTray(updater: Updater): void {
         })
       )
     )
+  }
+  refreshTray = refreshMenu
   refreshMenu()
   onLoginChanged(refreshMenu)
   // macOS 上单击图标就弹出菜单，菜单栏图标的惯例也是这样，不再同时弹出窗口
@@ -254,6 +261,8 @@ function notify(title: string, body: string): void {
 async function start(): Promise<void> {
   initLogger()
   const settings = getSettings()
+  // 菜单、托盘、对话框和报错都要用到，最先确定
+  applyLanguage(settings.language)
   nativeTheme.themeSource = settings.theme
   limiter.setLimit(settings.speedLimit)
   await applyNetwork(settings, true)
@@ -273,13 +282,17 @@ async function start(): Promise<void> {
   manager.on('purged', (tasks: TaskInfo[]) => removeDownloads(tasks.map((t) => t.item.key)))
   manager.on('active', (active: boolean) => applyPower(active, getSettings().powerMode))
   manager.on('idle', ({ done, failed }: { done: number; failed: number }) =>
-    notify(failed ? '下载结束，有任务失败' : '下载完成', failed ? `完成 ${done} 个，失败 ${failed} 个` : `${done} 个任务已全部完成`)
+    failed
+      ? notify(t('misc.notifyFailedTitle'), t('misc.notifyFailedBody', { done, failed }))
+      : notify(t('misc.notifyDoneTitle'), t('misc.notifyDoneBody', { count: done }))
   )
 
   const enqueue = makeEnqueue(manager)
   const subs = new SubscriptionManager(enqueue)
   subs.on('update', (list) => send('subs:update', list))
-  subs.on('found', ({ title, count }: { title: string; count: number }) => notify('订阅有更新', `“${title}”有 ${count} 个新内容，已加入下载`))
+  subs.on('found', ({ title, count }: { title: string; count: number }) =>
+    notify(t('misc.notifySubsTitle'), t('misc.notifySubsBody', { title, count }))
+  )
   subs.start()
 
   const login = new LoginFlow({
@@ -321,6 +334,11 @@ async function start(): Promise<void> {
 
   onSettingsChange((s) => {
     send('settings:changed', s)
+    if (applyLanguage(s.language)) {
+      send('i18n:changed', getLanguage())
+      buildMenu()
+      refreshTray?.()
+    }
     nativeTheme.themeSource = s.theme
     limiter.setLimit(s.speedLimit)
     void applyNetwork(s)

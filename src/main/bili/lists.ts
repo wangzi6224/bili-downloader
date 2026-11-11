@@ -1,3 +1,5 @@
+import { t } from '@shared/i18n'
+import { rankLabel } from '@shared/parseUrl'
 import type { MediaItem, PagedSource, PageResult, Paging, ParseResult } from '@shared/types'
 import { api, BiliError } from './http'
 
@@ -81,7 +83,7 @@ function favItems(d: FavData, page: number): MediaItem[] {
     }
     const item = lazyVideo({ ...m, aid: m.id, desc: m.intro, pubdate: m.pubtime }, index, m.upper, m.ugc?.first_cid, m.page)
     // attr 第 0 位为 1 表示视频已失效
-    if ((m.attr ?? 0) & 1 || m.title === '已失效视频') item.unavailable = '已失效'
+    if ((m.attr ?? 0) & 1 || m.title === '已失效视频') item.unavailable = t('bili.unavailable')
     return item
   })
 }
@@ -95,7 +97,7 @@ export async function parseFav(mediaId: number): Promise<ParseResult> {
     cover: d.info.cover,
     owner: d.info.upper?.name,
     meta: { desc: d.info.intro, owner: d.info.upper?.name, ownerMid: d.info.upper?.mid },
-    groups: [{ id: 'fav', title: '收藏夹', items }],
+    groups: [{ id: 'fav', title: t('bili.groupFav'), items }],
     defaultSelected: items.filter((i) => !i.unavailable).map((i) => i.key),
     paging: { source: { type: 'fav', mediaId }, page: 1, total: d.info.media_count, hasMore: d.has_more }
   }
@@ -146,7 +148,7 @@ async function spacePageRaw(mid: number, page: number, keyword?: string): Promis
       }
     } catch {
       throw new BiliError(
-        `B站暂时拒绝了获取 UP 主投稿列表的请求（${e.message}），请稍后再试；也可以改为粘贴 UP 主的合集或收藏夹链接`,
+        t('bili.spaceRejected', { error: e.message }),
         e.code
       )
     }
@@ -162,11 +164,12 @@ export async function parseSpace(mid: number, keyword?: string): Promise<ParseRe
   first.items.forEach((i) => (i.owner = name))
   return {
     kind: 'ugc',
+    // 结果标题会成为文件名模板的 {series}，保持中文，不随界面语言变
     title: keyword ? `${name} 的投稿（${keyword}）` : `${name} 的投稿`,
     cover: card.card.face,
     owner: name,
     meta: { owner: name, ownerMid: mid, desc: card.card.sign },
-    groups: [{ id: 'space', title: '投稿', items: first.items }],
+    groups: [{ id: 'space', title: t('bili.groupSpace'), items: first.items }],
     defaultSelected: [],
     paging: { source: { type: 'space', mid, keyword }, page: 1, total: first.total, hasMore: first.total > SPACE_PS }
   }
@@ -200,7 +203,7 @@ export async function parseSpaceSeason(mid: number, seasonId: number): Promise<P
     title: d.meta.title,
     cover: d.meta.cover,
     meta: { desc: d.meta.description, ownerMid: mid },
-    groups: [{ id: 'season', title: '合集', items }],
+    groups: [{ id: 'season', title: t('bili.groupSeason'), items }],
     defaultSelected: items.map((i) => i.key),
     paging: { source: { type: 'spaceSeason', mid, seasonId }, page: 1, total: d.meta.total, hasMore: d.meta.total > SPACE_PS }
   }
@@ -219,7 +222,7 @@ export async function parseSpaceSeries(mid: number, seriesId: number): Promise<P
     title: meta.meta.name,
     cover: meta.meta.cover ?? items[0]?.cover ?? '',
     meta: { desc: meta.meta.description, ownerMid: mid },
-    groups: [{ id: 'series', title: '系列', items }],
+    groups: [{ id: 'series', title: t('bili.groupSeries'), items }],
     defaultSelected: items.map((i) => i.key),
     paging: { source: { type: 'spaceSeries', mid, seriesId }, page: 1, total: d.page.total, hasMore: d.page.total > SPACE_PS }
   }
@@ -334,9 +337,10 @@ export async function parseWatchLater(): Promise<ParseResult> {
   const items = (d.list ?? []).map((v, i) => lazyVideo(v, i + 1, v.owner, v.cid, v.videos))
   return {
     kind: 'ugc',
+    // 结果标题会成为文件名模板的 {series}，保持中文，不随界面语言变
     title: '稍后再看',
     cover: items[0]?.cover ?? '',
-    groups: [{ id: 'toview', title: '稍后再看', items }],
+    groups: [{ id: 'toview', title: t('bili.groupWatchLater'), items }],
     defaultSelected: items.map((i) => i.key)
   }
 }
@@ -432,13 +436,14 @@ export async function parseWeekly(number?: number): Promise<ParseResult> {
   if (!n) {
     const list = await api<{ list: { number: number }[] }>('https://api.bilibili.com/x/web-interface/popular/series/list')
     n = list.list[0]?.number
-    if (!n) throw new BiliError('没有拿到每周必看的期数')
+    if (!n) throw new BiliError(t('bili.weeklyNoNumber'))
   }
   const d = await api<{ config: { label?: string; name?: string; subject?: string }; list: PopularVideo[] }>(
     'https://api.bilibili.com/x/web-interface/popular/series/one',
     { number: n }
   )
   const items = d.list.map((v, i) => lazyVideo(v, i + 1, v.owner, v.cid, v.videos))
+  // 结果标题会成为文件名模板的 {series}，保持中文，不随界面语言变
   const title = `每周必看 第 ${n} 期${d.config.subject ? `：${d.config.subject}` : ''}`
   return {
     kind: 'ugc',
@@ -458,10 +463,11 @@ export async function parseRank(slug: string, rank: { rid: number; type: string;
   const items = d.list.map((v, i) => lazyVideo(v, i + 1, v.owner, v.cid, v.videos))
   return {
     kind: 'ugc',
+    // 结果标题会成为文件名模板的 {series}，保持中文，不随界面语言变
     title: `排行榜 · ${rank.label}`,
     cover: items[0]?.cover ?? '',
     meta: { url: `https://www.bilibili.com/v/popular/rank/${slug}` },
-    groups: [{ id: 'rank', title: `${rank.label}排行`, items }],
+    groups: [{ id: 'rank', title: t('bili.groupRank', { label: rankLabel(slug) }), items }],
     defaultSelected: []
   }
 }

@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { EnqueueRequest } from '@shared/types'
 import { expandLazy } from './bili/lists'
 import type { DownloadManager } from './download/manager'
@@ -10,10 +11,10 @@ import { send } from './windows'
 export function makeEnqueue(manager: DownloadManager) {
   return async (req: EnqueueRequest): Promise<string | undefined> => {
     const items = await expandLazy(req.items, (done, total) =>
-      send('parse:progress', { done, total, title: '正在获取视频分P' })
+      send('parse:progress', { done, total, title: t('misc.fetchingParts') })
     )
     const failed = items.filter((i) => i.unavailable)
     manager.enqueue({ ...req, items: items.filter((i) => !i.unavailable) })
-    return failed.length ? `${failed.length} 个视频无法获取（${failed[0].unavailable}）` : undefined
+    return failed.length ? t('misc.partsUnavailable', { count: failed.length, reason: failed[0].unavailable! }) : undefined
   }
 }

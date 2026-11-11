@@ -105,11 +105,10 @@ describe('ago', () => {
 
   it('30 天以上显示日期', () => {
     const ms = before(86400 * 30)
-    expect(ago(ms, now)).toBe(new Date(ms).toLocaleDateString())
+    expect(ago(ms, now)).toBe(new Date(ms).toLocaleDateString('zh-CN'))
   })
 
-  it('可以加后缀并关掉日期分界', () => {
-    expect(ago(before(10), now, { suffix: '检查' })).toBe('刚刚检查')
+  it('可以关掉日期分界', () => {
     expect(ago(before(86400 * 45), now, { dateAfterMonth: false })).toBe('45 天前')
   })
 })

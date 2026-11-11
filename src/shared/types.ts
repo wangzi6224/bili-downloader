@@ -1,4 +1,5 @@
 // main / preload / renderer 共用的数据类型
+import type { Lang, LanguageSetting } from './i18n'
 import type { NamingTemplates, NamingValues } from './naming'
 
 export interface UserInfo {
@@ -24,6 +25,8 @@ export interface BrowserProfile {
   lastUsed?: boolean
   /** Windows 上这个浏览器启用了应用绑定加密（v20）：退出浏览器后也可能读不出登录信息 */
   appBound?: boolean
+  /** Windows 上这个配置档的 B站登录（SESSDATA）是应用绑定加密的：只有浏览器自己读得出，无法导入，要改用扫码或手动粘贴 */
+  appBoundLogin?: boolean
 }
 
 /** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区 */
@@ -432,6 +435,8 @@ export interface Settings {
   mcp: McpSettings
   /** 启动时（以及之后每天）检查新版本 */
   autoCheckUpdate: boolean
+  /** 界面语言，system 跟随系统（系统语言不支持时用英语） */
+  language: LanguageSetting
 }
 
 /** 某个版本的更新说明（Markdown） */
@@ -485,6 +490,14 @@ export interface ParseRecord {
 }
 
 /** preload 通过 contextBridge 暴露给渲染进程的接口 */
+/** 当前网络连接方式 */
+export interface NetworkStatus {
+  /** 给用户看的说明，例如“通过 http://127.0.0.1:7890 连接” */
+  text: string
+  /** 代理设置有误、已退回直连；界面据此标红，不要看 text 的内容 */
+  error: boolean
+}
+
 export interface BiliApi {
   /** 主进程的 process.platform，界面按它调整文案和布局 */
   platform: string
@@ -559,6 +572,11 @@ export interface BiliApi {
     removeParse(input: string): Promise<ParseRecord[]>
     clearParses(): Promise<void>
   }
+  i18n: {
+    /** 实际生效的界面语言 */
+    get(): Promise<Lang>
+    onChanged(cb: (lang: Lang) => void): () => void
+  }
   settings: {
     get(): Promise<Settings>
     set(patch: Partial<Settings>): Promise<Settings>
@@ -575,8 +593,7 @@ export interface BiliApi {
     onUpdate(cb: (subs: Subscription[]) => void): () => void
   }
   net: {
-    /** 当前网络连接方式的说明，例如“通过 http://127.0.0.1:7890 连接” */
-    status(): Promise<string>
+    status(): Promise<NetworkStatus>
     /** 测试能否连上 B站，返回耗时毫秒 */
     test(): Promise<number>
     cdnHosts(): Promise<{ host: string; label: string }[]>

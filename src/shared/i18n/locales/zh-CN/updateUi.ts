@@ -1,0 +1,22 @@
+export default {
+  skipVersion: '跳过这个版本',
+  notNow: '以后再说',
+  openDownloadPage: '前往下载页面',
+  downloadAndInstall: '下载并安装',
+  cancelDownload: '取消下载',
+  downloadInBackground: '后台下载',
+  restartAndInstall: '重启并安装',
+  installingButton: '正在安装…',
+  retry: '重试',
+  title: '发现新版本 {version}',
+  currentVersion: '当前版本 {version}',
+  releasedOn: '{date} 发布',
+  packageSize: '安装包 {size}',
+  noNotes: '这个版本没有填写更新说明。',
+  blocker: '{blocker}，或者去下载页面手动安装。',
+  skipped: '你之前跳过了这个版本，自动检查时不再提醒。',
+  downloading: '正在下载…关掉窗口也会继续',
+  pendingTasks: '还有 {count} 个任务未完成，重启会暂停它们，更新后可以继续。',
+  ready: '新版本已下载并校验完成，重启后即可使用。',
+  installing: '正在安装，应用马上会自动重新打开…'
+}

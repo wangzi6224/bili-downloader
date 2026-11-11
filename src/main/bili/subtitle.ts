@@ -106,6 +106,7 @@ const ISO639: [RegExp, string][] = [
 export function subtitleTrackMeta(t: Pick<SubtitleTrack, 'lan' | 'lan_doc'>): { language: string; title: string } {
   const language = ISO639.find(([re]) => re.test(t.lan))?.[1] ?? 'und'
   const ai = t.lan.startsWith('ai-')
+  // 轨道名写进视频文件，和接口给的中文语言名一致，保持中文
   const title = ai && !/AI|自动/.test(t.lan_doc) ? `${t.lan_doc}（AI 生成）` : t.lan_doc
   return { language, title }
 }

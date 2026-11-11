@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  devMode: '開発モードでは自動インストールできません。パッケージ化したアプリでテストしてください',
+  unsupportedOs: '自動インストールは macOS、Linux、Windows のみに対応しています',
+  appNotFound: 'アプリの場所が見つかりません（{path}）',
+  moveFirst: '先にアプリを「アプリケーション」フォルダにドラッグし、そこから開いてからアップデートしてください',
+  translocated: 'アプリが「ダウンロード」フォルダから直接開かれています。{hint}',
+  inDiskImage: 'アプリがディスクイメージ内で実行されています。{hint}',
+  noWritePermission: '{dir} を変更する権限がありません',
+  appImageOnly: '自動インストールは AppImage 版のみ対応しています',
+  installerOnly: '自動インストールはインストーラーでインストールした版のみ対応しています',
+  noAppInPackage: 'インストールパッケージにアプリが見つかりません',
+  notThisApp: 'インストールパッケージはこのアプリのものではありません（{id}）',
+  versionMismatch: 'インストールパッケージのバージョンは {actual} で、{expected} ではありません',
+  platformUnsupported: '自動インストールは {platform} に対応していません',
+  launchFailed: 'アップデートプログラムを起動できません',
+  badVersion: 'バージョン番号の形式が正しくありません：{version}',
+  badManifest: 'アップデート情報の形式が正しくありません：{what}',
+  notJsonObject: 'JSON オブジェクトではありません',
+  noRelease: 'サーバーにはまだリリースされたバージョンがありません',
+  noPackage: '新しいバージョン {version} には {key} 用のインストールパッケージがありません',
+  checkFailed: 'アップデートの確認に失敗しました：{reason}',
+  notReady: 'アップデートのダウンロードがまだ完了していません',
+  corrupted: 'インストールパッケージが破損しています。もう一度ダウンロードしてください',
+  installFailed: 'アップデートのインストールに失敗しました：{reason}',
+  verifyFailed: 'インストールパッケージの検証に失敗しました（ファイルの破損または改ざん）。もう一度お試しください',
+  downloadFailed: 'アップデートのダウンロードに失敗しました：{reason}',
+  stalled: '接続がタイムアウトしました'
+} satisfies Messages['updateErr']

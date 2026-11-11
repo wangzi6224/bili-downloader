@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { joinList, t as tr } from '@shared/i18n'
 import { renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
 import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
@@ -57,6 +58,7 @@ export interface EnqueueResult {
   skipped: { key: string; taskId: string }[]
 }
 
+/** 文件名模板的 {type}：影响已下载文件的命名和跳过判断，保持中文，不随界面语言变 */
 const KIND_LABEL = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' } as const
 
 interface StreamPlan {
@@ -78,7 +80,7 @@ async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
       parts: [{ name: 'audio.m4s', urls: s.urls, fingerprint: `au-${s.label}-${s.size}`, estimate: s.size }],
       hasAudio: true,
       format: s.flac ? 'flac' : 'm4a',
-      qualityLabel: `音频 ${s.label}`,
+      qualityLabel: tr('bili.audioQuality', { label: s.text }),
       quality: s.label,
       codec: '',
       notes: []
@@ -164,7 +166,7 @@ export class DownloadManager extends EventEmitter {
         if (t.processing?.manual) {
           if (t.tmpOutput) removeQuietly(t.tmpOutput)
           removeQuietly(join(tmpRoot, t.id))
-          return { ...restored, tmpOutput: undefined, note: withWatermarkNote(t.note, WM_NOTE.interrupted) }
+          return { ...restored, tmpOutput: undefined, note: withWatermarkNote(t.note, WM_NOTE.interrupted()) }
         }
         return restored
       })
@@ -346,7 +348,7 @@ export class DownloadManager extends EventEmitter {
     }
     this.changed()
     if (purged.length) this.emit('purged', purged)
-    if (failed.length) throw new Error(`有 ${failed.length} 个文件没能删除：${failed.join('、')}`)
+    if (failed.length) throw new Error(tr('download.deleteFailed', { count: failed.length, files: joinList(failed) }))
   }
 
   /**
@@ -355,8 +357,8 @@ export class DownloadManager extends EventEmitter {
    */
   startWatermark(id: string, region: WatermarkRegion, method: WatermarkMethod = 'fast'): void {
     const t = requireVideoTask(this.find(id))
-    if (this.running.has(id)) throw new Error('这个视频正在处理，请等它结束')
-    if (![region?.x, region?.y, region?.w, region?.h].every(Number.isFinite)) throw new Error('水印区域无效')
+    if (this.running.has(id)) throw new Error(tr('download.busy'))
+    if (![region?.x, region?.y, region?.w, region?.h].every(Number.isFinite)) throw new Error(tr('download.badRegion'))
     void this.runPost(t, region, method)
   }
 
@@ -526,14 +528,14 @@ export class DownloadManager extends EventEmitter {
       if (ac.signal.aborted) throw new AbortError()
       // 处理期间原视频被删掉或移走了：不能再在原位置把它“变”回来
       if (!existsSync(out)) {
-        this.patch(t, { note: withWatermarkNote(t.note, WM_NOTE.moved) })
+        this.patch(t, { note: withWatermarkNote(t.note, WM_NOTE.moved()) })
         return
       }
       try {
         renameSync(tmpOut, out)
       } catch (e) {
         const code = (e as { code?: string }).code
-        throw code === 'EPERM' || code === 'EBUSY' ? new Error('原视频正被其他程序占用，没能替换') : toDiskError(e, out)
+        throw code === 'EPERM' || code === 'EBUSY' ? new Error(tr('download.fileLocked')) : toDiskError(e, out)
       }
       const size = statSync(out).size
       this.patch(t, {

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { t } from '@shared/i18n'
 import type { AuthState, BrowserProfile } from '@shared/types'
 import { ImportError } from '../auth/importError'
 import { BiliError } from '../bili/http'
@@ -108,7 +109,9 @@ export function rankProfiles(list: BrowserProfile[]): BrowserProfile[] {
   )
 }
 
-const readable = (p: BrowserProfile): boolean => p.hasBiliLogin && !p.locked && !p.blocked
+const readable = (p: BrowserProfile): boolean => p.hasBiliLogin && !p.locked && !p.blocked && !p.appBoundLogin
+
+const appBoundMessage = (p: BrowserProfile): string => t('mcpLogin.appBoundLogin', { browser: p.browser })
 
 function reasonOf(e: unknown): LoginReason {
   if (e instanceof ImportError) return e.code === 'cancelled' ? 'failed' : e.code
@@ -255,7 +258,7 @@ export class LoginFlow extends EventEmitter {
       (s) => {
         if (gen !== this.generation) return
         if (s.loggedIn) this.enter('idle')
-        else this.fail('window_closed', '登录窗口已关闭，但还没有登录成功')
+        else this.fail('window_closed', t('mcpLogin.qrClosed'))
       },
       (e) => {
         if (gen === this.generation) this.fail('failed', messageOf(e))
@@ -280,20 +283,22 @@ export class LoginFlow extends EventEmitter {
   /** 用户点名了浏览器：只看它，缺权限时直接带用户去授权 */
   private async runChosen(gen: number, profiles: BrowserProfile[], source: string): Promise<void> {
     const matches = profiles.filter((p) => p.id === source || browserKey(p) === source)
-    if (!matches.length) return this.fail('not_found', `没有找到“${source}”，可以用 get_login_status include_browsers=true 查看本机的浏览器`)
+    if (!matches.length) return this.fail('not_found', t('mcpLogin.sourceNotFound', { source }))
     const ready = matches.filter(readable)
     if (await this.importFirst(gen, ready) || this.phase === 'failed') return
     if (ready.length) return this.fail(this.reason!, this.message!)
+    const sealed = matches.find((p) => p.appBoundLogin)
+    if (sealed) return this.fail('app_bound', appBoundMessage(sealed))
     const locked = matches.find((p) => p.locked)
     if (locked) {
       if (this.deps.canClose(browserKey(locked))) return this.closeThenImport(gen, locked)
-      return this.fail('locked', `${locked.browser} 正在运行，需要用户手动退出后再导入`)
+      return this.fail('locked', t('mcpLogin.browserRunning', { browser: locked.browser }))
     }
     if (matches.some((p) => p.blocked)) {
       this.deps.openPermissionSettings?.()
-      return this.fail('blocked', `没有权限读取 ${matches[0].browser} 的数据`)
+      return this.fail('blocked', t('mcpLogin.noPermission', { browser: matches[0].browser }))
     }
-    this.fail('no_login', `${matches[0].browser} 里没有 B站登录信息`)
+    this.fail('no_login', t('mcpLogin.noLoginIn', { browser: matches[0].browser }))
   }
 
   /** 依次导入；成功或流程作废返回 true。换个配置档也没用时进入 failed；其余失败由调用方决定还有没有后手 */
@@ -344,13 +349,15 @@ export class LoginFlow extends EventEmitter {
   /** 没东西可导时给出最有用的原因 */
   private failNothing(profiles: BrowserProfile[]): void {
     if (this.tried.length) return this.fail(this.reason!, this.message!)
+    const sealed = profiles.find((p) => p.appBoundLogin)
+    if (sealed) return this.fail('app_bound', appBoundMessage(sealed))
     const locked = profiles.find((p) => p.locked)
-    if (locked?.appBound) return this.fail('app_bound', `${locked.browser} 启用了应用绑定加密，退出后也很可能读不出登录信息`)
-    if (locked) return this.fail('locked', `${locked.browser} 正在运行，需要用户手动退出后再导入`)
+    if (locked?.appBound) return this.fail('app_bound', t('mcpLogin.appBoundLocked', { browser: locked.browser }))
+    if (locked) return this.fail('locked', t('mcpLogin.browserRunning', { browser: locked.browser }))
     const blocked = profiles.find((p) => p.blocked)
-    if (blocked && !profiles.some((p) => !p.blocked)) return this.fail('blocked', `没有权限读取 ${blocked.browser} 的数据`)
-    if (!profiles.length) return this.fail('not_found', '没有找到支持的浏览器')
-    this.fail('no_login', blocked ? `能读取的浏览器里都没有 B站登录信息，${blocked.browser} 没有读取权限` : '找到的浏览器里都没有 B站登录信息')
+    if (blocked && !profiles.some((p) => !p.blocked)) return this.fail('blocked', t('mcpLogin.noPermission', { browser: blocked.browser }))
+    if (!profiles.length) return this.fail('not_found', t('mcpLogin.noBrowser'))
+    this.fail('no_login', blocked ? t('mcpLogin.noLoginReadable', { browser: blocked.browser }) : t('mcpLogin.noLoginAny'))
   }
 
   private async confirm(p: BrowserProfile): Promise<'close' | 'qr' | 'cancel' | 'timeout'> {
@@ -383,8 +390,8 @@ export class LoginFlow extends EventEmitter {
     if (gen !== this.generation) return
     this.source = undefined
     if (choice === 'qr') return this.startQr(gen)
-    if (choice === 'timeout') return this.fail('confirm_timeout', `用户没有回答是否关闭 ${p.browser} 的对话框`)
-    if (choice === 'cancel') return this.fail('declined', `用户不同意关闭 ${p.browser}`)
+    if (choice === 'timeout') return this.fail('confirm_timeout', t('mcpLogin.confirmTimeout', { browser: p.browser }))
+    if (choice === 'cancel') return this.fail('declined', t('mcpLogin.declined', { browser: p.browser }))
 
     const key = browserKey(p)
     this.enter('closing')
@@ -394,7 +401,7 @@ export class LoginFlow extends EventEmitter {
       () => gen === this.generation
     )
     if (gen !== this.generation) return
-    if (!closed) return this.fail('close_failed', `没能关闭 ${p.browser}`)
+    if (!closed) return this.fail('close_failed', t('mcpLogin.closeFailed', { browser: p.browser }))
 
     // 关之前读不到，现在才知道里面有没有登录、最近用的是哪个配置档
     this.enter('importing')
@@ -402,7 +409,9 @@ export class LoginFlow extends EventEmitter {
     const ready = again.filter(readable)
     if (await this.importFirst(gen, ready) || this.phase === 'failed') return
     if (ready.length) return this.fail(this.reason!, this.message!)
-    this.fail('no_login', `${p.browser} 已关闭，但里面没有 B站登录信息`)
+    const sealed = again.find((x) => x.appBoundLogin)
+    if (sealed) return this.fail('app_bound', appBoundMessage(sealed))
+    this.fail('no_login', t('mcpLogin.closedNoLogin', { browser: p.browser }))
   }
 
   /** 等到已登录、失败或需要用户操作；开始等时已经在等用户，就等状态变化 */

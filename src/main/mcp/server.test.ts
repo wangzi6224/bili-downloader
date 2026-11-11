@@ -1,7 +1,9 @@
 import { createServer, request, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ToolResult, ToolSet } from './tools'
+import { setLanguage, t } from '@shared/i18n'
+import { DICTS } from '@shared/i18n/locales'
+import type { ToolDefinition, ToolResult, ToolSet } from './tools'
 
 const getVersion = vi.hoisted(() => vi.fn(() => '0.0.0-test'))
 vi.mock('electron', () => ({ app: { getVersion } }))
@@ -18,8 +20,9 @@ async function freePort(): Promise<number> {
 const PORT = await freePort()
 const TOKEN = 'a'.repeat(48)
 
+const DEFS: ToolDefinition[] = [{ name: 'echo', title: '回显', description: '', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }]
 const deps: ToolSet = {
-  definitions: [{ name: 'echo', title: '回显', description: '', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }],
+  definitions: vi.fn(() => DEFS),
   call: vi.fn(async (name: string, args: Record<string, unknown>): Promise<ToolResult> => ({
     content: [{ type: 'text', text: JSON.stringify({ name, args }) }]
   }))
@@ -86,7 +89,25 @@ describe('McpServer', () => {
     expect(init.result.instructions).toContain('download_batch')
     expect((await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' })).status).toBe(202)
     const list = (await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body
-    expect(list.result.tools).toEqual(deps.definitions)
+    expect(list.result.tools).toEqual(DEFS)
+  })
+
+  it('服务说明和工具列表按请求时的界面语言现算', async () => {
+    const orig = DICTS.en.mcp
+    // 英文字典还没有 mcp 命名空间（沿用中文），临时塞一条覆盖值来区分
+    DICTS.en.mcp = { ...orig, instructions: 'Local service of {appName}' }
+    setLanguage('en')
+    try {
+      const init = (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).body
+      expect(init.result.instructions).toBe(`Local service of ${t('common.appName')}`)
+      await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
+      expect(deps.definitions).toHaveBeenCalledTimes(1)
+    } finally {
+      setLanguage('zh-CN')
+      DICTS.en.mcp = orig
+    }
+    const init = (await rpc({ jsonrpc: '2.0', id: 3, method: 'initialize', params: {} })).body
+    expect(init.result.instructions).toMatch(/^B站下载器的本地服务/)
   })
 
   it('tools/call 把工具名和参数转给工具，参数不是对象时当作空对象', async () => {
@@ -158,6 +179,16 @@ describe('生命周期', () => {
     try {
       await s.apply({ enabled: true, port, token: TOKEN })
       expect(s.status()).toEqual({ running: false, error: `端口 ${port} 已被占用` })
+      // 显示在设置界面：切换语言后按新语言说
+      const orig = DICTS.en.mcp
+      DICTS.en.mcp = { ...orig, portInUse: 'Port {port} is in use' }
+      setLanguage('en')
+      try {
+        expect(s.status().error).toBe(`Port ${port} is in use`)
+      } finally {
+        setLanguage('zh-CN')
+        DICTS.en.mcp = orig
+      }
       await new Promise<void>((r) => blocker.close(() => r()))
       await s.apply({ enabled: true, port, token: TOKEN })
       expect(s.status()).toEqual({ running: true, error: undefined })
@@ -210,7 +241,7 @@ describe('认证', () => {
 describe('停止服务', () => {
   it('不用等进行中的长轮询，否则改设置、退出应用都要跟着等', async () => {
     const port = await freePort()
-    const hanging: ToolSet = { definitions: [], call: () => new Promise(() => {}) }
+    const hanging: ToolSet = { definitions: () => [], call: () => new Promise(() => {}) }
     const s = new McpServer(hanging)
     await s.apply({ enabled: true, port, token: TOKEN })
     const pending = send({ port, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'x' } }) }).catch((e: Error) => e)

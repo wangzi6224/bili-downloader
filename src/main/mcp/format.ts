@@ -1,3 +1,4 @@
+import { t as tr, type Key } from '@shared/i18n'
 import { isVideoTask } from '@shared/watermark'
 import type { ProcessingInfo, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BiliError, LoginRequiredError } from '../bili/http'
@@ -37,19 +38,19 @@ export function countStatuses(tasks: TaskInfo[]): Record<McpStatus, number> {
 export const totalSpeed = (tasks: TaskInfo[]): number =>
   Math.round(tasks.reduce((n, t) => n + (mcpStatus(t) === 'running' ? t.speed : 0), 0))
 
-const STAGE_TEXT: Record<ProcessingInfo['stage'], string> = {
-  detect: '识别水印',
-  queue: '排队',
-  encode: '重新编码',
-  model: '下载 AI 模型',
-  analyze: 'AI 准备',
-  refine: 'AI 逐帧修补'
+const STAGE_TEXT: Record<ProcessingInfo['stage'], Key> = {
+  detect: 'mcp.stageDetect',
+  queue: 'mcp.stageQueue',
+  encode: 'mcp.stageEncode',
+  model: 'mcp.stageModel',
+  analyze: 'mcp.stageAnalyze',
+  refine: 'mcp.stageRefine'
 }
 
 export function processingOut(p: ProcessingInfo) {
   return {
     stage: p.stage,
-    stage_text: STAGE_TEXT[p.stage],
+    stage_text: tr(STAGE_TEXT[p.stage]),
     progress: p.pct === undefined ? undefined : Math.round(p.pct),
     eta_seconds: p.eta === undefined ? undefined : Math.round(p.eta),
     backend: p.backend
@@ -96,7 +97,13 @@ export function summarizeTask(t: TaskInfo) {
 export type TaskSummary = ReturnType<typeof summarizeTask>
 
 /** 未登录时告诉 agent 怎么办 */
-export const LOGIN_HINT = '用 start_login 导入用户浏览器里的登录信息（默认优先 Chrome），不行再用 start_login method=qr 弹出扫码窗口'
+export const loginHint = (): string => tr('mcp.loginHint')
+
+/** 未登录的报错里给的提示：怎么登录，登录后再试 */
+export const loginThenRetry = (): string => tr('mcp.loginThenRetry', { loginHint: loginHint() })
+
+/** 多条提示连成一句；没有提示时是 undefined */
+export const joinHints = (hints: string[]): string | undefined => hints.join(tr('mcp.sep')) || undefined
 
 export type ErrorCode = 'NOT_LOGGED_IN' | 'RATE_LIMITED' | 'INVALID_ARGS' | 'NOT_FOUND' | 'FAILED'
 
@@ -113,6 +120,9 @@ export class ToolError extends Error {
 
 export const invalid = (message: string): ToolError => new ToolError('INVALID_ARGS', message)
 
+export const batchNotFound = (id: string): ToolError =>
+  new ToolError('NOT_FOUND', tr('mcp.batchNotFound', { id }), tr('mcp.batchNotFoundHint'))
+
 /** B站风控：HTTP 412、接口返回的 -352（签名校验失败）、-412（请求被拦截）、-799（请求过于频繁） */
 const RATE_LIMIT_CODES = new Set([412, -352, -412, -799])
 
@@ -123,10 +133,10 @@ export function describeError(e: unknown): { code: ErrorCode; message: string; h
   if (e instanceof ToolError) return { code: e.code, message: e.message, hint: e.hint }
   const message = e instanceof Error ? e.message : String(e)
   if (e instanceof LoginRequiredError || e instanceof AuthExpiredError) {
-    return { code: 'NOT_LOGGED_IN', message, hint: `${LOGIN_HINT}，登录后再试` }
+    return { code: 'NOT_LOGGED_IN', message, hint: loginThenRetry() }
   }
   if (e instanceof BiliError && RATE_LIMIT_CODES.has(e.code)) {
-    return { code: 'RATE_LIMITED', message, hint: '触发了 B站风控，等几分钟再试，不要连续重试' }
+    return { code: 'RATE_LIMITED', message, hint: tr('mcp.rateLimitedHint') }
   }
   return { code: 'FAILED', message }
 }

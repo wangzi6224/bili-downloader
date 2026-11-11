@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { WM_NOTE } from '@shared/watermark'
+import { WM_MARK, WM_NOTE } from '@shared/watermark'
 import type { AiModelStatus, ProcessingInfo } from '@shared/types'
 import type { DashStream } from '../bili/playurl'
 import { AbortError, FfmpegError } from '../download/errors'
@@ -67,27 +67,27 @@ describe('跳过', () => {
     ['杜比视界清晰度', stream({ id: 126 })],
     ['杜比视界编码', stream({ codecs: 'dvh1.08.07' })]
   ])('%s：不读文件直接跳过', async (_name, s) => {
-    expect(await run({ stream: s })).toEqual({ note: WM_NOTE.hdr })
+    expect(await run({ stream: s })).toEqual({ note: WM_NOTE.hdr() })
     expect(probeMedia).not.toHaveBeenCalled()
   })
 
   it('读出来是 HDR 或杜比视界', async () => {
     vi.mocked(probeMedia).mockResolvedValueOnce({ video: { ...V, hdr: true }, streams: [] })
-    expect(await run()).toEqual({ note: WM_NOTE.hdr })
+    expect(await run()).toEqual({ note: WM_NOTE.hdr() })
     vi.mocked(probeMedia).mockResolvedValueOnce({ video: { ...V, dolbyVision: true }, streams: [] })
-    expect(await run()).toEqual({ note: WM_NOTE.hdr })
+    expect(await run()).toEqual({ note: WM_NOTE.hdr() })
   })
 
   it('没有视频流', async () => {
     vi.mocked(probeMedia).mockResolvedValueOnce({ streams: [] })
-    expect(await run()).toEqual({ note: '去水印失败：没找到视频画面，已保留原视频' })
+    expect(await run()).toEqual({ note: `${WM_MARK}去水印失败：没找到视频画面，已保留原视频` })
   })
 
   it.each([
-    ['帧不够', { score: 0, reason: 'few-frames' as const }, undefined, WM_NOTE.fewFrames],
-    ['画面太静', { score: 0.9, reason: 'static' as const }, R, WM_NOTE.static],
-    ['没识别到', { score: 0, reason: 'none' as const }, undefined, WM_NOTE.none],
-    ['分数不够自动处理', { score: 0.5 }, R, WM_NOTE.none]
+    ['帧不够', { score: 0, reason: 'few-frames' as const }, undefined, WM_NOTE.fewFrames()],
+    ['画面太静', { score: 0.9, reason: 'static' as const }, R, WM_NOTE.static()],
+    ['没识别到', { score: 0, reason: 'none' as const }, undefined, WM_NOTE.none()],
+    ['分数不够自动处理', { score: 0.5 }, R, WM_NOTE.none()]
   ])('%s：记下识别结果，保留原视频', async (_name, result, region, note) => {
     vi.mocked(locateWatermark).mockResolvedValueOnce({ result, region })
     expect(await run()).toEqual({ state: { width: 1920, height: 1080, detected: region, found: false }, note })
@@ -166,12 +166,12 @@ describe('处理', () => {
     })
     expect(await run()).toEqual({
       state: { width: 1920, height: 1080, detected: R, found: true },
-      note: '去水印失败：磁盘空间不足，已保留原视频'
+      note: `${WM_MARK}去水印失败：磁盘空间不足，已保留原视频`
     })
     expect(existsSync(join(tmp, 'video.wm.part'))).toBe(false)
 
     vi.mocked(probeMedia).mockRejectedValueOnce('读不了')
-    expect(await run()).toEqual({ state: undefined, note: '去水印失败：读不了，已保留原视频' })
+    expect(await run()).toEqual({ state: undefined, note: `${WM_MARK}去水印失败：读不了，已保留原视频` })
   })
 
   it('被中止时抛 AbortError，不写提示', async () => {

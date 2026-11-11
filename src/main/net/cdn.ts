@@ -1,15 +1,21 @@
 // B站视频 CDN 的官方镜像节点。接口返回的地址有时是速度很慢的 PCDN，
 // 可以换成指定节点；原地址保留为备用，换了不通会自动退回。
 
-export const CDN_HOSTS: { host: string; label: string }[] = [
-  { host: 'upos-sz-mirrorali.bilivideo.com', label: '阿里云' },
-  { host: 'upos-sz-mirrorcos.bilivideo.com', label: '腾讯云' },
-  { host: 'upos-sz-mirrorhw.bilivideo.com', label: '华为云' },
-  { host: 'upos-sz-mirror08c.bilivideo.com', label: '08c' },
-  { host: 'upos-sz-mirroraliov.bilivideo.com', label: '阿里云（海外）' },
-  { host: 'upos-sz-mirrorcosov.bilivideo.com', label: '腾讯云（海外）' },
-  { host: 'upos-hz-mirrorakam.akamaized.net', label: 'Akamai（海外）' }
+import { t } from '@shared/i18n'
+
+const NODES: { host: string; label: () => string }[] = [
+  { host: 'upos-sz-mirrorali.bilivideo.com', label: () => t('net.cdnAliyun') },
+  { host: 'upos-sz-mirrorcos.bilivideo.com', label: () => t('net.cdnTencent') },
+  { host: 'upos-sz-mirrorhw.bilivideo.com', label: () => t('net.cdnHuawei') },
+  { host: 'upos-sz-mirror08c.bilivideo.com', label: () => '08c' },
+  { host: 'upos-sz-mirroraliov.bilivideo.com', label: () => t('net.cdnAliyunOverseas') },
+  { host: 'upos-sz-mirrorcosov.bilivideo.com', label: () => t('net.cdnTencentOverseas') },
+  { host: 'upos-hz-mirrorakam.akamaized.net', label: () => t('net.cdnAkamaiOverseas') }
 ]
+
+/** 可选的节点，名称按当前界面语言 */
+export const cdnHosts = (): { host: string; label: string }[] =>
+  NODES.map((n) => ({ host: n.host, label: n.label() }))
 
 /** 只改写 upos 格式的地址（路径以 /upgcxcode/ 开头），其余保持原样 */
 export function preferCdn(urls: string[], host: string): string[] {
@@ -30,11 +36,11 @@ export function preferCdn(urls: string[], host: string): string[] {
 
 /** 测连接延迟（DNS + TCP + TLS + 一次往返），失败返回 null */
 export async function pingHost(host: string, timeoutMs = 5000): Promise<number | null> {
-  const t = Date.now()
+  const start = Date.now()
   try {
     const res = await fetch(`https://${host}/`, { method: 'HEAD', signal: AbortSignal.timeout(timeoutMs) })
     await res.body?.cancel()
-    return Date.now() - t
+    return Date.now() - start
   } catch {
     return null
   }

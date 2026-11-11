@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { app, dialog, type BrowserWindow } from 'electron'
+import { dialog, type BrowserWindow } from 'electron'
+import { t } from '@shared/i18n'
 import type { Settings, Subscription } from '@shared/types'
 import { getSettings, updateSettings } from './settings'
 import type { SubscriptionManager } from './subscriptions'
@@ -15,7 +16,7 @@ interface ConfigFile {
 /** 导出设置和订阅（不含登录信息；MCP 令牌也不导出） */
 export async function exportConfig(win: BrowserWindow | null, subs: SubscriptionManager): Promise<string | null> {
   const opts = {
-    title: '导出配置',
+    title: t('config.exportTitle'),
     defaultPath: `bili-downloader-config-${new Date().toISOString().slice(0, 10)}.json`,
     filters: [{ name: 'JSON', extensions: ['json'] }]
   }
@@ -30,20 +31,20 @@ export async function exportConfig(win: BrowserWindow | null, subs: Subscription
     subscriptions: subs.list()
   }
   await writeFile(r.filePath, JSON.stringify(data, null, 2))
-  return `已导出到 ${r.filePath}`
+  return t('config.exported', { path: r.filePath })
 }
 
 export async function importConfig(win: BrowserWindow | null, subs: SubscriptionManager): Promise<string | null> {
-  const opts = { title: '导入配置', filters: [{ name: 'JSON', extensions: ['json'] }], properties: ['openFile' as const] }
+  const opts = { title: t('config.importTitle'), filters: [{ name: 'JSON', extensions: ['json'] }], properties: ['openFile' as const] }
   const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
   if (r.canceled || !r.filePaths[0]) return null
   let data: ConfigFile
   try {
     data = JSON.parse(await readFile(r.filePaths[0], 'utf8'))
   } catch {
-    throw new Error('这个文件不是有效的 JSON')
+    throw new Error(t('config.invalidJson'))
   }
-  if (data.app !== 'bili-downloader' || !data.settings) throw new Error('这不是本应用导出的配置文件')
+  if (data.app !== 'bili-downloader' || !data.settings) throw new Error(t('config.notOurs'))
   const current = getSettings()
   // 令牌只属于这台电脑
   updateSettings({ ...data.settings, mcp: { ...data.settings.mcp, token: current.mcp.token } })
@@ -51,5 +52,5 @@ export async function importConfig(win: BrowserWindow | null, subs: Subscription
   const imported = Array.isArray(data.subscriptions) ? data.subscriptions : []
   const inputs = new Set(imported.map((s) => s.input))
   subs.replaceAll([...subs.list().filter((s) => !inputs.has(s.input)), ...imported])
-  return `已导入设置和 ${imported.length} 个订阅（来自 ${app.getName()} 导出的 ${data.exportedAt?.slice(0, 10) ?? ''}）`
+  return t('config.imported', { count: imported.length, app: t('common.appName'), date: data.exportedAt?.slice(0, 10) ?? '' })
 }

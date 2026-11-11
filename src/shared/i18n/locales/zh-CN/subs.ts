@@ -1,0 +1,20 @@
+export default {
+  interval30m: '30 分钟',
+  interval1h: '1 小时',
+  interval3h: '3 小时',
+  interval6h: '6 小时',
+  interval12h: '12 小时',
+  interval1d: '1 天',
+  everyInterval: '每 {interval}',
+  title: '订阅',
+  subtitle: '应用运行期间按间隔检查收藏夹、合集、番剧、UP 主等来源，有新内容就按订阅时的选项自动下载。',
+  empty: '还没有订阅',
+  emptyHint: '解析收藏夹、合集、番剧或 UP 主空间后，在选择窗口底部点“订阅更新”即可添加。',
+  enabled: '已启用',
+  disabled: '已停用',
+  lastNew: '上次发现 {count} 个新内容',
+  checking: '检查中…',
+  checkNow: '立即检查',
+  unsubscribe: '取消订阅',
+  unsubscribeConfirm: '取消订阅“{title}”？'
+}

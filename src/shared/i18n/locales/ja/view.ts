@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: '最高',
+  audioFlac: 'Hi-Res ロスレス',
+  audioDolby: 'Dolby Atmos',
+  tagVideo: '動画（{container}）',
+  tagAudio: '音声（{audio}）',
+  tagMuted: '音声なし',
+  tagCover: 'カバー画像',
+  tagSubtitle: '字幕',
+  tagChapters: 'チャプター',
+  tagDanmaku: '弾幕',
+  tagWatermark: '透かし除去',
+  updateIdle: 'まだ確認していません',
+  updateChecking: '確認中…',
+  updateLatest: '最新バージョンです',
+  updateLatestAt: '最新バージョンです（{time}に確認）',
+  updateAvailable: '新しいバージョン {version} があります',
+  updateAvailableSkipped: '新しいバージョン {version} があります（スキップ済み）',
+  updateDownloading: '{version} をダウンロード中',
+  updateReady: '{version} をダウンロードしました。再起動するとアップデートが完了します',
+  updateInstalling: 'インストール中…',
+  entryAvailable: '新バージョン {version}',
+  entryDownloading: 'アップデートをダウンロード中 {pct}%',
+  entryRestart: '再起動してアップデートを完了',
+  entryInstalling: 'アップデートをインストール中…',
+  entryError: 'アップデートに失敗しました',
+  pingFailed: '接続不可'
+} satisfies Messages['view']

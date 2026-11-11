@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import { BiliError, isTransient } from '../bili/http'
 
 /** 网络类错误：断连、超时、CDN 返回异常，值得自动重试 */
@@ -25,19 +26,19 @@ export class AbortError extends Error {
 /** 把文件系统错误翻译成用户看得懂的话 */
 export function toDiskError(e: unknown, path?: string): DiskError {
   const code = (e as { code?: string }).code
-  const where = path ? `：${path}` : ''
+  const where = path ? t('download.atPath', { path }) : ''
   switch (code) {
     case 'ENOSPC':
-      return new DiskError('磁盘空间不足')
+      return new DiskError(t('download.diskFull'))
     case 'EACCES':
     case 'EPERM':
-      return new DiskError(`没有写入权限${where}`)
+      return new DiskError(t('download.noWritePermission', { where }))
     case 'EROFS':
-      return new DiskError(`目标磁盘是只读的${where}`)
+      return new DiskError(t('download.readOnlyDisk', { where }))
     case 'ENOENT':
-      return new DiskError(`下载目录不存在或外接磁盘已断开${where}`)
+      return new DiskError(t('download.dirMissing', { where }))
     default:
-      return new DiskError(`写入文件失败（${code ?? (e as Error).message}）${where}`)
+      return new DiskError(t('download.writeFailed', { code: code ?? (e as Error).message, where }))
   }
 }
 

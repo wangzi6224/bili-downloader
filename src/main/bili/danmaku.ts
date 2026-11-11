@@ -1,4 +1,5 @@
 import { inflateRawSync } from 'node:zlib'
+import { t } from '@shared/i18n'
 import { BASE_HEADERS } from './http'
 
 export interface Danmaku {
@@ -136,7 +137,7 @@ export async function fetchDanmakuXml(cid: number): Promise<string> {
   const res = await fetch(`https://api.bilibili.com/x/v1/dm/list.so?oid=${cid}`, {
     headers: { ...BASE_HEADERS, 'Accept-Encoding': 'identity' }
   })
-  if (!res.ok) throw new Error(`弹幕下载失败（HTTP ${res.status}）`)
+  if (!res.ok) throw new Error(t('bili.danmakuHttpFailed', { status: res.status }))
   const buf = Buffer.from(await res.arrayBuffer())
   // 接口有时直接返回未声明的 raw deflate
   if (buf[0] === 0x3c) return buf.toString('utf8')

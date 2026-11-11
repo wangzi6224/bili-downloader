@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { copyFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { t as tr, type Key } from '@shared/i18n'
 import type { Settings, TaskInfo } from '@shared/types'
 import { fetchDanmakuXml, parseDanmakuXml, toAss } from '../bili/danmaku'
 import { AuthExpiredError, BASE_HEADERS } from '../bili/http'
@@ -39,7 +40,7 @@ export async function prepareExtras(t: TaskInfo, tmp: string, settings: Settings
     try {
       out.cover = await downloadImage(item.cover, join(tmp, 'cover'))
     } catch (e) {
-      out.notes.push(`封面下载失败：${msg(e)}`)
+      out.notes.push(tr('download.coverFailed', { error: msg(e) }))
     }
   }
 
@@ -49,7 +50,7 @@ export async function prepareExtras(t: TaskInfo, tmp: string, settings: Settings
     try {
       const meta = await fetchPlayerMeta(item)
       if (wantSubs) {
-        if (!meta.tracks.length) out.notes.push('没有 CC 字幕')
+        if (!meta.tracks.length) out.notes.push(tr('download.noCcSubtitle'))
         for (const track of meta.tracks) {
           const srt = await downloadSubtitle(track)
           if (!srt) continue
@@ -64,7 +65,7 @@ export async function prepareExtras(t: TaskInfo, tmp: string, settings: Settings
       }
     } catch (e) {
       if (e instanceof AuthExpiredError) throw e
-      out.notes.push(`字幕/章节获取失败：${msg(e)}`)
+      out.notes.push(tr('download.subtitleFailed', { error: msg(e) }))
     }
   }
 
@@ -80,7 +81,7 @@ export async function prepareExtras(t: TaskInfo, tmp: string, settings: Settings
         await writeFile(out.danmakuXml, xml)
       }
     } catch (e) {
-      out.notes.push(`弹幕下载失败：${msg(e)}`)
+      out.notes.push(tr('download.danmakuFailed', { error: msg(e) }))
     }
   }
   return out
@@ -98,26 +99,26 @@ export async function placeSidecars(
 ): Promise<string[]> {
   const o = t.options
   const notes: string[] = []
-  const tryDo = async (label: string, fn: () => Promise<unknown>): Promise<void> => {
+  const tryDo = async (failed: Key, fn: () => Promise<unknown>): Promise<void> => {
     try {
       await fn()
     } catch (e) {
-      notes.push(`${label}保存失败：${msg(e)}`)
+      notes.push(tr(failed, { error: msg(e) }))
     }
   }
-  if (!embedded && (o.embedCover || o.embedSubtitle || o.chapters)) notes.push('封面/字幕/章节写入视频失败，已改为单独保存')
+  if (!embedded && (o.embedCover || o.embedSubtitle || o.chapters)) notes.push(tr('download.embedFallback'))
 
   if (p.cover && (o.cover || (o.embedCover && !embedded))) {
-    await tryDo('封面', () => copyFile(p.cover!, outBase + p.cover!.slice(p.cover!.lastIndexOf('.'))))
+    await tryDo('download.coverSaveFailed', () => copyFile(p.cover!, outBase + p.cover!.slice(p.cover!.lastIndexOf('.'))))
   }
   if (o.subtitle || (o.embedSubtitle && !embedded)) {
-    for (const s of p.subtitles) await tryDo('字幕', () => copyFile(s.path, `${outBase}.${s.lan}.srt`))
+    for (const s of p.subtitles) await tryDo('download.subtitleSaveFailed', () => copyFile(s.path, `${outBase}.${s.lan}.srt`))
   }
-  if (p.danmakuAss) await tryDo('弹幕', () => copyFile(p.danmakuAss!, `${outBase}.danmaku.ass`))
-  if (p.danmakuXml) await tryDo('弹幕', () => copyFile(p.danmakuXml!, `${outBase}.danmaku.xml`))
+  if (p.danmakuAss) await tryDo('download.danmakuSaveFailed', () => copyFile(p.danmakuAss!, `${outBase}.danmaku.ass`))
+  if (p.danmakuXml) await tryDo('download.danmakuSaveFailed', () => copyFile(p.danmakuXml!, `${outBase}.danmaku.xml`))
 
   if (o.nfo) {
-    await tryDo('NFO', async () => {
+    await tryDo('download.nfoSaveFailed', async () => {
       if (t.series) {
         const dir = dirname(outBase)
         await writeFile(`${outBase}.nfo`, episodeNfo(t.item, t.groupTitle))

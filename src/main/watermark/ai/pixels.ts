@@ -1,6 +1,7 @@
 // yuv420p 整帧和模型张量之间的转换：切出长条转成 RGB 交给模型，再把结果只写回掩码里的像素。
 // 每帧都要跑，所以要写回的像素位置和采样坐标都事先算好
 
+import { t } from '@shared/i18n'
 import type { Strip } from './strip'
 
 export interface ColorSpec {
@@ -86,7 +87,7 @@ export class StripCodec {
     mask: Uint8Array,
     color: ColorSpec
   ) {
-    if (mask.length !== strip.w * strip.h) throw new Error('掩码尺寸不对')
+    if (mask.length !== strip.w * strip.h) throw new Error(t('wm.maskSize'))
     this.k = coef(color)
     this.sx = strip.mw / strip.w
     this.sy = strip.mh / strip.h
@@ -160,7 +161,7 @@ export class StripCodec {
   render(out: Float32Array): Patch {
     const { W, strip, k } = this
     const { mw, mh } = strip
-    if (out.length !== 3 * mw * mh) throw new Error('模型输出的尺寸不对')
+    if (out.length !== 3 * mw * mh) throw new Error(t('wm.outputSize'))
     const rgb = (fx: number, fy: number): [number, number, number] => {
       const x = this.mx(fx)
       const y = this.my(fy)

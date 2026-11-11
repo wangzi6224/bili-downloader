@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { WM_MARK } from '@shared/watermark'
 
 const h = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock('node:child_process', () => ({ spawn: h.spawn }))
@@ -282,7 +283,7 @@ describe('runTranscode', () => {
     procs[0].emit('close', 234, null)
     const e = (await p.catch((err: unknown) => err)) as InstanceType<typeof FfmpegError>
     expect(e).toBeInstanceOf(FfmpegError)
-    expect(e.message).toBe('去水印失败：水印位置超出了画面')
+    expect(e.message).toBe(`${WM_MARK}去水印失败：水印位置超出了画面`)
     expect(e.stderr?.length).toBe(4000)
   })
 
@@ -401,7 +402,7 @@ describe('runTranscode', () => {
     procs[0].emit('close', null, 'SIGKILL')
     const e = (await p.catch((err: unknown) => err)) as InstanceType<typeof FfmpegError>
     expect(e).toBeInstanceOf(FfmpegError)
-    expect(e.message).toBe('去水印超时：ffmpeg 长时间没有进展')
+    expect(e.message).toBe(`${WM_MARK}去水印超时：ffmpeg 长时间没有进展`)
     expect(e.stderr).toBe('stuck')
   })
 

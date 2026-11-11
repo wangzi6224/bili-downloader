@@ -1,7 +1,8 @@
 // 推理子进程和进程池：每个子进程一个会话，空闲的进程取下一帧；超时或进程退出都会报 HostError，
 // 调用方据此换后端（比如 GPU 驱动出问题时改用 CPU）
+import { t, type Key } from '@shared/i18n'
 import { AbortError } from '../../download/errors'
-import type { Backend, HostReply, HostRequest } from './hostCore'
+import type { Backend, HostErrorCode, HostReply, HostRequest } from './hostCore'
 
 export interface HostChannel {
   send(m: HostRequest): void
@@ -14,6 +15,13 @@ export type SpawnHost = () => HostChannel
 
 /** 推理进程出了问题（加载失败、超时、崩溃）：换个后端可能就好 */
 export class HostError extends Error {}
+
+const HOST_ERROR_TEXT: Record<HostErrorCode, Key> = { notLoaded: 'wm.modelNotLoaded', noImage: 'wm.modelNoImage' }
+
+/** 子进程回报的错误：带 code 的按当前语言转成文案，其余（onnxruntime 的报错）原样用 */
+const hostError = (r: { message: string; code?: HostErrorCode }): HostError => new HostError(r.code ? t(HOST_ERROR_TEXT[r.code]) : r.message)
+
+const exitedError = (code: number | null): HostError => new HostError(t('wm.hostExited', { code: code ?? t('wm.exitCodeUnknown') }))
 
 interface Pending {
   resolve: (r: { output: Float32Array; ms: number }) => void
@@ -37,9 +45,9 @@ export class InferenceHost {
       this.pending.delete(r.id)
       clearTimeout(p.timer)
       if (r.type === 'result') p.resolve({ output: r.output, ms: r.ms })
-      else p.reject(new HostError(r.message))
+      else p.reject(hostError(r))
     })
-    ch.onExit((code) => this.fail(new HostError(`推理进程意外退出（代码 ${code ?? '未知'}）`)))
+    ch.onExit((code) => this.fail(exitedError(code)))
   }
 
   /** 启动子进程并加载模型；超时、出错都会结束子进程 */
@@ -56,12 +64,12 @@ export class InferenceHost {
           reject(e)
         } else resolve(new InferenceHost(ch, o.backend))
       }
-      const timer = setTimeout(() => done(new HostError('加载模型超时')), o.timeoutMs)
+      const timer = setTimeout(() => done(new HostError(t('wm.loadTimeout'))), o.timeoutMs)
       ch.onMessage((r) => {
         if (r.type === 'ready') done()
-        else if (r.type === 'error' && r.id === undefined) done(new HostError(r.message))
+        else if (r.type === 'error' && r.id === undefined) done(hostError(r))
       })
-      ch.onExit((code) => done(new HostError(`推理进程意外退出（代码 ${code ?? '未知'}）`)))
+      ch.onExit((code) => done(exitedError(code)))
       ch.send({ type: 'init', model: o.model, backend: o.backend, threads: o.threads })
     })
   }
@@ -76,7 +84,7 @@ export class InferenceHost {
     return new Promise((resolve, reject) => {
       // 卡住的会话（驱动挂起）不会自己恢复，直接结束进程
       const timer = setTimeout(() => {
-        this.fail(new HostError('推理超时'))
+        this.fail(new HostError(t('wm.inferTimeout')))
         this.ch.kill()
       }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })

@@ -68,6 +68,8 @@ describe('summaryTags', () => {
 
   it('每种音质都有显示名', () => {
     expect(Object.keys(AUDIO_LABEL)).toEqual(['best', 'flac', 'dolby', '192k', '132k', '64k'])
+    expect(Object.values(AUDIO_LABEL)).toEqual(['最佳', 'Hi-Res 无损', '杜比全景声', '192K', '132K', '64K'])
+    expect(Object.getOwnPropertyDescriptor(AUDIO_LABEL, 'best')?.get).toBeTypeOf('function')
   })
 })
 

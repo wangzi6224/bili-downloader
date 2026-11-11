@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: 'Лучшее',
+  audioFlac: 'Hi-Res без потерь',
+  audioDolby: 'Dolby Atmos',
+  tagVideo: 'Видео ({container})',
+  tagAudio: 'Аудио ({audio})',
+  tagMuted: 'Без звука',
+  tagCover: 'Обложка',
+  tagSubtitle: 'Субтитры',
+  tagChapters: 'Главы',
+  tagDanmaku: 'Данмаку',
+  tagWatermark: 'Без водяного знака',
+  updateIdle: 'Ещё не проверялось',
+  updateChecking: 'Проверка…',
+  updateLatest: 'Установлена последняя версия',
+  updateLatestAt: 'Установлена последняя версия (проверено {time})',
+  updateAvailable: 'Доступна новая версия {version}',
+  updateAvailableSkipped: 'Доступна новая версия {version} (пропущена)',
+  updateDownloading: 'Скачивание {version}',
+  updateReady: 'Версия {version} скачана, перезапустите приложение, чтобы завершить обновление',
+  updateInstalling: 'Установка…',
+  entryAvailable: 'Новая версия {version}',
+  entryDownloading: 'Скачивание обновления {pct}%',
+  entryRestart: 'Перезапустите для обновления',
+  entryInstalling: 'Установка обновления…',
+  entryError: 'Ошибка обновления',
+  pingFailed: 'Недоступен'
+} satisfies Messages['view']

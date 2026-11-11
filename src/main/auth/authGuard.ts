@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import type { AuthState } from '@shared/types'
 import { getRaw, LoginRequiredError, NAV_URL, setAuthExpiredHook, updateWbiKeys } from '../bili/http'
 import { send } from '../windows'
@@ -72,7 +73,7 @@ export async function checkAuth(): Promise<AuthState> {
         uname: d.uname,
         face: d.face,
         vipActive: d.vipStatus === 1,
-        vipLabel: d.vipStatus === 1 ? d.vip_label?.text || '大会员' : ''
+        vipLabel: d.vipStatus === 1 ? d.vip_label?.text || t('misc.vipDefault') : ''
       }
     })
   } else {
@@ -105,6 +106,6 @@ export async function ensureLoggedIn(): Promise<void> {
   const s = await checkAuthThrottled(60_000)
   if (!s.loggedIn) {
     requireLogin()
-    throw new LoginRequiredError(s.expired ? '登录已过期，请重新登录' : '请先登录 B站账号')
+    throw new LoginRequiredError(t(s.expired ? 'authErr.loginExpired' : 'authErr.loginRequiredAccount'))
   }
 }

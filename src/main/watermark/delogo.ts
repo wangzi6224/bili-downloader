@@ -1,4 +1,5 @@
 import { basename, extname } from 'node:path'
+import { t } from '@shared/i18n'
 import type { WatermarkRegion } from '@shared/types'
 import { delogoFilter } from '@shared/watermark'
 import { encoderArgs, type Encoder } from './encoder'
@@ -56,7 +57,7 @@ export function buildReplaceArgs(o: {
   coverFile?: string
 }): string[] {
   const { probe, format } = o
-  if (!probe.video) throw new Error('文件里没有视频画面')
+  if (!probe.video) throw new Error(t('wm.noVideoInFile'))
   const mp4 = format === 'mp4'
   const args = ['-i', o.input, '-map', `0:${probe.video.index}`, '-map', '0:a?', '-map', '0:s?']
   if (mp4 && probe.cover) args.push('-map', `0:${probe.cover.index}`)

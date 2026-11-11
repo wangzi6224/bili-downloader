@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  devMode: 'Installation automatique impossible en mode développement ; testez avec l’application empaquetée',
+  unsupportedOs: 'L’installation automatique n’est prise en charge que sur macOS, Linux et Windows',
+  appNotFound: 'Emplacement de l’application introuvable ({path})',
+  moveFirst: 'Faites d’abord glisser l’application dans le dossier « Applications », ouvrez-la depuis là, puis mettez-la à jour',
+  translocated: 'L’application a été ouverte directement depuis le dossier « Téléchargements ». {hint}',
+  inDiskImage: 'L’application s’exécute depuis une image disque. {hint}',
+  noWritePermission: 'Pas l’autorisation de modifier {dir}',
+  appImageOnly: 'Seule la version AppImage prend en charge l’installation automatique',
+  installerOnly: 'Seules les versions installées avec le programme d’installation prennent en charge l’installation automatique',
+  noAppInPackage: 'Application introuvable dans le paquet d’installation',
+  notThisApp: 'Le paquet d’installation ne correspond pas à cette application ({id})',
+  versionMismatch: 'Le paquet d’installation est en version {actual}, et non {expected}',
+  platformUnsupported: 'Installation automatique non prise en charge sur {platform}',
+  launchFailed: 'Impossible de lancer le programme de mise à jour',
+  badVersion: 'Numéro de version mal formé : {version}',
+  badManifest: 'Informations de mise à jour mal formées : {what}',
+  notJsonObject: 'ce n’est pas un objet JSON',
+  noRelease: 'Aucune version n’a encore été publiée sur le serveur',
+  noPackage: 'La nouvelle version {version} n’a pas de paquet d’installation pour {key}',
+  checkFailed: 'Échec de la recherche de mises à jour : {reason}',
+  notReady: 'La mise à jour n’est pas encore entièrement téléchargée',
+  corrupted: 'Le paquet d’installation est endommagé, veuillez le retélécharger',
+  installFailed: 'Échec de l’installation de la mise à jour : {reason}',
+  verifyFailed: 'La vérification du paquet d’installation a échoué (fichier endommagé ou altéré), veuillez réessayer',
+  downloadFailed: 'Échec du téléchargement de la mise à jour : {reason}',
+  stalled: 'Délai de connexion dépassé'
+} satisfies Messages['updateErr']

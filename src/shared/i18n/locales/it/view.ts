@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: 'Migliore',
+  audioFlac: 'Hi-Res lossless',
+  audioDolby: 'Dolby Atmos',
+  tagVideo: 'Video ({container})',
+  tagAudio: 'Audio ({audio})',
+  tagMuted: 'Senza audio',
+  tagCover: 'Copertina',
+  tagSubtitle: 'Sottotitoli',
+  tagChapters: 'Capitoli',
+  tagDanmaku: 'Danmaku',
+  tagWatermark: 'Senza filigrana',
+  updateIdle: 'Non ancora controllato',
+  updateChecking: 'Controllo in corso…',
+  updateLatest: 'Hai già la versione più recente',
+  updateLatestAt: 'Hai già la versione più recente (controllo: {time})',
+  updateAvailable: 'Nuova versione {version} disponibile',
+  updateAvailableSkipped: 'Nuova versione {version} disponibile (saltata)',
+  updateDownloading: 'Download di {version} in corso',
+  updateReady: '{version} scaricata: riavvia per completare l’aggiornamento',
+  updateInstalling: 'Installazione…',
+  entryAvailable: 'Nuova versione {version}',
+  entryDownloading: 'Download aggiornamento {pct}%',
+  entryRestart: 'Riavvia per completare l’aggiornamento',
+  entryInstalling: 'Installazione aggiornamento…',
+  entryError: 'Aggiornamento non riuscito',
+  pingFailed: 'Non raggiungibile'
+} satisfies Messages['view']

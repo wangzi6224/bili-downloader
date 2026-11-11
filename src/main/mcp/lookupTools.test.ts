@@ -3,7 +3,7 @@ import type { AuthState } from '@shared/types'
 
 vi.mock('electron', () => ({}))
 const { AuthExpiredError, BiliError } = await import('../bili/http')
-const { LookupTools, LOOKUP_DEFINITIONS } = await import('./lookupTools')
+const { LookupTools, lookupDefinitions } = await import('./lookupTools')
 type Lookup = import('../bili/lookup').BiliLookup
 type Detail = import('../bili/lookup').VideoDetail
 type SearchVideo = import('../bili/lookup').SearchVideo
@@ -81,14 +81,14 @@ beforeEach(() => {
 
 describe('工具定义', () => {
   it('都是只读的，handles 只认这些工具', () => {
-    expect(LOOKUP_DEFINITIONS.map((t) => t.name)).toEqual([
+    expect(lookupDefinitions().map((t) => t.name)).toEqual([
       'search_videos',
       'search_users',
       'get_video_info',
       'get_video_transcript',
       'get_video_comments'
     ])
-    for (const t of LOOKUP_DEFINITIONS) {
+    for (const t of lookupDefinitions()) {
       expect(t.annotations).toEqual({ readOnlyHint: true, openWorldHint: true })
       expect(tools.handles(t.name)).toBe(true)
     }

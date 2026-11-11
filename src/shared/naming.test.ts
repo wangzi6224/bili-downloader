@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_TEMPLATES, MEDIA_LIBRARY_PGC, renderTemplate, validateTemplate } from './naming'
+import { DEFAULT_TEMPLATES, MEDIA_LIBRARY_PGC, NAMING_VARS, renderTemplate, validateTemplate } from './naming'
 
 describe('renderTemplate', () => {
   it('drops optional segments whose variables are empty', () => {
@@ -38,6 +38,13 @@ describe('renderTemplate', () => {
 
   it('falls back to the title when everything is empty', () => {
     expect(renderTemplate('<{series}>', { title: '标题' })).toBe('标题')
+  })
+})
+
+describe('NAMING_VARS', () => {
+  it('labels come from the current language', () => {
+    expect(NAMING_VARS.find((v) => v.name === 'index')).toMatchObject({ name: 'index', kind: 'number', label: '序号' })
+    expect(NAMING_VARS.every((v) => v.label.length > 0)).toBe(true)
   })
 })
 

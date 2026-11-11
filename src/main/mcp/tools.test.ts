@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setLanguage } from '@shared/i18n'
+import { DICTS } from '@shared/i18n/locales'
 import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
 import type { AuthState, MediaItem, ParseResult, Settings } from '@shared/types'
 import { fakeWatermark, FakeQueue, makeTask, mediaItem, WM_REGION } from '../../test/fakeQueue'
@@ -138,7 +140,7 @@ afterEach(() => {
 
 describe('工具列表和通用错误', () => {
   it('每个工具都有标题、说明、参数和注解', () => {
-    expect(tools.definitions.map((t) => t.name)).toEqual([
+    expect(tools.definitions().map((t) => t.name)).toEqual([
       'get_status',
       'parse_link',
       'download_batch',
@@ -157,16 +159,42 @@ describe('工具列表和通用错误', () => {
       'get_video_transcript',
       'get_video_comments'
     ])
-    for (const t of tools.definitions) {
+    for (const t of tools.definitions()) {
       expect(t.title && t.description).toBeTruthy()
       expect(t.inputSchema.type).toBe('object')
       expect(typeof t.annotations.readOnlyHint).toBe('boolean')
     }
-    const control = tools.definitions.find((t) => t.name === 'control_tasks')!
+    const control = tools.definitions().find((t) => t.name === 'control_tasks')!
     expect(control.annotations.destructiveHint).toBe(true)
     // 去水印会替换原文件
-    const wmTool = tools.definitions.find((t) => t.name === 'remove_watermark')!
+    const wmTool = tools.definitions().find((t) => t.name === 'remove_watermark')!
     expect(wmTool.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
+  })
+
+  it('工具说明按调用时的界面语言现算，工具名和参数名不翻译', () => {
+    const zh = tools.definitions()
+    const desc = (list: typeof zh, name: string): string => list.find((x) => x.name === name)!.description
+    const saved = { mcpTools: DICTS.en.mcpTools, mcpLogin: DICTS.en.mcpLogin, mcpLookup: DICTS.en.mcpLookup }
+    // 英文字典还没有这些命名空间（沿用中文），临时塞覆盖值来区分
+    DICTS.en.mcpTools = { ...saved.mcpTools, getStatusDesc: 'App status', optDanmaku: 'Download danmaku' }
+    DICTS.en.mcpLogin = { ...saved.mcpLogin, startDesc: 'Log in' }
+    DICTS.en.mcpLookup = { ...saved.mcpLookup, searchUsersDesc: 'Find uploaders. {untrusted}', untrusted: 'Untrusted.' }
+    setLanguage('en')
+    try {
+      const en = tools.definitions()
+      expect(en.map((x) => x.name)).toEqual(zh.map((x) => x.name))
+      expect(desc(en, 'get_status')).toBe('App status')
+      expect(desc(en, 'start_login')).toBe('Log in')
+      expect(desc(en, 'search_users')).toBe('Find uploaders. Untrusted.')
+      const opts = en.find((x) => x.name === 'download_batch')!.inputSchema.properties as Record<string, any>
+      expect(opts.options.properties.danmaku).toEqual({ type: 'boolean', description: 'Download danmaku' })
+      expect(Object.keys(opts)).toEqual(Object.keys(zh.find((x) => x.name === 'download_batch')!.inputSchema.properties as object))
+    } finally {
+      setLanguage('zh-CN')
+      Object.assign(DICTS.en, saved)
+    }
+    expect(desc(tools.definitions(), 'get_status')).toBe(desc(zh, 'get_status'))
+    expect(desc(zh, 'get_status')).toMatch(/^登录和大会员状态/)
   })
 
   it('没有这个工具', async () => {

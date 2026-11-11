@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import { cookieHeader, getCookie, setBiliCookies, UA } from '../auth/session'
 import { encWbi, keyFromUrl } from './wbi'
 
@@ -12,7 +13,7 @@ export class BiliError extends Error {
 
 export class AuthExpiredError extends BiliError {
   constructor() {
-    super('登录已失效，请重新登录', -101)
+    super(t('bili.authExpired'), -101)
   }
 }
 
@@ -71,8 +72,8 @@ export async function biliFetch(
       if (t2 - t0 > 1500) {
         console.warn(`[slow] cookie ${t1 - t0}ms + 请求 ${t2 - t1}ms HTTP ${res.status} ${url.split('?')[0]}`)
       }
-      if (res.status === 412) throw new BiliError('请求被 B站风控拦截（HTTP 412），请稍后再试', 412)
-      if (res.status >= 500) throw new BiliError(`B站服务器错误（HTTP ${res.status}）`, res.status)
+      if (res.status === 412) throw new BiliError(t('bili.riskControl'), 412)
+      if (res.status >= 500) throw new BiliError(t('bili.serverError', { status: res.status }), res.status)
       return res
     } catch (e) {
       lastErr = e
@@ -82,7 +83,7 @@ export async function biliFetch(
       if (i < retries) await sleep(1000 * 2 ** i)
     }
   }
-  throw lastErr instanceof BiliError ? lastErr : new BiliError(`网络请求失败：${String(lastErr)}`)
+  throw lastErr instanceof BiliError ? lastErr : new BiliError(t('bili.networkFailed', { error: String(lastErr) }))
 }
 
 // ---- WBI key 缓存 ----
@@ -101,7 +102,7 @@ async function getWbiKeys(): Promise<{ img: string; sub: string }> {
       wbi_img: { img_url: string; sub_url: string }
     }>
     updateWbiKeys(json.data?.wbi_img)
-    if (!wbiKeys) throw new BiliError('获取 WBI 签名密钥失败')
+    if (!wbiKeys) throw new BiliError(t('bili.wbiKeyFailed'))
   }
   return wbiKeys
 }
@@ -152,7 +153,7 @@ export async function getRaw<T>(url: string, params?: Params, opts: { wbi?: bool
   try {
     return (await res.json()) as BiliJson<T>
   } catch {
-    throw new BiliError(`接口返回了无法解析的内容（HTTP ${res.status}）`, res.status)
+    throw new BiliError(t('bili.badResponse', { status: res.status }), res.status)
   }
 }
 
@@ -177,6 +178,6 @@ export async function api<T>(
     if (!opts.quietAuth) onAuthExpired()
     throw new AuthExpiredError()
   }
-  if (json.code !== 0) throw new BiliError(json.message || `接口错误（${json.code}）`, json.code)
+  if (json.code !== 0) throw new BiliError(json.message || t('bili.apiError', { code: json.code }), json.code)
   return (json.data ?? json.result) as T
 }

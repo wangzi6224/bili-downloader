@@ -1,8 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { pingHost, preferCdn } from './cdn'
+import { cdnHosts, pingHost, preferCdn } from './cdn'
 
 const UPOS = 'https://upos-sz-estgcos.bilivideo.com/upgcxcode/99/91/137649199/137649199-1-30080.m4s?e=abc&deadline=1&os=upos'
 const MCDN = 'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/99/91/137649199/137649199-1-30080.m4s?e=abc&os=mcdn'
+
+describe('cdnHosts', () => {
+  it('lists every mirror with a display name', () => {
+    const hosts = cdnHosts()
+    expect(hosts).toHaveLength(7)
+    expect(hosts[0]).toEqual({ host: 'upos-sz-mirrorali.bilivideo.com', label: '阿里云' })
+    expect(hosts.find((h) => h.host === 'upos-sz-mirror08c.bilivideo.com')?.label).toBe('08c')
+    expect(hosts.map((h) => h.label)).toContain('Akamai（海外）')
+  })
+})
 
 describe('preferCdn', () => {
   it('puts the preferred mirror first and keeps the originals as fallbacks', () => {

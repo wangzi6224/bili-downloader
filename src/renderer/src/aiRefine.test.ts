@@ -47,6 +47,7 @@ describe('模型状态', () => {
     expect(modelText({ state: 'downloading', size: 200 * MB, done: 50 * MB })).toBe('正在下载 AI 模型 25%（50.0 MB / 200.0 MB）')
     expect(modelText({ state: 'downloading', size: 200 * MB, done: 50 * MB, source: 'ModelScope' })).toBe('正在从 ModelScope 下载 AI 模型 25%（50.0 MB / 200.0 MB）')
     expect(modelText({ state: 'downloading', size: 0 })).toBe('正在下载 AI 模型 0%（0 B / 0 B）')
+    expect(modelText({ state: 'downloading', size: 200 * MB })).toBe('正在下载 AI 模型 0%（0 B / 200.0 MB）')
     expect(modelText({ state: 'downloading', size: 1, done: 1, verifying: true })).toBe('正在校验模型…')
     expect(modelText({ state: 'error', size: 1, message: '连不上' })).toBe('模型下载失败：连不上')
     expect(modelText({ state: 'error', size: 1 })).toBe('模型下载失败：未知原因')
@@ -83,5 +84,13 @@ describe('去水印的速度和总开关的说明', () => {
     expect(watermarkModeHint('auto', speed)).toBe('用周围的画面填补，水印处略糊；约为视频时长的 0.1～0.3 倍 · 这台电脑实测')
     expect(watermarkModeHint('ai', speed)).toBe('用 AI 模型逐帧补出水印下面的画面，清楚得多；约为视频时长的 2～3 倍 · 粗估')
     expect(WATERMARK_MODES.map((m) => m.value)).toEqual(['off', 'auto', 'ai'])
+  })
+
+  it('选项文字是 getter，读取时才按当前语言取', () => {
+    expect(WATERMARK_MODES.map((m) => m.label)).toEqual(['不处理', '快速去除', 'AI 精修'])
+    for (const m of WATERMARK_MODES) {
+      expect(Object.getOwnPropertyDescriptor(m, 'label')?.get).toBeTypeOf('function')
+      expect(Object.getOwnPropertyDescriptor(m, 'hint')?.get).toBeTypeOf('function')
+    }
   })
 })

@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  devMode: '개발 모드에서는 자동 설치할 수 없습니다. 패키징된 앱으로 테스트하세요',
+  unsupportedOs: '자동 설치는 macOS, Linux, Windows만 지원합니다',
+  appNotFound: '앱이 있는 위치를 찾을 수 없습니다({path})',
+  moveFirst: '먼저 앱을 ‘응용 프로그램’ 폴더로 옮기고 그곳에서 연 다음 업데이트하세요',
+  translocated: '앱을 ‘다운로드’ 폴더에서 바로 열었습니다. {hint}',
+  inDiskImage: '앱이 디스크 이미지 안에서 실행 중입니다. {hint}',
+  noWritePermission: '{dir}을(를) 수정할 권한이 없습니다',
+  appImageOnly: 'AppImage 버전만 자동 설치를 지원합니다',
+  installerOnly: '설치 프로그램으로 설치한 버전만 자동 설치를 지원합니다',
+  noAppInPackage: '설치 파일에서 앱을 찾지 못했습니다',
+  notThisApp: '설치 파일이 이 앱이 아닙니다({id})',
+  versionMismatch: '설치 파일의 버전이 {expected}이(가) 아니라 {actual}입니다',
+  platformUnsupported: '자동 설치는 {platform}을(를) 지원하지 않습니다',
+  launchFailed: '업데이트 프로그램을 시작할 수 없습니다',
+  badVersion: '버전 번호 형식이 잘못되었습니다: {version}',
+  badManifest: '업데이트 정보 형식이 잘못되었습니다: {what}',
+  notJsonObject: 'JSON 객체가 아닙니다',
+  noRelease: '서버에 아직 출시된 버전이 없습니다',
+  noPackage: '새 버전 {version}에 {key}용 설치 파일이 없습니다',
+  checkFailed: '업데이트 확인 실패: {reason}',
+  notReady: '업데이트 다운로드가 아직 완료되지 않았습니다',
+  corrupted: '설치 파일이 손상되었습니다. 다시 다운로드하세요',
+  installFailed: '업데이트 설치 실패: {reason}',
+  verifyFailed: '설치 파일 검증에 실패했습니다(파일이 손상되었거나 변조됨). 다시 시도하세요',
+  downloadFailed: '업데이트 다운로드 실패: {reason}',
+  stalled: '연결 시간 초과'
+} satisfies Messages['updateErr']

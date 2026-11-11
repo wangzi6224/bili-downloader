@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserProfile } from '@shared/types'
 import type { LoginFlow, LoginReason, LoginSnapshot } from './loginFlow'
-import { LOGIN_DEFINITIONS, LoginTools } from './loginTools'
+import { loginDefinitions, LoginTools } from './loginTools'
 
 const OUT = { status: 'idle', tried: [], alsoAvailable: [], auth: { loggedIn: false } } satisfies LoginSnapshot
 const IN = {
@@ -29,7 +29,7 @@ beforeEach(() => {
 
 describe('定义', () => {
   it('两个工具都能处理，其他的不归它管', () => {
-    expect(LOGIN_DEFINITIONS.map((d) => d.name)).toEqual(['start_login', 'get_login_status'])
+    expect(loginDefinitions().map((d) => d.name)).toEqual(['start_login', 'get_login_status'])
     expect(tools.handles('start_login')).toBe(true)
     expect(tools.handles('get_login_status')).toBe(true)
     expect(tools.handles('get_status')).toBe(false)
@@ -37,7 +37,7 @@ describe('定义', () => {
   })
 
   it('没有替 agent 关闭浏览器的参数', () => {
-    const def = LOGIN_DEFINITIONS.find((d) => d.name === 'start_login')!
+    const def = loginDefinitions().find((d) => d.name === 'start_login')!
     expect(Object.keys(def.inputSchema.properties as object)).toEqual(['method', 'source', 'wait_seconds'])
   })
 })

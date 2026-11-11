@@ -1,3 +1,4 @@
+import { t } from '@shared/i18n'
 import { api, BiliError } from './http'
 import { toSeconds } from './lists'
 import { expandShort } from './resolve'
@@ -73,7 +74,7 @@ interface SearchData<T> {
 async function search<T>(searchType: string, params: Record<string, string | number | undefined>): Promise<SearchPage<T>> {
   const d = await api<SearchData<T>>(SEARCH_URL, { search_type: searchType, ...params }, WBI)
   // code 是 0，但只给一个人机验证的凭证、没有结果：过一会儿再试，这里不做任何绕过
-  if (d.v_voucher && !d.result) throw new BiliError('B站要求人机验证，这次搜索没有结果', -412)
+  if (d.v_voucher && !d.result) throw new BiliError(t('bili.captcha'), -412)
   return { total: d.numResults ?? 0, pages: d.numPages ?? 0, list: d.result ?? [] }
 }
 

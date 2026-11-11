@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { History, Search, Trash2, X } from 'lucide-react'
 import type { ParseRecord } from '@shared/types'
 import { ago, thumb } from '../format'
+import { useT } from '../i18n'
 import { api, parseLink, useStore } from '../store'
 import { Badge, Button, EmptyState, IconButton, Input, PageHeader } from './ui'
 
 /** 解析记录：方便下次接着下合集里剩下的集 */
 export function HistoryPage() {
+  const t = useT()
   const set = useStore((s) => s.set)
   const [records, setRecords] = useState<ParseRecord[] | null>(null)
   const [q, setQ] = useState('')
@@ -24,22 +26,22 @@ export function HistoryPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
-        title="解析记录"
-        subtitle="解析过的链接都在这里，点一下重新打开选择窗口，接着下载剩下的集。"
+        title={t('history.title')}
+        subtitle={t('history.subtitle')}
         actions={
           records?.length ? (
             <>
-              <Input icon={Search} value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索标题或链接" className="w-52" />
+              <Input icon={Search} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('history.search')} className="w-52" />
               <Button
                 icon={Trash2}
                 variant="ghost"
                 onClick={async () => {
-                  if (!confirm('清空全部解析记录？')) return
+                  if (!confirm(t('history.clearConfirm'))) return
                   await api.history.clearParses()
                   setRecords([])
                 }}
               >
-                清空
+                {t('history.clear')}
               </Button>
             </>
           ) : null
@@ -47,11 +49,11 @@ export function HistoryPage() {
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
         {records?.length === 0 && (
-          <EmptyState icon={History} title="还没有解析记录">
-            在下载页粘贴链接解析后，会自动记在这里。
+          <EmptyState icon={History} title={t('history.empty')}>
+            {t('history.emptyHint')}
           </EmptyState>
         )}
-        {records && records.length > 0 && shown.length === 0 && <EmptyState icon={Search} title="没有匹配的记录" />}
+        {records && records.length > 0 && shown.length === 0 && <EmptyState icon={Search} title={t('history.noMatch')} />}
         {shown.map((r) => (
           <div
             key={r.input}
@@ -75,8 +77,8 @@ export function HistoryPage() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] font-medium">{r.title}</div>
               <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                <Badge>{r.kind === 'pgc' ? '番剧影视' : '视频'}</Badge>
-                <span className="tabular-nums">{r.count} 项</span>
+                <Badge>{r.kind === 'pgc' ? t('history.kindPgc') : t('history.kindVideo')}</Badge>
+                <span className="tabular-nums">{t('history.itemCount', { count: r.count })}</span>
                 <span>·</span>
                 <span>{ago(r.at, Date.now())}</span>
               </div>
@@ -85,7 +87,7 @@ export function HistoryPage() {
             <IconButton
               icon={X}
               variant="danger"
-              label="删除这条记录"
+              label={t('history.remove')}
               className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               onClick={async (e) => {
                 e.stopPropagation()

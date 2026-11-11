@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  audioBest: 'Meilleure',
+  audioFlac: 'Hi-Res sans perte',
+  audioDolby: 'Dolby Atmos',
+  tagVideo: 'Vidéo ({container})',
+  tagAudio: 'Audio ({audio})',
+  tagMuted: 'Sans son',
+  tagCover: 'Couverture',
+  tagSubtitle: 'Sous-titres',
+  tagChapters: 'Chapitres',
+  tagDanmaku: 'Danmaku',
+  tagWatermark: 'Sans filigrane',
+  updateIdle: 'Jamais vérifié',
+  updateChecking: 'Vérification…',
+  updateLatest: 'Vous avez la dernière version',
+  updateLatestAt: 'Vous avez la dernière version (vérifié à {time})',
+  updateAvailable: 'Nouvelle version {version} disponible',
+  updateAvailableSkipped: 'Nouvelle version {version} disponible (ignorée)',
+  updateDownloading: 'Téléchargement de {version}',
+  updateReady: '{version} est téléchargée, redémarrez pour terminer la mise à jour',
+  updateInstalling: 'Installation…',
+  entryAvailable: 'Nouvelle version {version}',
+  entryDownloading: 'Téléchargement de la mise à jour {pct} %',
+  entryRestart: 'Redémarrer pour terminer la mise à jour',
+  entryInstalling: 'Installation de la mise à jour…',
+  entryError: 'Échec de la mise à jour',
+  pingFailed: 'Injoignable'
+} satisfies Messages['view']

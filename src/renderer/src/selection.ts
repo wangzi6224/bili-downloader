@@ -1,13 +1,24 @@
+import { t, type Key } from '@shared/i18n'
 import { renderTemplate, type NamingTemplates } from '@shared/naming'
 import type { DuplicateAction, EnqueueRequest, MediaGroup, MediaItem, Paging, ParseResult, QualityOption } from '@shared/types'
 import { actualCodec, type EditableOptions } from './viewLogic'
 
-// 取不到清晰度列表时的兜底选项
+const fallback = (qn: number, label: Key, needLogin: boolean): QualityOption => ({
+  qn,
+  get label() {
+    return t(label)
+  },
+  needVip: false,
+  needLogin,
+  codecs: []
+})
+
+/** 取不到清晰度列表时的兜底选项；label 是 getter，读取时才按当前语言取 */
 export const FALLBACK: QualityOption[] = [
-  { qn: 127, label: '最高可用', needVip: false, needLogin: false, codecs: [] },
-  { qn: 80, label: '1080P 高清', needVip: false, needLogin: true, codecs: [] },
-  { qn: 64, label: '720P 准高清', needVip: false, needLogin: false, codecs: [] },
-  { qn: 32, label: '480P 标清', needVip: false, needLogin: false, codecs: [] }
+  fallback(127, 'selection.qualityBest', false),
+  fallback(80, 'selection.quality1080', true),
+  fallback(64, 'selection.quality720', false),
+  fallback(32, 'selection.quality480', false)
 ]
 
 export const CODEC_TEXT = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' } as const
@@ -93,6 +104,7 @@ export function resolveDuplicates(
   return { ask: dups }
 }
 
+// 文件名模板 {type} 的取值，会影响已下载文件的命名，不随界面语言变
 const TYPE_TEXT = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' } as const
 
 export interface PreviewInput {

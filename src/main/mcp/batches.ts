@@ -10,9 +10,10 @@ import type {
   WatermarkMethod,
   WatermarkRegion
 } from '@shared/types'
+import { t } from '@shared/i18n'
 import type { EnqueueResult } from '../download/manager'
 import { readJsonArray, writeJson } from '../store'
-import { countStatuses, describeError, LOGIN_HINT, mcpStatus, stopsBatch, summarizeTask, totalSpeed, type McpStatus } from './format'
+import { countStatuses, describeError, joinHints, loginHint, mcpStatus, stopsBatch, summarizeTask, totalSpeed, type McpStatus } from './format'
 
 /** MCP 用到的下载队列操作（DownloadManager 的子集，方便测试） */
 export interface TaskQueue {
@@ -316,28 +317,28 @@ export class BatchManager extends EventEmitter {
     const id = b.id
     switch (state) {
       case 'expanding':
-        return `正在获取视频分P并分段加入队列（${b.processed}/${b.selected}），已加入的会先开始下载，可以带 wait_seconds 等待`
+        return t('mcpBatch.expanding', { done: b.processed, total: b.selected })
       case 'interrupted':
         return b.error
-          ? `获取视频分P时出错（${b.error}），已经停下，还有 ${b.pending.length} 个条目没加入队列；过一会儿调用 control_tasks action=resume batch_id=${id} 继续`
-          : `应用退出时还有 ${b.pending.length} 个条目没加入队列，调用 control_tasks action=resume batch_id=${id} 继续`
+          ? t('mcpBatch.interruptedError', { error: b.error, count: b.pending.length, id })
+          : t('mcpBatch.interruptedQuit', { count: b.pending.length, id })
       case 'waiting_auth':
-        return `登录已失效，重新登录后会自动继续。${LOGIN_HINT}`
+        return t('mcpBatch.waitingAuth', { loginHint: loginHint() })
       case 'downloading':
       case 'queued':
         return counts.retrying
-          ? `下载中，${counts.retrying} 个任务出错后在等待自动重试，可以带 wait_seconds 等待`
-          : '下载中，可以带 wait_seconds 等待'
+          ? t('mcpBatch.retrying', { count: counts.retrying })
+          : t('mcpBatch.downloading')
       case 'paused':
-        return `${counts.paused} 个任务已暂停（应用重启后未完成的任务会自动暂停），调用 control_tasks action=resume batch_id=${id} 继续`
+        return t('mcpBatch.paused', { count: counts.paused, id })
       case 'done_with_errors': {
         const tips = []
-        if (counts.failed || b.failed.length) tips.push(`调用 control_tasks action=retry batch_id=${id} 重试失败的`)
-        if (counts.unsupported) tips.push('无法下载（unsupported）的多半需要大会员、有地区限制或是付费内容，重试没用')
-        return tips.join('；')
+        if (counts.failed || b.failed.length) tips.push(t('mcpBatch.retryFailed', { id }))
+        if (counts.unsupported) tips.push(t('mcpBatch.unsupported'))
+        return joinHints(tips)
       }
       default:
-        return !counts.done && b.skipped.downloaded ? '选中的条目都已经下载过' : undefined
+        return !counts.done && b.skipped.downloaded ? t('mcpBatch.allDownloaded') : undefined
     }
   }
 

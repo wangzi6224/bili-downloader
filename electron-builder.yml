@@ -17,11 +17,18 @@ extraResources:
   - from: resources/ffmpeg/${platform}-${arch}
     to: ffmpeg
 npmRebuild: false
-# 界面只有简体中文，Electron 自带的语言包只留中文和英文（Chromium 缺语言包时退回英文，不能删）
+# Electron 自带的语言包只留界面支持的语言（src/shared/i18n 的 LANGS）：原生菜单、右键菜单、文件对话框按它显示。
+# Chromium 缺语言包时退回英文，en 不能删；繁体中文系统界面用简体，zh_TW 保留给系统对话框
 electronLanguages:
+  - en
   - zh_CN
   - zh_TW
-  - en
+  - ja
+  - ko
+  - fr
+  - it
+  - ru
+  - hi
 mac:
   category: public.app-category.video
   target:
@@ -31,6 +38,10 @@ mac:
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
+  # 声明支持的语言，macOS 才会按系统语言显示应用菜单里的系统项（服务、隐藏、退出等）
+  extendInfo:
+    CFBundleDevelopmentRegion: en
+    CFBundleLocalizations: [en, zh_CN, zh_TW, ja, ko, fr, it, ru, hi]
   # 菜单栏图标（template 图片），由 npm run icons 从 build/tray.svg 生成
   extraResources:
     - from: build/trayTemplate.png

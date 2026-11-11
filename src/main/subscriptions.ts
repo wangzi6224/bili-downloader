@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { downloadedMatcher } from '@shared/downloaded'
+import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
 import type { EnqueueRequest, MediaItem, NewSubscription, Subscription } from '@shared/types'
 import { AuthExpiredError } from './bili/http'
@@ -13,7 +14,7 @@ import { readJsonArray, writeJson } from './store'
 
 const TICK_MS = 60_000
 
-const isAscendingTarget = (t: Target | null): boolean => t?.type === 'spaceSeason' || t?.type === 'spaceSeries'
+const isAscendingTarget = (target: Target | null): boolean => target?.type === 'spaceSeason' || target?.type === 'spaceSeries'
 /** 记住的已见条目上限，防止大收藏夹让文件无限变大 */
 const MAX_SEEN = 5000
 
@@ -55,7 +56,7 @@ export class SubscriptionManager extends EventEmitter {
   }
 
   async add(req: NewSubscription): Promise<Subscription[]> {
-    if (this.subs.some((s) => s.input === req.input)) throw new Error('已经订阅过这个来源')
+    if (this.subs.some((s) => s.input === req.input)) throw new Error(t('subsErr.duplicate'))
     const sub: Subscription = {
       id: randomUUID(),
       input: req.input,
@@ -129,7 +130,7 @@ export class SubscriptionManager extends EventEmitter {
       sub.lastNew = fresh.length
       sub.lastError = undefined
     } catch (e) {
-      sub.lastError = e instanceof AuthExpiredError ? '登录已失效，重新登录后会继续检查' : e instanceof Error ? e.message : String(e)
+      sub.lastError = e instanceof AuthExpiredError ? t('subsErr.authExpired') : e instanceof Error ? e.message : String(e)
     } finally {
       this.checking.delete(id)
     }

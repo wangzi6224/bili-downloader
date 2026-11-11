@@ -101,12 +101,12 @@ vi.mock('./auth/loginWindow', () => ({ openLoginWindow: h.openLoginWindow }))
 vi.mock('./auth/session', () => ({
   biliSession: () => ({ cookies: { get: h.cookiesGet, set: h.cookiesSet } })
 }))
-vi.mock('./bili/audio', () => ({ AUDIO_STREAM_INFO: h.AUDIO }))
+vi.mock('./bili/audio', () => ({ audioStreamInfo: () => h.AUDIO }))
 vi.mock('./bili/lists', () => ({ expandLazy: h.expandLazy, loadPage: h.loadPage, myFavFolders: h.myFavFolders }))
 vi.mock('./bili/playurl', () => ({ getPlayInfo: h.getPlayInfo, streamInfoFromPlay: h.streamInfoFromPlay }))
 vi.mock('./bili/resolve', () => ({ resolveBatch: h.resolveBatch, resolveInput: h.resolveInput }))
 vi.mock('./config', () => ({ exportConfig: h.exportConfig, importConfig: h.importConfig }))
-vi.mock('./net/cdn', () => ({ CDN_HOSTS: h.CDN, pingHost: h.pingHost }))
+vi.mock('./net/cdn', () => ({ cdnHosts: () => h.CDN, pingHost: h.pingHost }))
 vi.mock('./net/network', () => ({ networkStatus: h.networkStatus }))
 vi.mock('./history', () => ({
   clearDownloads: h.clearDownloads,
@@ -205,8 +205,8 @@ const order = (fn: Mock, i = 0): number => fn.mock.invocationCallOrder[i]
 
 describe('返回值包装', () => {
   it('成功时返回 { ok: true, data }', async () => {
-    h.networkStatus.mockReturnValue('直连')
-    expect(await invoke('net:status')).toEqual({ ok: true, data: '直连' })
+    h.networkStatus.mockReturnValue({ text: '直连', error: false })
+    expect(await invoke('net:status')).toEqual({ ok: true, data: { text: '直连', error: false } })
   })
 
   it('没有返回值时 data 为 undefined', async () => {
@@ -233,7 +233,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(69)
+    expect(h.handlers.size).toBe(70)
   })
 })
 

@@ -1,3 +1,4 @@
+import { t as tr } from '@shared/i18n'
 import { parseInput, RANK_SLUGS, type Target } from '@shared/parseUrl'
 import type { MediaGroup, ParseResult } from '@shared/types'
 import { parseAudio, parseAudioMenu } from './audio'
@@ -18,7 +19,7 @@ export async function expandShort(url: string): Promise<Resolved | null> {
 export async function resolveInput(input: string): Promise<ParseResult> {
   const parsed = parseInput(input)
   const t = parsed?.type === 'short' ? await expandShort(parsed.url) : parsed
-  if (!t) throw new Error('没有识别出 B站视频、番剧、课程、收藏夹或 UP 主链接')
+  if (!t) throw new Error(tr('bili.unrecognized'))
   switch (t.type) {
     case 'ugc':
       return parseUgc(t)
@@ -81,10 +82,10 @@ export async function resolveBatch(
     }
     if (i < inputs.length - 1) await sleep(500)
   }
-  if (!groups.length) throw new Error(`全部 ${inputs.length} 个链接都解析失败：${failures[0]?.error ?? ''}`)
+  if (!groups.length) throw new Error(tr('bili.batchAllFailed', { count: inputs.length, error: failures[0]?.error ?? '' }))
   return {
     kind: groups[0].source!.kind,
-    title: `批量解析（${groups.length} 个来源）`,
+    title: tr('bili.batchTitle', { count: groups.length }),
     cover: groups[0].source!.cover,
     groups,
     defaultSelected,

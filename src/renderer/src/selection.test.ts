@@ -56,6 +56,11 @@ describe('常量', () => {
     expect(FALLBACK.every((x) => !x.needVip && x.codecs.length === 0)).toBe(true)
   })
 
+  it('兜底清晰度的名字读取时才按当前语言取', () => {
+    expect(FALLBACK.map((x) => x.label)).toEqual(['最高可用', '1080P 高清', '720P 准高清', '480P 标清'])
+    expect(Object.getOwnPropertyDescriptor(FALLBACK[0], 'label')?.get).toBeTypeOf('function')
+  })
+
   it('编码的显示名', () => {
     expect(CODEC_TEXT).toEqual({ avc: 'AVC', hevc: 'HEVC', av1: 'AV1' })
   })

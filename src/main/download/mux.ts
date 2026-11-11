@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { t, type Key } from '@shared/i18n'
+import { markWatermarkText } from '@shared/watermark'
 import { AbortError, FfmpegError } from './errors'
 
 let cached: string | undefined
@@ -40,21 +42,35 @@ export const isEncoderFailure = (stderr: string | undefined): boolean => {
   return ENCODER_FAILURE.some((k) => s.includes(k))
 }
 
-/** 把 ffmpeg 的报错翻译成用户能看懂的原因；action 是正在做的事（合并、去水印） */
-export function explainFfmpegError(stderr: string, code: number | null, action = '合并'): string {
+/** ffmpeg 正在做的事：合并下载的音视频、去水印时编码、AI 精修时读取原视频 */
+export type FfmpegAction = 'mux' | 'watermark' | 'read'
+
+const ACTION_TEXT: Record<FfmpegAction, Key> = { mux: 'download.actionMux', watermark: 'download.actionWatermark', read: 'download.actionRead' }
+
+/**
+ * 把 ffmpeg 的报错翻译成用户能看懂的原因。去水印的报错本身就是完整的去水印提示（“去水印失败：…”），
+ * 打上标记，WM_NOTE.failed 据此不再重复加前缀
+ */
+export function explainFfmpegError(stderr: string, code: number | null, action: FfmpegAction = 'mux'): string {
+  const text = explainText(stderr, code, action)
+  return action === 'watermark' ? markWatermarkText(text) : text
+}
+
+function explainText(stderr: string, code: number | null, action: FfmpegAction): string {
   const s = stderr.toLowerCase()
-  if (s.includes('no space left')) return `${action}失败：磁盘空间不足`
-  if (s.includes('permission denied') || s.includes('operation not permitted')) return `${action}失败：没有写入目标目录的权限`
-  if (s.includes('logo area is outside')) return `${action}失败：水印位置超出了画面`
-  if (isEncoderFailure(stderr)) return `${action}失败：编码器不可用`
+  const p = { action: t(ACTION_TEXT[action]) }
+  if (s.includes('no space left')) return t('download.ffNoSpace', p)
+  if (s.includes('permission denied') || s.includes('operation not permitted')) return t('download.ffNoPermission', p)
+  if (s.includes('logo area is outside')) return t('download.ffLogoOutside', p)
+  if (isEncoderFailure(stderr)) return t('download.ffEncoder', p)
   if (s.includes('invalid data found') || s.includes('moov atom not found') || s.includes('error while decoding')) {
-    return `${action}失败：下载的文件已损坏，请点“重新下载”`
+    return t('download.ffCorrupt', p)
   }
-  if (action === '合并' && (s.includes('could not find tag for codec') || s.includes('not supported in container'))) {
-    return '合并失败：这种编码放不进当前封装格式，请在设置里改用 MKV'
+  if (action === 'mux' && (s.includes('could not find tag for codec') || s.includes('not supported in container'))) {
+    return t('download.ffContainer')
   }
   const last = stderr.trim().split('\n').pop() ?? ''
-  return `${action}失败（ffmpeg 退出码 ${code}）：${last}`
+  return t('download.ffExit', { ...p, code: String(code), detail: last })
 }
 
 /** 合并很吃磁盘 IO，同一时间只运行一个 ffmpeg，其余排队 */
@@ -76,13 +92,13 @@ function spawnFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
     proc.stderr.on('data', (d) => {
       stderr = (stderr + d).slice(-4000)
     })
-    proc.on('error', (e) => reject(new FfmpegError(`无法运行 ffmpeg：${e.message}`)))
+    proc.on('error', (e) => reject(new FfmpegError(t('download.ffSpawn', { error: e.message }))))
     proc.on('close', (code, sig) => {
       clearTimeout(watchdog)
       signal?.removeEventListener('abort', onAbort)
       if (signal?.aborted) reject(new AbortError())
       else if (code === 0) resolve()
-      else if (sig === 'SIGKILL') reject(new FfmpegError('合并超时，ffmpeg 没有响应'))
+      else if (sig === 'SIGKILL') reject(new FfmpegError(t('download.muxTimeout')))
       else reject(new FfmpegError(explainFfmpegError(stderr, code), stderr))
     })
   })

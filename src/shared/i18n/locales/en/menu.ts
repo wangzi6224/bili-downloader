@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  file: 'File',
+  quit: 'Quit',
+  edit: 'Edit',
+  undo: 'Undo',
+  redo: 'Redo',
+  cut: 'Cut',
+  copy: 'Copy',
+  paste: 'Paste',
+  selectAll: 'Select All',
+  view: 'View',
+  reload: 'Reload',
+  forceReload: 'Force Reload',
+  devTools: 'Developer Tools',
+  actualSize: 'Actual Size',
+  zoomIn: 'Zoom In',
+  zoomOut: 'Zoom Out',
+  fullscreen: 'Full Screen',
+  help: 'Help',
+  openLogDir: 'Open Logs Folder',
+  openDataDir: 'Open Data Folder',
+  debug: 'Debug',
+  simulateExpiry: 'Simulate Login Expiry',
+  restoreLogin: 'Restore Real Login',
+  trayShow: 'Show Window',
+  traySettings: 'Settings',
+  trayCheckUpdate: 'Check for Updates',
+  trayLogin: 'Sign In',
+  trayLogout: 'Sign Out',
+  trayQuit: 'Quit'
+} satisfies Messages['menu']

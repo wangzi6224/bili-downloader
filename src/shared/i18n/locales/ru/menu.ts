@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  file: 'Файл',
+  quit: 'Выйти',
+  edit: 'Правка',
+  undo: 'Отменить',
+  redo: 'Повторить',
+  cut: 'Вырезать',
+  copy: 'Копировать',
+  paste: 'Вставить',
+  selectAll: 'Выбрать все',
+  view: 'Вид',
+  reload: 'Перезагрузить',
+  forceReload: 'Принудительно перезагрузить',
+  devTools: 'Инструменты разработчика',
+  actualSize: 'Фактический размер',
+  zoomIn: 'Увеличить',
+  zoomOut: 'Уменьшить',
+  fullscreen: 'Полноэкранный режим',
+  help: 'Справка',
+  openLogDir: 'Открыть папку журналов',
+  openDataDir: 'Открыть папку данных',
+  debug: 'Отладка',
+  simulateExpiry: 'Имитировать истечение сеанса',
+  restoreLogin: 'Восстановить реальный вход',
+  trayShow: 'Показать окно',
+  traySettings: 'Настройки',
+  trayCheckUpdate: 'Проверить обновления',
+  trayLogin: 'Войти',
+  trayLogout: 'Выйти из аккаунта',
+  trayQuit: 'Выйти'
+} satisfies Messages['menu']

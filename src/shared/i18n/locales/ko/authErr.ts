@@ -1,0 +1,35 @@
+import type { Messages } from '../types'
+
+export default {
+  loginRequired: '먼저 로그인하세요',
+  loginRequiredAccount: '먼저 빌리빌리 계정으로 로그인하세요',
+  loginExpired: '로그인이 만료되었습니다. 다시 로그인하세요',
+  appBoundCookie: '앱 바인딩 암호화된 쿠키는 가져올 수 없습니다. 앱 내 로그인을 사용하거나 쿠키를 직접 붙여넣으세요',
+  missingKey: '{prefix}을(를) 해독할 키가 없습니다',
+  incompleteCookie: 'Chromium 쿠키의 암호화 데이터가 불완전합니다',
+  blockedProfile: '읽기 권한 없음',
+  keychainNotFound: '키체인에서 ‘{service}’을(를) 찾지 못했습니다',
+  keychainDenied: '키체인 접근 권한을 얻지 못했습니다({service}). 시스템 팝업에서 ‘허용’을 클릭하세요',
+  secretToolMissing:
+    'Chrome 계열 브라우저의 로그인 정보를 읽으려면 secret-tool이 필요합니다. 먼저 설치하거나(Debian / Ubuntu: sudo apt install libsecret-tools) 앱 내 로그인을 사용하세요',
+  keyringNotFound: '시스템 키링에서 브라우저 암호를 찾지 못했거나(application={application}) 키링이 잠금 해제되지 않았습니다. 앱 내 로그인을 사용할 수도 있습니다',
+  winKeyUnreadable: 'Windows 브라우저의 암호화 키를 읽을 수 없습니다. 앱 내 로그인을 사용하거나 쿠키를 직접 붙여넣으세요',
+  winKeyMissing: 'Windows 브라우저에 읽을 수 있는 DPAPI 키가 없습니다. 앱 내 로그인을 사용하거나 쿠키를 직접 붙여넣으세요',
+  winKeyUnsupported: '지원되지 않는 Windows 브라우저 키 형식입니다. 앱 내 로그인을 사용하거나 쿠키를 직접 붙여넣으세요',
+  browserLocked: '{browser}이(가) 실행 중이라 로그인 정보를 읽을 수 없습니다. {browser}을(를) 완전히 종료한 다음(백그라운드 실행 포함) 다시 가져오거나 앱 내 로그인을 사용하세요',
+  profileNotFound: '이 브라우저 프로필을 찾을 수 없거나 읽기 권한이 없습니다',
+  noPermission: '{browser}의 데이터를 읽을 권한이 없습니다',
+  noLogin: '{browser}({profile})에 빌리빌리 로그인 정보가 없습니다',
+  importedExpired: '가져온 로그인 정보가 만료되었습니다. 먼저 브라우저에서 빌리빌리에 다시 로그인하거나 앱 내 로그인을 사용하세요',
+  cookieUnreadable: '내용을 인식할 수 없습니다. “SESSDATA=…; bili_jct=…” 형식의 쿠키나 확장 프로그램에서 내보낸 JSON을 붙여넣으세요',
+  noSessdata: 'SESSDATA가 없어 로그인할 수 없습니다',
+  cookieExpired: '이 쿠키는 만료되었습니다. 다시 가져오세요',
+  confirmTimeout: '로그인 확인 시간이 초과되었습니다. 네트워크를 확인하세요',
+  importCancelled: '이번 가져오기가 취소되었습니다',
+  dpapiTimeout: 'DPAPI 해독 시간이 초과되었습니다. 앱 내 로그인을 사용하거나 쿠키를 직접 붙여넣으세요',
+  dpapiFailed: 'DPAPI 해독 실패: {reason}',
+  powershellExitCode: 'PowerShell 종료 코드 {code}',
+  dpapiIncomplete: 'PowerShell이 완전한 해독 결과를 반환하지 않았습니다',
+  safariCorrupt: 'Safari 쿠키 파일이 손상되었습니다',
+  notSafariCookies: 'Safari 쿠키 파일이 아닙니다'
+} satisfies Messages['authErr']

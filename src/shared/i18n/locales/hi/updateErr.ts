@@ -1,0 +1,30 @@
+import type { Messages } from '../types'
+
+export default {
+  devMode: 'डेवलपमेंट मोड में अपने-आप इंस्टॉल नहीं हो सकता, कृपया पैकेज किए गए ऐप से टेस्ट करें',
+  unsupportedOs: 'अपने-आप इंस्टॉल सिर्फ़ macOS, Linux और Windows पर समर्थित है',
+  appNotFound: 'ऐप की जगह नहीं मिली ({path})',
+  moveFirst: 'कृपया पहले ऐप को “ऐप्लिकेशन” फ़ोल्डर में खींचें, वहीं से खोलें और फिर अपडेट करें',
+  translocated: 'ऐप “डाउनलोड्स” फ़ोल्डर से सीधे खोला गया है, {hint}',
+  inDiskImage: 'ऐप डिस्क इमेज के अंदर से चल रहा है, {hint}',
+  noWritePermission: '{dir} में बदलाव करने की अनुमति नहीं है',
+  appImageOnly: 'अपने-आप इंस्टॉल सिर्फ़ AppImage वर्ज़न में समर्थित है',
+  installerOnly: 'अपने-आप इंस्टॉल सिर्फ़ इंस्टॉलर से इंस्टॉल किए गए वर्ज़न में समर्थित है',
+  noAppInPackage: 'इंस्टॉलर पैकेज में ऐप नहीं मिला',
+  notThisApp: 'इंस्टॉलर पैकेज इस ऐप का नहीं है ({id})',
+  versionMismatch: 'इंस्टॉलर पैकेज का वर्ज़न {actual} है, {expected} नहीं',
+  platformUnsupported: '{platform} पर अपने-आप इंस्टॉल समर्थित नहीं है',
+  launchFailed: 'अपडेटर शुरू नहीं हो सका',
+  badVersion: 'वर्ज़न नंबर का फ़ॉर्मेट ग़लत है: {version}',
+  badManifest: 'अपडेट जानकारी का फ़ॉर्मेट ग़लत है: {what}',
+  notJsonObject: 'JSON ऑब्जेक्ट नहीं है',
+  noRelease: 'सर्वर पर अभी तक कोई वर्ज़न रिलीज़ नहीं हुआ है',
+  noPackage: 'नए वर्ज़न {version} में {key} के लिए इंस्टॉलर पैकेज नहीं है',
+  checkFailed: 'अपडेट जाँच विफल: {reason}',
+  notReady: 'अपडेट का डाउनलोड अभी पूरा नहीं हुआ है',
+  corrupted: 'इंस्टॉलर पैकेज ख़राब है, कृपया फिर से डाउनलोड करें',
+  installFailed: 'अपडेट इंस्टॉल विफल: {reason}',
+  verifyFailed: 'इंस्टॉलर पैकेज सत्यापन में विफल रहा (फ़ाइल ख़राब है या उसमें छेड़छाड़ हुई है), कृपया फिर कोशिश करें',
+  downloadFailed: 'अपडेट डाउनलोड विफल: {reason}',
+  stalled: 'कनेक्शन का समय समाप्त'
+} satisfies Messages['updateErr']

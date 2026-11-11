@@ -25,11 +25,13 @@ import {
   X,
   type LucideIcon
 } from 'lucide-react'
+import type { Key } from '@shared/i18n'
 import { itemUrl } from '@shared/parseUrl'
 import { isVideoTask } from '@shared/watermark'
 import type { AiModelStatus, PowerMode, TaskInfo, TaskStatus, WatermarkSpeed } from '@shared/types'
 import { modelPct, modelText, WATERMARK_MODES, watermarkModeHint } from '../aiRefine'
 import { fmtSpeed, thumb } from '../format'
+import { useT } from '../i18n'
 import { WatermarkOff } from '../icons'
 import { api, sysText, updateSettings, useStore } from '../store'
 import { ACTIVE, buildEntries } from '../taskOrder'
@@ -68,18 +70,18 @@ import {
 } from './ui'
 
 const SKY = 'text-sky-600 dark:text-sky-400'
-const STATUS: Record<TaskStatus, { label: string; color: string; icon: LucideIcon; spin?: boolean }> = {
-  queued: { label: '排队中', color: 'text-muted', icon: Clock },
-  fetching: { label: '获取地址', color: SKY, icon: Loader2, spin: true },
-  downloading: { label: '下载中', color: 'text-bili', icon: ArrowDown },
-  merging: { label: '合并中', color: SKY, icon: Loader2, spin: true },
-  extras: { label: '下载附加内容', color: SKY, icon: Loader2, spin: true },
-  processing: { label: '去水印中', color: SKY, icon: Loader2, spin: true },
-  done: { label: '已完成', color: 'text-green-600 dark:text-green-500', icon: CircleCheck },
-  paused: { label: '已暂停', color: 'text-muted', icon: CirclePause },
-  waitingAuth: { label: '等待重新登录', color: 'text-amber-600 dark:text-amber-400', icon: KeyRound },
-  error: { label: '失败', color: 'text-red-600 dark:text-red-400', icon: CircleAlert },
-  unsupported: { label: '无法下载', color: 'text-red-600 dark:text-red-400', icon: Ban }
+const STATUS: Record<TaskStatus, { label: Key; color: string; icon: LucideIcon; spin?: boolean }> = {
+  queued: { label: 'tasks.statusQueued', color: 'text-muted', icon: Clock },
+  fetching: { label: 'tasks.statusFetching', color: SKY, icon: Loader2, spin: true },
+  downloading: { label: 'tasks.statusDownloading', color: 'text-bili', icon: ArrowDown },
+  merging: { label: 'tasks.statusMerging', color: SKY, icon: Loader2, spin: true },
+  extras: { label: 'tasks.statusExtras', color: SKY, icon: Loader2, spin: true },
+  processing: { label: 'tasks.statusProcessing', color: SKY, icon: Loader2, spin: true },
+  done: { label: 'tasks.statusDone', color: 'text-green-600 dark:text-green-500', icon: CircleCheck },
+  paused: { label: 'tasks.statusPaused', color: 'text-muted', icon: CirclePause },
+  waitingAuth: { label: 'tasks.statusWaitingAuth', color: 'text-amber-600 dark:text-amber-400', icon: KeyRound },
+  error: { label: 'tasks.statusError', color: 'text-red-600 dark:text-red-400', icon: CircleAlert },
+  unsupported: { label: 'tasks.statusUnsupported', color: 'text-red-600 dark:text-red-400', icon: Ban }
 }
 
 export { ACTIVE }
@@ -91,10 +93,10 @@ function removeTasks(ids: string[], deleteFiles: boolean): void {
 /** 点击来自行里的按钮或链接时，不触发行本身的点击 */
 const fromControl = (e: MouseEvent): boolean => Boolean((e.target as HTMLElement).closest('a, button'))
 
-const POWER: { value: PowerMode; label: string }[] = [
-  { value: 'off', label: '允许休眠' },
-  { value: 'system', label: '阻止系统睡眠' },
-  { value: 'display', label: '保持屏幕常亮' }
+const POWER: { value: PowerMode; label: Key }[] = [
+  { value: 'off', label: 'tasks.powerOff' },
+  { value: 'system', label: 'tasks.powerSystem' },
+  { value: 'display', label: 'tasks.powerDisplay' }
 ]
 
 /** 每秒刷新一次，用于重试倒计时 */
@@ -110,52 +112,54 @@ function useNow(enabled: boolean): number {
 
 /** 标题链接：在浏览器里打开 B站页面（主进程的 setWindowOpenHandler 交给系统浏览器） */
 function TitleLink({ href, children }: { href?: string; children: ReactNode }) {
+  const t = useT()
   if (!href) return <>{children}</>
   return (
-    <a href={href} target="_blank" rel="noreferrer" title="在浏览器中打开 B站页面" className="hover:text-bili hover:underline">
+    <a href={href} target="_blank" rel="noreferrer" title={t('tasks.openInBrowser')} className="hover:text-bili hover:underline">
       {children}
     </a>
   )
 }
 
-function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?: boolean }) {
-  const pct = taskPct(t)
-  const active = ACTIVE.has(t.status)
-  const retrying = t.status === 'error' && t.retryAt
+function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; nested?: boolean }) {
+  const t = useT()
+  const pct = taskPct(task)
+  const active = ACTIVE.has(task.status)
+  const retrying = task.status === 'error' && task.retryAt
   // 对已完成的视频手动去水印：状态还是已完成，界面上按处理中显示
-  const manual = Boolean(t.processing?.manual)
+  const manual = Boolean(task.processing?.manual)
   const s = retrying
-    ? { label: '等待重试', color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false }
+    ? { label: 'tasks.statusRetrying' as Key, color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false }
     : manual
       ? STATUS.processing
-      : STATUS[t.status]
-  const finished = settled(t)
-  const detail = taskDetail(t, now)
+      : STATUS[task.status]
+  const finished = settled(task)
+  const detail = taskDetail(task, now)
 
   // 常显的主操作
   let primary = null
   if (manual) {
-    primary = <IconButton icon={X} label="取消去水印（原视频保持不变）" onClick={() => api.watermark.cancel(t.id)} />
-  } else if (active || t.status === 'queued') {
-    primary = <IconButton icon={Pause} label="暂停" onClick={() => api.download.pause(t.id)} />
-  } else if (t.status === 'paused' || t.status === 'waitingAuth') {
-    primary = <IconButton icon={Play} label="继续" onClick={() => api.download.resume(t.id)} />
-  } else if (t.status === 'error') {
-    primary = <IconButton icon={RefreshCw} label={retrying ? '立即重试' : '重试'} onClick={() => api.download.retry(t.id)} />
-  } else if (t.status === 'done' && t.outputPath) {
-    primary = <IconButton icon={FolderOpen} label={`在${sysText.fileManager}中显示`} onClick={() => api.showInFolder(t.outputPath!)} />
+    primary = <IconButton icon={X} label={t('tasks.cancelWatermark')} onClick={() => api.watermark.cancel(task.id)} />
+  } else if (active || task.status === 'queued') {
+    primary = <IconButton icon={Pause} label={t('tasks.pause')} onClick={() => api.download.pause(task.id)} />
+  } else if (task.status === 'paused' || task.status === 'waitingAuth') {
+    primary = <IconButton icon={Play} label={t('tasks.resume')} onClick={() => api.download.resume(task.id)} />
+  } else if (task.status === 'error') {
+    primary = <IconButton icon={RefreshCw} label={retrying ? t('tasks.retryNow') : t('tasks.retry')} onClick={() => api.download.retry(task.id)} />
+  } else if (task.status === 'done' && task.outputPath) {
+    primary = <IconButton icon={FolderOpen} label={t('tasks.showInFolder', { fileManager: sysText.fileManager })} onClick={() => api.showInFolder(task.outputPath!)} />
   }
 
   return (
     <div
       className="group flex items-center gap-4 rounded-xl px-3 py-2.5 transition-colors hover:bg-hover"
-      onDoubleClick={(e) => !fromControl(e) && t.status === 'done' && t.outputPath && api.showInFolder(t.outputPath)}
+      onDoubleClick={(e) => !fromControl(e) && task.status === 'done' && task.outputPath && api.showInFolder(task.outputPath)}
     >
       <div className="relative h-[54px] w-24 shrink-0 overflow-hidden rounded-lg bg-track ring-1 ring-line">
-        {t.item.cover && (
-          <img src={thumb(t.item.cover, 192)} referrerPolicy="no-referrer" className="h-full w-full object-cover" alt="" />
+        {task.item.cover && (
+          <img src={thumb(task.item.cover, 192)} referrerPolicy="no-referrer" className="h-full w-full object-cover" alt="" />
         )}
-        {t.status === 'done' && (
+        {task.status === 'done' && (
           <span className="absolute right-1 bottom-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
             <Check size={11} strokeWidth={3} />
           </span>
@@ -163,30 +167,30 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium">
-          <TitleLink href={itemUrl(t.item)}>{t.title}</TitleLink>
+          <TitleLink href={itemUrl(task.item)}>{task.title}</TitleLink>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={t.relBase}>
-          {t.qualityLabel && <Badge>{t.qualityLabel}</Badge>}
-          {t.watermark?.applied && <Badge>已去水印</Badge>}
-          {!nested && t.groupTitle !== t.title && <span className="truncate">{t.groupTitle}</span>}
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={task.relBase}>
+          {task.qualityLabel && <Badge>{task.qualityLabel}</Badge>}
+          {task.watermark?.applied && <Badge>{t('tasks.watermarked')}</Badge>}
+          {!nested && task.groupTitle !== task.title && <span className="truncate">{task.groupTitle}</span>}
         </div>
-        {(active || t.status === 'paused' || retrying || manual) && (t.total > 0 || manual) && (
+        {(active || task.status === 'paused' || retrying || manual) && (task.total > 0 || manual) && (
           <Progress value={pct} muted={!active && !manual} className="mt-2" />
         )}
-        {(t.error || t.note) && (
+        {(task.error || task.note) && (
           <div
-            className={`mt-1 truncate text-xs ${t.error ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}
-            title={t.error ?? t.note}
+            className={`mt-1 truncate text-xs ${task.error ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}
+            title={task.error ?? task.note}
           >
-            {t.error ?? t.note}
+            {task.error ?? task.note}
           </div>
         )}
       </div>
       <div className="w-32 shrink-0 text-right text-xs">
         <div className={`inline-flex items-center gap-1 font-medium ${s.color}`}>
           <s.icon size={13} strokeWidth={2} className={s.spin ? 'animate-spin' : ''} />
-          {s.label}
-          {(t.status === 'downloading' || t.processing?.stage === 'encode') && (
+          {t(s.label)}
+          {(task.status === 'downloading' || task.processing?.stage === 'encode') && (
             <span className="tabular-nums">{pct.toFixed(0)}%</span>
           )}
         </div>
@@ -195,33 +199,33 @@ function TaskRow({ t, now, nested = false }: { t: TaskInfo; now: number; nested?
       <div className="flex w-[132px] shrink-0 items-center justify-end gap-0.5">
         {/* 次要操作悬停时才出现，避免满屏按钮 */}
         <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          {(t.status === 'error' || t.status === 'paused') && (
+          {(task.status === 'error' || task.status === 'paused') && (
             <IconButton
               icon={RotateCcw}
-              label="重新下载：删除已下载的部分，从头开始"
+              label={t('tasks.redownload')}
               onClick={() => {
-                if (confirm(`删除“${t.title}”已下载的部分并从头下载？`)) void api.download.redownload(t.id)
+                if (confirm(t('tasks.confirmRedownload', { title: task.title }))) void api.download.redownload(task.id)
               }}
             />
           )}
-          {t.status === 'done' && t.outputPath && !manual && isVideoTask(t) && (
-            <IconButton icon={WatermarkOff} label="去水印…" onClick={() => useStore.getState().set({ watermarkTaskId: t.id })} />
+          {task.status === 'done' && task.outputPath && !manual && isVideoTask(task) && (
+            <IconButton icon={WatermarkOff} label={t('tasks.removeWatermark')} onClick={() => useStore.getState().set({ watermarkTaskId: task.id })} />
           )}
           {finished && !manual && (
-            <IconButton icon={X} label="从列表移除（保留文件）" onClick={() => removeTasks([t.id], false)} />
+            <IconButton icon={X} label={t('tasks.removeFromList')} onClick={() => removeTasks([task.id], false)} />
           )}
-          {t.status !== 'unsupported' && (
+          {task.status !== 'unsupported' && (
             <IconButton
               icon={Trash2}
               variant="danger"
-              label={t.status === 'done' ? '彻底删除：永久删除视频文件和附加文件' : '彻底删除：取消下载并删除已下载的部分'}
+              label={task.status === 'done' ? t('tasks.deleteDone') : t('tasks.deleteUnfinished')}
               onClick={() => {
                 const ok = confirm(
-                  t.status === 'done'
-                    ? `永久删除“${t.title}”的视频文件，以及封面、字幕、弹幕等附加文件？删除后无法恢复。`
-                    : `取消“${t.title}”并删除已下载的部分？`
+                  task.status === 'done'
+                    ? t('tasks.confirmDeleteDone', { title: task.title })
+                    : t('tasks.confirmDeleteUnfinished', { title: task.title })
                 )
-                if (ok) removeTasks([t.id], true)
+                if (ok) removeTasks([task.id], true)
               }}
             />
           )}
@@ -246,19 +250,20 @@ function GroupRow({
   onToggle: () => void
   now: number
 }) {
+  const t = useT()
   const first = tasks[0]
   const ids = tasks.map((t) => t.id)
   const { status, pct, done, failedCount, allSettled, detail } = groupSummary(tasks)
   const s = STATUS[status]
-  const label = status === 'error' ? `${failedCount} 个失败` : s.label
+  const label = status === 'error' ? t('tasks.groupFailed', { count: failedCount }) : t(s.label)
 
   let primary = null
   if (tasks.some(pausable)) {
-    primary = <IconButton icon={Pause} label="暂停整组" onClick={() => api.download.pauseMany(ids)} />
+    primary = <IconButton icon={Pause} label={t('tasks.pauseGroup')} onClick={() => api.download.pauseMany(ids)} />
   } else if (tasks.some(resumable)) {
-    primary = <IconButton icon={Play} label="继续整组" onClick={() => api.download.resumeMany(ids)} />
+    primary = <IconButton icon={Play} label={t('tasks.resumeGroup')} onClick={() => api.download.resumeMany(ids)} />
   } else if (done[0]?.outputPath) {
-    primary = <IconButton icon={FolderOpen} label={`在${sysText.fileManager}中显示`} onClick={() => api.showInFolder(done[0].outputPath!)} />
+    primary = <IconButton icon={FolderOpen} label={t('tasks.showInFolder', { fileManager: sysText.fileManager })} onClick={() => api.showInFolder(done[0].outputPath!)} />
   }
 
   return (
@@ -288,7 +293,7 @@ function GroupRow({
           <div className="flex min-w-0 items-center gap-1 text-[13px] font-medium">
             <button
               type="button"
-              aria-label={open ? '收起' : '展开'}
+              aria-label={open ? t('tasks.collapse') : t('tasks.expand')}
               aria-expanded={open}
               onClick={onToggle}
               className="-ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-hover hover:text-fg"
@@ -300,8 +305,9 @@ function GroupRow({
             </span>
           </div>
           <div className="mt-1 truncate text-xs text-muted tabular-nums">
-            共 {tasks.length} 个 · 已完成 {done.length}
-            {failedCount > 0 && ` · 失败 ${failedCount}`}
+            {failedCount > 0
+              ? t('tasks.groupStatsFailed', { count: tasks.length, done: done.length, failed: failedCount })
+              : t('tasks.groupStats', { count: tasks.length, done: done.length })}
           </div>
           {status !== 'done' && <Progress value={pct} muted={status !== 'downloading'} className="mt-2" />}
         </div>
@@ -315,17 +321,16 @@ function GroupRow({
         </div>
         <div className="flex w-[132px] shrink-0 items-center justify-end gap-0.5">
           <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-            {allSettled && <IconButton icon={X} label="整组从列表移除（保留文件）" onClick={() => removeTasks(ids, false)} />}
+            {allSettled && <IconButton icon={X} label={t('tasks.removeGroup')} onClick={() => removeTasks(ids, false)} />}
             <IconButton
               icon={Trash2}
               variant="danger"
-              label="彻底删除整组"
+              label={t('tasks.deleteGroup')}
               onClick={() => {
                 const ok = confirm(
-                  `删除“${first.groupTitle}”的 ${tasks.length} 个任务？` +
-                    (done.length
-                      ? `其中 ${done.length} 个已完成的视频文件及封面、字幕、弹幕会被永久删除，无法恢复。`
-                      : '已下载的部分会一并删除。')
+                  done.length
+                    ? t('tasks.confirmDeleteGroupDone', { title: first.groupTitle, count: tasks.length, done: done.length })
+                    : t('tasks.confirmDeleteGroup', { title: first.groupTitle, count: tasks.length })
                 )
                 if (ok) removeTasks(ids, true)
               }}
@@ -347,6 +352,7 @@ function GroupRow({
 
 /** 下载时防休眠的开关，正在生效时图标带绿点 */
 function PowerMenu({ running }: { running: boolean }) {
+  const t = useT()
   const powerMode = useStore((s) => s.settings?.powerMode ?? 'off')
   return (
     <Dropdown
@@ -355,7 +361,7 @@ function PowerMenu({ running }: { running: boolean }) {
         <div className="relative">
           <IconButton
             icon={Coffee}
-            label={`下载时：${POWER.find((p) => p.value === powerMode)?.label}`}
+            label={t('tasks.powerLabel', { mode: t((POWER.find((p) => p.value === powerMode) ?? POWER[0]).label) })}
             active={open || powerMode !== 'off'}
             onClick={toggle}
           />
@@ -369,7 +375,7 @@ function PowerMenu({ running }: { running: boolean }) {
     >
       {(close) => (
         <>
-          <MenuLabel>下载时</MenuLabel>
+          <MenuLabel>{t('tasks.powerMenu')}</MenuLabel>
           {POWER.map((p) => (
             <MenuItem
               key={p.value}
@@ -379,7 +385,7 @@ function PowerMenu({ running }: { running: boolean }) {
                 void updateSettings({ powerMode: p.value })
               }}
             >
-              {p.label}
+              {t(p.label)}
             </MenuItem>
           ))}
         </>
@@ -393,6 +399,7 @@ function PowerMenu({ running }: { running: boolean }) {
  * 下载对话框、设置页和 AI 助手的下载（没指定时）都跟着它
  */
 function WatermarkMenu() {
+  const t = useT()
   const defaults = useStore((s) => s.settings?.defaults)
   const mode = defaults?.watermark ?? 'off'
   const [speed, setSpeed] = useState<WatermarkSpeed | null>(null)
@@ -401,7 +408,7 @@ function WatermarkMenu() {
     void api.watermark.aiStatus().then(setModel)
     return api.watermark.onAiStatus(setModel)
   }, [])
-  const label = WATERMARK_MODES.find((m) => m.value === mode)?.label
+  const label = WATERMARK_MODES.find((m) => m.value === mode)?.label ?? ''
   return (
     <Dropdown
       className="w-80"
@@ -409,7 +416,7 @@ function WatermarkMenu() {
         <div className="relative">
           <IconButton
             icon={WatermarkOff}
-            label={`下载后去水印：${label}`}
+            label={t('tasks.watermarkLabel', { mode: label })}
             active={open || mode !== 'off'}
             onClick={() => {
               // 每次打开都取一次最新的速度（刚处理完一个视频，实测值会变）
@@ -425,7 +432,7 @@ function WatermarkMenu() {
     >
       {(close) => (
         <>
-          <MenuLabel>下载后去水印</MenuLabel>
+          <MenuLabel>{t('tasks.watermarkMenu')}</MenuLabel>
           {WATERMARK_MODES.map((m) => (
             <MenuItem
               key={m.value}
@@ -447,7 +454,7 @@ function WatermarkMenu() {
               </div>
               {model.state !== 'downloading' && (
                 <Button size="sm" icon={Download} onClick={() => void api.watermark.aiDownload()}>
-                  下载
+                  {t('tasks.download')}
                 </Button>
               )}
             </div>
@@ -460,6 +467,7 @@ function WatermarkMenu() {
 
 /** 清除已完成：默认只清空任务列表，勾选“同时删除原文件”才会永久删除下载好的文件 */
 function ClearDialog({ onClose }: { onClose: () => void }) {
+  const t = useT()
   const tasks = useStore((s) => s.tasks)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const { count, files } = clearCounts(tasks)
@@ -471,7 +479,7 @@ function ClearDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal onClose={onClose} className="max-w-md">
-      <ModalHeader icon={ListX} title="清除已完成" subtitle={`从下载列表移除 ${count} 个已完成的任务。`} onClose={onClose} />
+      <ModalHeader icon={ListX} title={t('tasks.clearFinished')} subtitle={t('tasks.clearSubtitle', { count })} onClose={onClose} />
       <div className="flex flex-col gap-3 px-6 pt-4">
         <label className={`flex items-start gap-2 text-[13px] ${files ? 'cursor-pointer' : 'opacity-50'}`}>
           <input
@@ -482,25 +490,25 @@ function ClearDialog({ onClose }: { onClose: () => void }) {
             onChange={(e) => setDeleteFiles(e.target.checked)}
           />
           <span>
-            同时删除原文件
-            <span className="mt-0.5 block text-xs text-muted">不勾选只清空任务列表，下载好的文件保留在原处</span>
+            {t('tasks.clearDeleteFiles')}
+            <span className="mt-0.5 block text-xs text-muted">{t('tasks.clearDeleteFilesHint')}</span>
           </span>
         </label>
         {deleteFiles && (
-          <Banner tone="warn">{files} 个视频文件及封面、字幕、弹幕等附加文件会被永久删除，无法恢复。</Banner>
+          <Banner tone="warn">{t('tasks.clearWarn', { count: files })}</Banner>
         )}
       </div>
       <ModalFooter>
         <Button variant="ghost" onClick={onClose}>
-          取消
+          {t('tasks.cancel')}
         </Button>
         {deleteFiles ? (
           <Button variant="danger" icon={Trash2} onClick={submit}>
-            清空并删除文件
+            {t('tasks.clearAndDelete')}
           </Button>
         ) : (
           <Button variant="primary" icon={ListX} autoFocus onClick={submit}>
-            仅清空列表
+            {t('tasks.clearListOnly')}
           </Button>
         )}
       </ModalFooter>
@@ -510,6 +518,7 @@ function ClearDialog({ onClose }: { onClose: () => void }) {
 
 /** 底部状态栏：总速度、各状态数量、下载目录 */
 function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
+  const t = useT()
   const settings = useStore((s) => s.settings)!
   const { speed, running, queued, done } = statusCounts(tasks)
 
@@ -521,20 +530,20 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
           {fmtSpeed(speed)}
         </span>
       )}
-      {running > 0 && <span>{running} 个进行中</span>}
-      {queued > 0 && <span>{queued} 个排队</span>}
-      {done > 0 && <span>{done} 个已完成</span>}
+      {running > 0 && <span>{t('tasks.countRunning', { count: running })}</span>}
+      {queued > 0 && <span>{t('tasks.countQueued', { count: queued })}</span>}
+      {done > 0 && <span>{t('tasks.countDone', { count: done })}</span>}
       {settings.speedLimit > 0 && (
         <span className="flex items-center gap-1">
           <Gauge size={13} strokeWidth={STROKE} />
-          限速 {fmtSpeed(settings.speedLimit * 1024)}
+          {t('tasks.speedLimit', { speed: fmtSpeed(settings.speedLimit * 1024) })}
         </span>
       )}
       <div className="flex-1" />
       <button
         type="button"
         onClick={() => api.showInFolder(settings.downloadDir)}
-        title={`保存到 ${settings.downloadDir}，点击在${sysText.fileManager}中显示`}
+        title={t('tasks.saveTo', { dir: settings.downloadDir, fileManager: sysText.fileManager })}
         className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 hover:bg-hover hover:text-fg"
       >
         <FolderOpen size={13} strokeWidth={STROKE} className="shrink-0" />
@@ -544,9 +553,20 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
   )
 }
 
-const KINDS = ['视频', '分P', '合集', '番剧', '电影', '课程', '收藏夹', 'UP 主', 'b23.tv 短链']
+const KINDS: Key[] = [
+  'tasks.kindVideo',
+  'tasks.kindPart',
+  'tasks.kindCollection',
+  'tasks.kindBangumi',
+  'tasks.kindMovie',
+  'tasks.kindCourse',
+  'tasks.kindFavorites',
+  'tasks.kindUploader',
+  'tasks.kindShortLink'
+]
 
 export function TaskList() {
+  const t = useT()
   const tasks = useStore((s) => s.tasks)
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
@@ -574,11 +594,11 @@ export function TaskList() {
   if (!tasks.length) {
     return (
       <div className="min-h-0 flex-1">
-        <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title="复制 B站链接，回到这里粘贴">
-          <div>打开应用或切回窗口时会自动检测剪贴板，也可以直接按 {sysText.pasteKey} 粘贴到上方输入框。</div>
+        <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title={t('tasks.emptyTitle')}>
+          <div>{t('tasks.emptyHint', { key: sysText.pasteKey })}</div>
           <div className="mt-4 flex flex-wrap justify-center gap-1.5">
             {KINDS.map((k) => (
-              <Badge key={k}>{k}</Badge>
+              <Badge key={k}>{t(k)}</Badge>
             ))}
           </div>
         </EmptyState>
@@ -598,15 +618,15 @@ export function TaskList() {
           icon={Search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索标题、合集、BV 号"
+          placeholder={t('tasks.search')}
           className="w-48"
         />
         <div className="flex-1" />
         <WatermarkMenu />
         <PowerMenu running={running} />
-        <IconButton icon={Pause} label="全部暂停" disabled={!canPause} onClick={() => api.download.pauseAll()} />
-        <IconButton icon={Play} label="全部继续" disabled={!canResume} onClick={() => api.download.resumeAll()} />
-        <IconButton icon={ListX} label="清除已完成" disabled={!finished} onClick={() => setClearing(true)} />
+        <IconButton icon={Pause} label={t('tasks.pauseAll')} disabled={!canPause} onClick={() => api.download.pauseAll()} />
+        <IconButton icon={Play} label={t('tasks.resumeAll')} disabled={!canResume} onClick={() => api.download.resumeAll()} />
+        <IconButton icon={ListX} label={t('tasks.clearFinished')} disabled={!finished} onClick={() => setClearing(true)} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {entries.length ? (
@@ -626,7 +646,7 @@ export function TaskList() {
             )
           )
         ) : (
-          <EmptyState icon={query ? Search : Download} title="没有符合条件的任务" />
+          <EmptyState icon={query ? Search : Download} title={t('tasks.noMatch')} />
         )}
       </div>
       <StatusBar tasks={tasks} />

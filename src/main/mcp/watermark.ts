@@ -1,3 +1,4 @@
+import { t as tr, type Key } from '@shared/i18n'
 import { clampRegion, isVideoTask } from '@shared/watermark'
 import type {
   AiModelStatus,
@@ -11,7 +12,7 @@ import type {
 import type { WatermarkInspection } from '../watermark/manual'
 import type { SpeedEstimate, Work } from '../watermark/speed'
 import { optionalBool, optionalStrings, requireEnum, type Args } from './args'
-import { invalid, mcpStatus, processingOut, ToolError } from './format'
+import { batchNotFound, invalid, joinHints, mcpStatus, processingOut } from './format'
 
 /** MCP 去水印用到的能力（方便测试时替换） */
 export interface WatermarkDeps {
@@ -31,25 +32,28 @@ const MAX_INSPECT = 10
 const MAX_TASKS = 200
 const MAX_PROCESSING = 20
 
+/** 一个值或一个区间：“约 5 秒”“约 2～5 分钟” */
+const span = (a: number, b: number, one: Key, range: Key): string => (a === b ? tr(one, { count: a }) : tr(range, { lo: a, hi: b }))
+
 /** 秒数区间说成“约 2～5 分钟” */
 export function fmtSeconds([lo, hi]: [number, number]): string {
-  const span = (a: number, b: number, unit: string): string => (a === b ? `约 ${a} ${unit}` : `约 ${a}～${b} ${unit}`)
-  if (hi < 90) return span(Math.max(1, Math.round(lo)), Math.max(1, Math.round(hi)), '秒')
-  if (hi < 90 * 60) return span(Math.max(1, Math.round(lo / 60)), Math.round(hi / 60), '分钟')
+  if (hi < 90) return span(Math.max(1, Math.round(lo)), Math.max(1, Math.round(hi)), 'mcpWm.secOne', 'mcpWm.secRange')
+  if (hi < 90 * 60) return span(Math.max(1, Math.round(lo / 60)), Math.round(hi / 60), 'mcpWm.minOne', 'mcpWm.minRange')
   const h = (s: number): number => Math.max(0.1, Math.round((s / 3600) * 10) / 10)
-  return span(h(lo), h(hi), '小时')
+  return span(h(lo), h(hi), 'mcpWm.hourOne', 'mcpWm.hourRange')
 }
 
 const fmtRatio = ([lo, hi]: [number, number]): string => {
-  const f = (v: number): string => String(Math.round(v * (v < 1 ? 100 : 10)) / (v < 1 ? 100 : 10))
-  return f(lo) === f(hi) ? `约 ${f(lo)} 倍` : `约 ${f(lo)}～${f(hi)} 倍`
+  const f = (v: number): number => Math.round(v * (v < 1 ? 100 : 10)) / (v < 1 ? 100 : 10)
+  return span(f(lo), f(hi), 'mcpWm.ratioOne', 'mcpWm.ratioRange')
 }
 
-const BASIS_TEXT: Record<SpeedEstimate['basis'], string> = {
-  measured: '按这台电脑实际处理过的速度',
-  calibrated: '按试跑的速度',
-  default: '还没在这台电脑上处理过，是粗估'
+const BASIS_TEXT: Record<SpeedEstimate['basis'], Key> = {
+  measured: 'mcpWm.basisMeasured',
+  calibrated: 'mcpWm.basisCalibrated',
+  default: 'mcpWm.basisDefault'
 }
+const basisText = (b: SpeedEstimate['basis']): string => tr(BASIS_TEXT[b])
 
 /** 估算用的工作量：有识别记录时用实际尺寸，没有时按 1080p */
 function workOf(t: TaskInfo): Work | undefined {
@@ -70,16 +74,17 @@ export function sumSeconds(list: SpeedEstimate[]): { seconds: [number, number]; 
 }
 
 const modelNote = (m: AiModelStatus): string | undefined =>
-  m.state === 'ready' ? undefined : `第一次用要先下载约 ${Math.round(m.size / 1024 ** 2)} MB 的 AI 模型`
+  m.state === 'ready' ? undefined : tr('mcpWm.modelNote', { size: Math.round(m.size / 1024 ** 2) })
 
 /** 两种方式各要多久、效果怎样，给 agent 转述给用户 */
 function choiceText(deps: WatermarkDeps, works: Work[]): { text: string; estimate: Record<WatermarkMethod, ReturnType<typeof sumSeconds>> } {
   const fast = sumSeconds(works.map((w) => deps.estimate('fast', w)))
   const ai = sumSeconds(works.map((w) => deps.estimate('ai', w)))
   const model = modelNote(deps.model())
-  const fastText = `快速去除${fast ? fmtSeconds(fast.seconds) : ''}（用周围的画面填补，水印处会略糊）`
-  const aiText = `AI 精修${ai ? fmtSeconds(ai.seconds) : ''}（逐帧补出水印下面的画面，清楚得多${model ? `；${model}` : ''}）`
-  return { text: `${fastText}，${aiText}`, estimate: { fast, ai } }
+  const fastText = fast ? tr('mcpWm.fastChoice', { time: fmtSeconds(fast.seconds) }) : tr('mcpWm.fastChoiceNoTime')
+  const modelText = model ? tr('mcpWm.aiChoiceModel', { note: model }) : ''
+  const aiText = ai ? tr('mcpWm.aiChoice', { time: fmtSeconds(ai.seconds), model: modelText }) : tr('mcpWm.aiChoiceNoTime', { model: modelText })
+  return { text: tr('mcpWm.choices', { fast: fastText, ai: aiText }), estimate: { fast, ai } }
 }
 
 /** 批次状态里的水印汇总和给 agent 的提示；音频批次没有 */
@@ -96,14 +101,11 @@ export function batchWatermark(options: Pick<DownloadOptions, 'watermark'>, task
   const works = pending.flatMap((t) => workOf(t) ?? [])
   const choice = pending.length ? choiceText(deps, works) : undefined
   const hints: string[] = []
-  if (processing.some((t) => t.processing!.manual)) hints.push('正在去水印，可以带 wait_seconds 等待，处理完后任务的 watermark.removed 为 true')
+  if (processing.some((t) => t.processing!.manual)) hints.push(tr('mcpWm.processing'))
   if (pending.length) {
-    hints.push(
-      `${pending.length} 个已下载的视频有 B站水印：先问用户要不要去掉，可选${choice!.text}。` +
-        `去水印会重新编码并替换原文件；用户同意后调用 remove_watermark batch_id=${batchId} method=fast 或 method=ai`
-    )
+    hints.push(tr('mcpWm.pending', { count: pending.length, choices: choice!.text, id: batchId }))
   } else if (option === 'off' && !checked.length && unfinished(videos)) {
-    hints.push('下载时会识别每个视频有没有 B站水印，结果会出现在这里')
+    hints.push(tr('mcpWm.willDetect'))
   }
   return {
     option,
@@ -116,8 +118,8 @@ export function batchWatermark(options: Pick<DownloadOptions, 'watermark'>, task
       : undefined,
     // 有水印还没去掉的视频，两种方式各要多久（秒，[乐观, 保守]）
     estimate_seconds: choice && works.length ? { fast: choice.estimate.fast?.seconds, ai: choice.estimate.ai?.seconds } : undefined,
-    estimate_basis: choice?.estimate.ai ? BASIS_TEXT[choice.estimate.ai.basis] : undefined,
-    hint: hints.join('；') || undefined
+    estimate_basis: choice?.estimate.ai ? basisText(choice.estimate.ai.basis) : undefined,
+    hint: joinHints(hints)
   }
 }
 
@@ -129,16 +131,19 @@ export function plannedWatermark(options: Pick<DownloadOptions, 'watermark' | 'o
   const option = options.watermark ?? 'off'
   if (options.output === 'audio') return undefined
   if (option === 'off') {
-    return { option, note: '下载时会识别有没有 B站水印，用 get_batch_status 查看；有的话可以问用户要不要用 remove_watermark 去掉' }
+    return { option, note: tr('mcpWm.plannedOff') }
   }
   const method: WatermarkMethod = option === 'ai' ? 'ai' : 'fast'
   const works = items.flatMap((i) => (i.duration ? [{ duration: i.duration }] : []))
   const sum = sumSeconds(works.map((w) => deps.estimate(method, w)))
-  const notes = ['识别到 B站水印的视频下载后会去掉水印，要重新编码']
-  if (sum) notes.push(`${items.length > works.length ? '已知时长的视频' : '全部视频'}去水印合计${fmtSeconds(sum.seconds)}（${BASIS_TEXT[sum.basis]}）`)
+  const notes = [tr('mcpWm.plannedOn')]
+  if (sum) {
+    const key = items.length > works.length ? 'mcpWm.plannedKnown' : 'mcpWm.plannedAll'
+    notes.push(tr(key, { time: fmtSeconds(sum.seconds), basis: basisText(sum.basis) }))
+  }
   const model = method === 'ai' ? modelNote(deps.model()) : undefined
-  if (model) notes.push(`${model}，下不下来时改用快速去除`)
-  return { option, extra_seconds: sum?.seconds, note: notes.join('；') }
+  if (model) notes.push(tr('mcpWm.plannedModel', { model }))
+  return { option, extra_seconds: sum?.seconds, note: joinHints(notes) }
 }
 
 /** get_status 里的去水印信息 */
@@ -155,8 +160,10 @@ export function watermarkStatus(defaults: Pick<DownloadOptions, 'watermark'>, ta
     },
     // 处理耗时约为视频时长的几倍
     speed: {
-      fast: `${fmtRatio(speed.fast.ratio)}（${BASIS_TEXT[speed.fast.basis]}）`,
-      ai: `${fmtRatio(speed.ai.ratio)}（${BASIS_TEXT[speed.ai.basis]}${speed.ai.backend ? `，${speed.ai.backend}` : ''}）`
+      fast: tr('mcpWm.speed', { ratio: fmtRatio(speed.fast.ratio), basis: basisText(speed.fast.basis) }),
+      ai: speed.ai.backend
+        ? tr('mcpWm.speedBackend', { ratio: fmtRatio(speed.ai.ratio), basis: basisText(speed.ai.basis), backend: speed.ai.backend })
+        : tr('mcpWm.speed', { ratio: fmtRatio(speed.ai.ratio), basis: basisText(speed.ai.basis) })
     },
     processing: tasks.filter((t) => t.processing?.manual).length
   }
@@ -167,7 +174,7 @@ function parseRegion(v: unknown): WatermarkRegion | undefined {
   if (v === undefined || v === null) return undefined
   const r = v as Record<string, unknown>
   if (typeof v !== 'object' || !['x', 'y', 'w', 'h'].every((k) => typeof r[k] === 'number' && Number.isFinite(r[k]))) {
-    throw invalid('region 必须是 {x, y, w, h}，单位是视频的像素')
+    throw invalid(tr('mcpWm.regionInvalid'))
   }
   return { x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number }
 }
@@ -185,8 +192,8 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
   const dryRun = optionalBool(args, 'dry_run', false)
   const force = optionalBool(args, 'force', false)
   const region = parseRegion(args.region)
-  if (region && taskIds.length !== 1) throw invalid('region 只能和一个任务一起用：不同视频的水印位置和尺寸可能不一样')
-  if (taskIds.length > MAX_TASKS) throw invalid(`一次最多处理 ${MAX_TASKS} 个任务`)
+  if (region && taskIds.length !== 1) throw invalid(tr('mcpWm.regionOneTask'))
+  if (taskIds.length > MAX_TASKS) throw invalid(tr('mcpWm.tooManyTasks', { max: MAX_TASKS }))
   const all = new Map(queue.list().map((t) => [t.id, t]))
   const ok: { t: TaskInfo; region: WatermarkRegion; source: string; found: boolean; estimate: SpeedEstimate }[] = []
   const skipped: Skip[] = []
@@ -194,17 +201,17 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
   for (const id of taskIds) {
     const t = all.get(id)
     if (!t) {
-      skipped.push({ task_id: id, reason: '没有这个任务' })
+      skipped.push({ task_id: id, reason: tr('mcp.noSuchTask') })
       continue
     }
     const skip = (reason: string, extra: Partial<Skip> = {}): void => void skipped.push({ task_id: id, title: t.title, reason, ...extra })
     if (t.processing) {
-      skip('正在处理，等它结束')
+      skip(tr('mcpWm.busy'))
       continue
     }
     // 下载时没识别过的要现场识别，每个要几秒，一次只做几个
     if (!t.watermark && inspected >= MAX_INSPECT) {
-      skip(`这次要识别的视频太多（每次最多 ${MAX_INSPECT} 个），剩下的再调用一次`)
+      skip(tr('mcpWm.tooManyInspect', { max: MAX_INSPECT }))
       continue
     }
     let info: WatermarkInspection
@@ -220,7 +227,7 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
       continue
     }
     if (info.applied && !force) {
-      skip('已经去过水印；想换一种方式重新处理（例如快速去除后换成 AI 精修），传 force=true')
+      skip(tr('mcpWm.alreadyRemoved'))
       continue
     }
     const size = `${info.width}×${info.height}`
@@ -229,7 +236,7 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
     if (use) {
       const r = clampRegion(use, info.width, info.height)
       if (!r) {
-        skip(`region 不在画面里或太小（视频尺寸 ${size}）`, { size })
+        skip(tr('mcpWm.regionOutside', { size }), { size })
         continue
       }
       use = r
@@ -239,8 +246,8 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
     } else {
       skip(
         info.region
-          ? '不确定有没有 B站水印；确认有的话，用 region 指定位置（可以用 suggested_region）'
-          : '没认出水印的位置；确认有水印的话，用 region 指定位置（像素坐标）',
+          ? tr('mcpWm.unsure')
+          : tr('mcpWm.noRegion'),
         { suggested_region: info.region, size }
       )
       continue
@@ -261,11 +268,11 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
   const list = dryRun ? ok : started
   const total = sumSeconds(list.map((x) => x.estimate))
   const notes: string[] = []
-  if (total) notes.push(`合计${fmtSeconds(total.seconds)}（${BASIS_TEXT[total.basis]}）`)
+  if (total) notes.push(tr('mcpWm.total', { time: fmtSeconds(total.seconds), basis: basisText(total.basis) }))
   const model = method === 'ai' ? modelNote(deps.model()) : undefined
-  if (model && list.length) notes.push(`${model}，下不下来或精修失败时这次改用快速去除，任务的 note 里会说明`)
-  if (dryRun && list.length) notes.push('这是预估，没有开始处理；用户同意后去掉 dry_run 再调用一次')
-  if (!dryRun && list.length) notes.push('处理期间原视频不变，完成后替换；用 get_batch_status 或 list_tasks 查看 watermark.processing，可以用 control_tasks action=cancel_watermark 取消')
+  if (model && list.length) notes.push(tr('mcpWm.aiFallback', { model }))
+  if (dryRun && list.length) notes.push(tr('mcpWm.dryRun'))
+  if (!dryRun && list.length) notes.push(tr('mcpWm.started'))
   return {
     method,
     dry_run: dryRun || undefined,
@@ -279,8 +286,7 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
     skipped: skipped.length ? skipped : undefined,
     total_estimate_seconds: total?.seconds,
     hint:
-      notes.join('；') ||
-      (skipped.length ? '没有可以处理的视频，原因见 skipped' : '没有要处理的视频：用 batch_id 时只处理下载完、识别到水印、还没去掉的视频，别的用 task_ids 指定')
+      joinHints(notes) ?? (skipped.length ? tr('mcpWm.noneSkipped') : tr('mcpWm.noneEligible'))
   }
 }
 
@@ -288,10 +294,10 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
 export function removeTargets(args: Args, batchTasks: ((id: string) => TaskInfo[] | undefined) | undefined): string[] {
   const ids = optionalStrings(args, 'task_ids')
   const batchId = typeof args.batch_id === 'string' && args.batch_id ? args.batch_id : undefined
-  if (!ids && !batchId) throw invalid('需要用 task_ids 或 batch_id 指定要处理的视频')
+  if (!ids && !batchId) throw invalid(tr('mcpWm.targetsMissing'))
   if (ids) return [...new Set(ids)]
   const tasks = batchTasks?.(batchId!)
-  if (!tasks) throw new ToolError('NOT_FOUND', `没有这个批次：${batchId}`, '用 list_batches 查看最近的批次')
+  if (!tasks) throw batchNotFound(batchId!)
   // 整个批次：只挑下载完、有水印、还没去掉、没在处理的；force 时也包括已经去过的
   const force = args.force === true
   return tasks

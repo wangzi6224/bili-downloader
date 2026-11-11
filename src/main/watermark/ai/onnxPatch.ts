@@ -3,6 +3,8 @@
 // 几千个形状计算折叠成常量（实测比动态尺寸快 50%）；Node 版不支持 freeDimensionOverrides，只能改模型。
 // 只解析用得到的几层 protobuf，权重等其他字段原样复制
 
+import { t } from '@shared/i18n'
+
 /** 一个字段在 buf 里的位置：[start, end) 是整个字段，[vStart, vEnd) 是长度类型字段的内容 */
 export interface Field {
   no: number
@@ -19,13 +21,13 @@ function readVarint(buf: Uint8Array, pos: number): [number, number] {
   let v = 0
   let mul = 1
   for (let i = 0; i < 10; i++) {
-    if (pos >= buf.length) throw new Error('模型文件不完整')
+    if (pos >= buf.length) throw new Error(t('wm.modelIncomplete'))
     const b = buf[pos++]
     v += (b & 0x7f) * mul
     if (b < 0x80) return [v, pos]
     mul *= 128
   }
-  throw new Error('模型文件格式不对')
+  throw new Error(t('wm.modelBadFormat'))
 }
 
 /** 逐个读出 buf[from, to) 里的字段 */
@@ -45,16 +47,16 @@ export function readFields(buf: Uint8Array, from = 0, to = buf.length): Field[] 
     } else if (wire === 2) {
       const [len, q] = readVarint(buf, pos)
       const end = q + len
-      if (end > to) throw new Error('模型文件不完整')
+      if (end > to) throw new Error(t('wm.modelIncomplete'))
       out.push({ no, wire, start, end, vStart: q, vEnd: end })
       pos = end
     } else if (wire === 1 || wire === 5) {
       const end = pos + (wire === 1 ? 8 : 4)
-      if (end > to) throw new Error('模型文件不完整')
+      if (end > to) throw new Error(t('wm.modelIncomplete'))
       out.push({ no, wire, start, end, vStart: pos, vEnd: end })
       pos = end
     } else {
-      throw new Error('模型文件格式不对')
+      throw new Error(t('wm.modelBadFormat'))
     }
   }
   return out
@@ -133,11 +135,11 @@ export interface FixedShape {
  */
 export function fixInputShape(model: Uint8Array, s: FixedShape): Buffer {
   for (const v of [s.batch, s.height, s.width]) {
-    if (!Number.isInteger(v) || v < 1) throw new Error('模型尺寸无效')
+    if (!Number.isInteger(v) || v < 1) throw new Error(t('wm.modelBadSize'))
   }
   const top = readFields(model)
   const graph = top.find((f) => f.no === MODEL_GRAPH && f.wire === 2)
-  if (!graph) throw new Error('模型文件里没有计算图')
+  if (!graph) throw new Error(t('wm.modelNoGraph'))
   let patched = 0
   const graphParts: Uint8Array[] = []
   for (const f of readFields(model, graph.vStart, graph.vEnd)) {
@@ -149,7 +151,7 @@ export function fixInputShape(model: Uint8Array, s: FixedShape): Buffer {
       graphParts.push(model.subarray(f.start, f.end))
     }
   }
-  if (!patched) throw new Error('模型的输入不是图像')
+  if (!patched) throw new Error(t('wm.modelInputNotImage'))
   const parts: Uint8Array[] = []
   for (const f of top) {
     parts.push(...(f === graph ? lenField(MODEL_GRAPH, graphParts) : [model.subarray(f.start, f.end)]))

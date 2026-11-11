@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight, Cookie, Globe, KeyRound, Loader2, LogIn, QrCode, RefreshCw } from 'lucide-react'
 import type { BrowserProfile } from '@shared/types'
+import { joinList } from '@shared/i18n'
+import { useT } from '../i18n'
 import { api, sysText, useStore } from '../store'
 import { Badge, Banner, Button, fieldCls, IconButton, Modal, ModalFooter, ModalHeader, STROKE } from './ui'
 
 export function LoginDialog() {
+  const t = useT()
   const auth = useStore((s) => s.auth)
   const set = useStore((s) => s.set)
   const [profiles, setProfiles] = useState<BrowserProfile[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cookieText, setCookieText] = useState('')
+  const [pasteOpen, setPasteOpen] = useState(false)
 
   const detect = (): void => {
     setProfiles(null)
@@ -47,7 +51,7 @@ export function LoginDialog() {
     try {
       const s = await api.auth.openLoginWindow()
       done(s)
-      if (!s.loggedIn) setError('登录窗口已关闭，但还没有登录成功')
+      if (!s.loggedIn) setError(t('login.windowClosedNotLoggedIn'))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -56,7 +60,9 @@ export function LoginDialog() {
   }
 
   const expired = auth && !auth.loggedIn && auth.expired
-  const withLogin = profiles?.filter((p) => p.hasBiliLogin) ?? []
+  const withLogin = profiles?.filter((p) => p.hasBiliLogin && !p.appBoundLogin) ?? []
+  // Windows 上新版 Chrome、Edge 的登录只有浏览器自己读得出：提前标出来，不让用户点了才失败
+  const sealed = profiles?.filter((p) => p.hasBiliLogin && p.appBoundLogin) ?? []
   // Safari 没有完全磁盘访问权限时总是读不了，已经有别的浏览器可以导入就不用提醒
   const blocked = profiles?.filter((p) => p.blocked && (p.browser !== 'Safari' || !withLogin.length)) ?? []
   const locked = profiles?.filter((p) => p.locked) ?? []
@@ -68,11 +74,9 @@ export function LoginDialog() {
     <Modal onClose={() => set({ loginOpen: false })} className="max-w-xl">
       <ModalHeader
         icon={expired ? KeyRound : LogIn}
-        title={expired ? 'B站登录已过期' : '登录 B站账号'}
+        title={expired ? t('login.expiredTitle') : t('login.title')}
         subtitle={
-          expired
-            ? '需要重新登录后才能继续解析和下载，正在进行的下载会在登录后自动继续。'
-            : '用你自己的账号下载，才能拿到 1080P 及以上清晰度和大会员内容。'
+          expired ? t('login.expiredSubtitle') : t('login.subtitle')
         }
         onClose={() => set({ loginOpen: false })}
       />
@@ -81,15 +85,15 @@ export function LoginDialog() {
         <section>
           <div className={section}>
             <Globe size={15} strokeWidth={STROKE} className="text-muted" />
-            从浏览器导入
+            {t('login.fromBrowser')}
             <div className="flex-1" />
-            <IconButton icon={RefreshCw} label="重新检测" size="sm" onClick={detect} />
+            <IconButton icon={RefreshCw} label={t('login.redetect')} size="sm" onClick={detect} />
           </div>
           <div className="mt-2 flex flex-col gap-1.5">
             {profiles === null && (
               <div className="flex items-center gap-2 text-xs text-muted">
                 <Loader2 size={13} className="animate-spin" />
-                正在查找浏览器…
+                {t('login.detecting')}
               </div>
             )}
             {withLogin.map((p) => (
@@ -97,44 +101,75 @@ export function LoginDialog() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-[13px] font-medium">
                     {p.browser}
-                    <Badge tone="success">已登录 B站</Badge>
+                    <Badge tone="success">{t('login.loggedIn')}</Badge>
                   </div>
                   <div className="truncate text-xs text-muted">{p.profile}</div>
                 </div>
                 <Button variant="primary" disabled={busy !== null} onClick={() => importFrom(p)}>
                   {busy === p.id && <Loader2 size={14} className="animate-spin" />}
-                  {busy === p.id ? '导入中' : '导入'}
+                  {busy === p.id ? t('login.importing') : t('login.import')}
                 </Button>
               </div>
             ))}
+            {sealed.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-[13px] font-medium">
+                    {p.browser}
+                    <Badge tone="success">{t('login.loggedIn')}</Badge>
+                    <Badge tone="warn">{t('login.cannotImport')}</Badge>
+                  </div>
+                  <div className="truncate text-xs text-muted">{p.profile}</div>
+                </div>
+              </div>
+            ))}
+            {sealed.length > 0 && (
+              <Banner
+                tone="warn"
+                actions={
+                  <>
+                    <Button size="sm" variant="primary" disabled={busy !== null} onClick={loginInApp}>
+                      {t('login.scanToLogin')}
+                    </Button>
+                    <Button size="sm" onClick={() => setPasteOpen(true)}>
+                      {t('login.pasteManually')}
+                    </Button>
+                  </>
+                }
+              >
+                {t('login.appBoundBanner', { browsers: joinList([...new Set(sealed.map((p) => p.browser))]) })}
+              </Banner>
+            )}
             {blocked.length > 0 &&
               (sysText.isMac ? (
                 <Banner
                   tone="warn"
-                  actions={<Button size="sm" onClick={() => api.openFullDiskAccessSettings()}>打开系统设置</Button>}
+                  actions={<Button size="sm" onClick={() => api.openFullDiskAccessSettings()}>{t('login.openSystemSettings')}</Button>}
                 >
-                  macOS 不允许本应用读取 {blocked.map((p) => p.browser).join('、')} 的数据。要从这些浏览器导入，请在“系统设置 →
-                  隐私与安全性 → 完全磁盘访问权限”中打开本应用，然后重启本应用。也可以直接用下面的应用内登录。
+                  {t('login.macBlocked', { browsers: joinList(blocked.map((p) => p.browser)) })}
                 </Banner>
               ) : (
                 <Banner tone="warn">
-                  没有权限读取 {blocked.map((p) => p.browser).join('、')} 的数据（浏览器的配置文件夹不允许当前用户读取）。可以直接用下面的应用内登录。
+                  {t('login.blocked', { browsers: joinList(blocked.map((p) => p.browser)) })}
                 </Banner>
               ))}
             {locked.length > 0 && (
               <Banner tone="warn">
-                {[...new Set(locked.map((p) => p.browser))].join('、')} 正在运行，读不到它的登录信息。请完全退出浏览器（包括后台运行的）后点“重新检测”。
+                {t('login.locked', { browsers: joinList([...new Set(locked.map((p) => p.browser))]) })}
+                {locked.some((p) => p.appBound) && ` ${t('login.lockedAppBound')}`}
               </Banner>
             )}
-            {profiles && !withLogin.length && !blocked.length && !locked.length && (
+            {profiles && !withLogin.length && !sealed.length && !blocked.length && !locked.length && (
               <div className="text-xs leading-relaxed text-muted">
-                {profiles.length ? '找到的浏览器里都没有登录 B站' : '没有找到支持的浏览器'}
-                （支持 {sysText.browsers}）
+                {profiles.length ? t('login.noBrowserLoggedIn') : t('login.noBrowserFound')}
+                {t('login.supported', { browsers: sysText.browsers })}
               </div>
             )}
             {withoutLogin.length > 0 && withLogin.length > 0 && (
               <div className="text-xs text-subtle">
-                未登录 B站：{withoutLogin.map((p) => `${p.browser}（${p.profile}）`).join('、')}
+                {t('login.notLoggedInList', {
+                  list: joinList(withoutLogin.map((p) => t('login.profileLabel', { browser: p.browser, profile: p.profile })))
+                })}
               </div>
             )}
             {withLogin.some((p) => p.browser !== 'Firefox' && p.browser !== 'Safari') && (
@@ -148,24 +183,29 @@ export function LoginDialog() {
             <QrCode size={18} strokeWidth={STROKE} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">在应用内登录</div>
-            <div className="text-xs text-muted">支持扫码、密码、短信登录，登录成功后窗口自动关闭</div>
+            <div className="text-[13px] font-medium">{t('login.inApp')}</div>
+            <div className="text-xs text-muted">{t('login.inAppHint')}</div>
           </div>
           <Button disabled={busy !== null} onClick={loginInApp}>
             {busy === 'window' && <Loader2 size={14} className="animate-spin" />}
-            {busy === 'window' ? '等待登录完成' : '打开登录页'}
+            {busy === 'window' ? t('login.waitingLogin') : t('login.openLoginPage')}
           </Button>
         </section>
 
-        <details className="group">
+        <details className="group" open={pasteOpen} onToggle={(e) => setPasteOpen(e.currentTarget.open)}>
           <summary className={`${section} cursor-pointer list-none rounded-md`}>
             <Cookie size={15} strokeWidth={STROKE} className="text-muted" />
-            手动粘贴 Cookie
+            {t('login.pasteCookie')}
             <ChevronRight size={14} strokeWidth={STROKE} className="text-subtle transition-transform group-open:rotate-90" />
           </summary>
           <div className="mt-2 text-xs leading-relaxed text-muted">
-            粘贴 “SESSDATA=…; bili_jct=…; DedeUserID=…” 这样的内容，或 Cookie-Editor 等插件导出的 JSON。Cookie 等同于登录凭据，只在本机保存。
+            {t('login.pasteHint')}
           </div>
+          <ol className="mt-1.5 list-decimal pl-5 text-xs leading-relaxed text-muted">
+            <li>{t('login.pasteStep1')}</li>
+            <li>{t('login.pasteStep2')}</li>
+            <li>{t('login.pasteStep3')}</li>
+          </ol>
           <textarea
             value={cookieText}
             onChange={(e) => setCookieText(e.target.value)}
@@ -188,7 +228,7 @@ export function LoginDialog() {
               }
             }}
           >
-            {busy === 'cookie' ? '验证中…' : '用这段 Cookie 登录'}
+            {busy === 'cookie' ? t('login.verifying') : t('login.loginWithCookie')}
           </Button>
         </details>
 
@@ -197,7 +237,7 @@ export function LoginDialog() {
 
       <ModalFooter>
         <Button variant="ghost" onClick={() => set({ loginOpen: false })}>
-          稍后
+          {t('common.later')}
         </Button>
       </ModalFooter>
     </Modal>

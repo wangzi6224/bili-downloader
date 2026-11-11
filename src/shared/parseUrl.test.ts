@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MediaItem } from './types'
-import { extractInputs, itemUrl, parseInput } from './parseUrl'
+import { extractInputs, itemUrl, parseInput, RANK_SLUGS, rankLabel } from './parseUrl'
 
 describe('parseInput', () => {
   it.each([
@@ -61,6 +61,14 @@ describe('parseInput', () => {
 
   it.each(['', 'hello world', 'https://www.youtube.com/watch?v=abc', 'step123'])('rejects %s', (input) => {
     expect(parseInput(input)).toBeNull()
+  })
+})
+
+describe('rankLabel', () => {
+  it('界面上按当前语言显示分区名；RANK_SLUGS 里的中文名不变（拼进标题和文件名）', () => {
+    expect(rankLabel('knowledge')).toBe('知识')
+    expect(RANK_SLUGS.knowledge.label).toBe('知识')
+    expect(rankLabel('unknown')).toBe('unknown')
   })
 })
 

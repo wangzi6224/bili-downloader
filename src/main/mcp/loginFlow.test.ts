@@ -182,6 +182,7 @@ describe('自动选择', () => {
     ['都没登录', () => [profile('chrome::Default', { hasBiliLogin: false })], 'no_login'],
     ['只有 blocked', () => [profile('safari::', { blocked: true, hasBiliLogin: false })], 'blocked'],
     ['被锁且启用了应用绑定加密', () => [profile('chrome::Default', { locked: true, appBound: true })], 'app_bound'],
+    ['登录是应用绑定加密的，不去尝试导入', () => [profile('chrome::Default', { appBoundLogin: true })], 'app_bound'],
     ['被锁但不能代为关闭', () => [profile('arc::Default', { locked: true })], 'locked'],
     ['占位记录不算能关闭的', () => [profile('chrome::', { locked: true })], 'locked']
   ])('%s', async (_n, list, reason) => {
@@ -245,6 +246,13 @@ describe('指定浏览器', () => {
     browsers = [profile('firefox::', { blocked: true, hasBiliLogin: false })]
     await start('browser', 'firefox')
     expect(flow.snapshot()).toMatchObject({ reason: 'blocked' })
+  })
+
+  it('点名的浏览器登录是应用绑定加密的', async () => {
+    browsers = [profile('edge::Default', { browser: 'Edge', appBoundLogin: true })]
+    await start('browser', 'edge')
+    expect(deps.importBrowser).not.toHaveBeenCalled()
+    expect(flow.snapshot()).toMatchObject({ reason: 'app_bound', message: expect.stringContaining('Edge 里的 B站登录用应用绑定加密') })
   })
 
   it('里面没有登录', async () => {
@@ -357,6 +365,17 @@ describe('关闭浏览器', () => {
     })
     await start()
     expect(flow.snapshot()).toMatchObject({ status: 'failed', reason: 'no_login', message: expect.stringContaining('已关闭') })
+  })
+
+  it('关了才看出登录是应用绑定加密的，不再尝试导入', async () => {
+    browsers = [locked()]
+    deps.closeBrowser.mockImplementation(async () => {
+      browsers = [profile('chrome::Default', { browser: 'Chrome', appBoundLogin: true })]
+      return true
+    })
+    await start()
+    expect(deps.importBrowser).not.toHaveBeenCalled()
+    expect(flow.snapshot()).toMatchObject({ status: 'failed', reason: 'app_bound' })
   })
 
   it('关了导入失败时报告原因，比如 v20 加密', async () => {

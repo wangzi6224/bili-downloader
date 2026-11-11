@@ -11,6 +11,7 @@ vi.mock('electron', () => ({ app: h.app }))
 vi.mock('node:child_process', () => ({ spawn: h.spawn }))
 vi.mock('node:fs', async (o) => ({ ...(await o<typeof import('node:fs')>()), existsSync: h.existsSync }))
 const { buildMuxArgs, explainFfmpegError, isEncoderFailure } = await import('./mux')
+const { WM_MARK } = await import('@shared/watermark')
 const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
 
 /** 假的 ffmpeg 进程：测试里手动 emit stderr / close / error */
@@ -160,15 +161,21 @@ describe('explainFfmpegError', () => {
     expect(explainFfmpegError('codec not supported in container', 1)).toContain('MKV')
   })
 
-  it('去水印时换成对应的动作，不提示改用 MKV', () => {
-    expect(explainFfmpegError('No space left on device', 1, '去水印')).toBe('去水印失败：磁盘空间不足')
-    expect(explainFfmpegError('[Parsed_delogo_0] Logo area is outside of the frame.', 234, '去水印')).toBe('去水印失败：水印位置超出了画面')
-    expect(explainFfmpegError('[hevc_videotoolbox] cannot create compression session: -12908', 187, '去水印')).toBe(
-      '去水印失败：编码器不可用'
+  it('去水印时换成对应的动作，不提示改用 MKV；带上去水印标记', () => {
+    expect(explainFfmpegError('No space left on device', 1, 'watermark')).toBe(`${WM_MARK}去水印失败：磁盘空间不足`)
+    expect(explainFfmpegError('[Parsed_delogo_0] Logo area is outside of the frame.', 234, 'watermark')).toBe(
+      `${WM_MARK}去水印失败：水印位置超出了画面`
     )
-    expect(explainFfmpegError('Could not find tag for codec flac in stream #1', 1, '去水印')).toBe(
-      '去水印失败（ffmpeg 退出码 1）：Could not find tag for codec flac in stream #1'
+    expect(explainFfmpegError('[hevc_videotoolbox] cannot create compression session: -12908', 187, 'watermark')).toBe(
+      `${WM_MARK}去水印失败：编码器不可用`
     )
+    expect(explainFfmpegError('Could not find tag for codec flac in stream #1', 1, 'watermark')).toBe(
+      `${WM_MARK}去水印失败（ffmpeg 退出码 1）：Could not find tag for codec flac in stream #1`
+    )
+  })
+
+  it('AI 精修读取原视频失败', () => {
+    expect(explainFfmpegError('No space left on device', 1, 'read')).toBe('读取视频失败：磁盘空间不足')
   })
 
   it('isEncoderFailure 认出硬件编码器打不开', () => {

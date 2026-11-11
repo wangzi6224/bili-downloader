@@ -9,64 +9,58 @@ import {
   validateTemplate,
   type NamingTemplates
 } from '@shared/naming'
+import { LANG_NAMES, LANGS, t, type LanguageSetting } from '@shared/i18n'
 import type { CloseAction, DuplicateAction, PowerMode, ThemeMode, WatermarkMode } from '@shared/types'
 import { WATERMARK_MODES } from '../aiRefine'
 import { insertAt } from '../format'
+import { useT } from '../i18n'
 import { api, sysText, updateSettings, useStore } from '../store'
 import { updateHint } from '../viewLogic'
 import { AdvancedSettings } from './AdvancedSettings'
 import { OptionsEditor } from './OptionsEditor'
-import { Button, fieldCls, Group, Input, PageHeader, Row, Segmented, Select, Switch } from './ui'
+import { Button, fieldCls, Group, Input, PageHeader, rich, Row, Segmented, Select, Switch } from './ui'
 
 // 需要包含所有清晰度代码：“记住上次选择”可能存下其中任意一个
-const QN = [
-  { qn: 127, label: '最高可用（8K）' },
-  { qn: 126, label: '杜比视界' },
-  { qn: 125, label: 'HDR 真彩' },
-  { qn: 120, label: '4K 超清' },
-  { qn: 116, label: '1080P 60帧' },
-  { qn: 112, label: '1080P 高码率' },
-  { qn: 80, label: '1080P 高清' },
-  { qn: 74, label: '720P 60帧' },
-  { qn: 64, label: '720P 准高清' },
-  { qn: 32, label: '480P 标清' },
-  { qn: 16, label: '360P 流畅' }
-]
+const QN = [127, 126, 125, 120, 116, 112, 80, 74, 64, 32, 16] as const
 
 type Tab = 'general' | 'download' | 'format' | 'naming' | 'advanced'
-const TABS = [
-  { value: 'general' as const, label: '常规', icon: SlidersHorizontal },
-  { value: 'download' as const, label: '下载', icon: Download },
-  { value: 'format' as const, label: '默认格式', icon: Film },
-  { value: 'naming' as const, label: '命名', icon: FileType },
-  { value: 'advanced' as const, label: '网络与高级', icon: Globe }
+// 文案在渲染时取，切换语言后跟着变
+const tabs = () => [
+  { value: 'general' as const, label: t('settings.tabGeneral'), icon: SlidersHorizontal },
+  { value: 'download' as const, label: t('settings.tabDownload'), icon: Download },
+  { value: 'format' as const, label: t('settings.tabFormat'), icon: Film },
+  { value: 'naming' as const, label: t('settings.tabNaming'), icon: FileType },
+  { value: 'advanced' as const, label: t('settings.tabAdvanced'), icon: Globe }
 ]
 
-const THEMES = [
-  { value: 'system' as const, label: '跟随系统', icon: Monitor },
-  { value: 'light' as const, label: '浅色', icon: Sun },
-  { value: 'dark' as const, label: '深色', icon: Moon }
+const themes = () => [
+  { value: 'system' as const, label: t('settings.themeSystem'), icon: Monitor },
+  { value: 'light' as const, label: t('settings.themeLight'), icon: Sun },
+  { value: 'dark' as const, label: t('settings.themeDark'), icon: Moon }
 ]
 
-const NAMING_ROWS: { key: keyof NamingTemplates; label: string; hint: string }[] = [
-  { key: 'single', label: '只下载一个', hint: '单个视频、电影，或从合集里只挑了一集' },
-  { key: 'multi', label: '合集 / 分P', hint: '一次下载合集或多P视频里的多个' },
-  { key: 'pgc', label: '番剧 / 影视', hint: '一次下载番剧或剧集里的多集' }
+const NAMING_KEYS: (keyof NamingTemplates)[] = ['single', 'multi', 'pgc']
+const namingRows = (): { key: keyof NamingTemplates; label: string; hint: string }[] => [
+  { key: 'single', label: t('settings.namingSingle'), hint: t('settings.namingSingleHint') },
+  { key: 'multi', label: t('settings.namingMulti'), hint: t('settings.namingMultiHint') },
+  { key: 'pgc', label: t('settings.namingPgc'), hint: t('settings.namingPgcHint') }
 ]
 
 const code = 'rounded bg-track px-1 py-px font-mono text-[11px] text-fg'
 
 function NamingEditor() {
+  const t = useT()
   const s = useStore((st) => st.settings)!
+  const rows = namingRows()
   const [draft, setDraft] = useState<NamingTemplates>(s.naming)
   const [focused, setFocused] = useState<keyof NamingTemplates>('single')
   const inputs = useRef<Partial<Record<keyof NamingTemplates, HTMLInputElement | null>>>({})
-  const errors = Object.fromEntries(NAMING_ROWS.map((r) => [r.key, validateTemplate(draft[r.key])])) as Record<
+  const errors = Object.fromEntries(NAMING_KEYS.map((k) => [k, validateTemplate(draft[k])])) as Record<
     keyof NamingTemplates,
     string | null
   >
-  const dirty = NAMING_ROWS.some((r) => draft[r.key] !== s.naming[r.key])
-  const valid = NAMING_ROWS.every((r) => !errors[r.key])
+  const dirty = NAMING_KEYS.some((k) => draft[k] !== s.naming[k])
+  const valid = NAMING_KEYS.every((k) => !errors[k])
 
   // 在光标处插入变量
   const insert = (text: string): void => {
@@ -84,12 +78,16 @@ function NamingEditor() {
   return (
     <div className="flex flex-col gap-5">
       <div className="text-xs leading-relaxed text-muted">
-        用 <code className={code}>{'{变量}'}</code> 引用信息，<code className={code}>{'{index:03}'}</code> 补零，
-        <code className={code}>{'{pubdate:YYYYMMDD}'}</code> 格式化时间；<code className={code}>{'<…>'}</code>{' '}
-        是可选段，段里的变量为空就整段省略；<code className={code}>/</code> 建子文件夹。
+        {rich(t('settings.namingHelp'), {
+          var: <code className={code}>{t('settings.namingVarExample')}</code>,
+          pad: <code className={code}>{'{index:03}'}</code>,
+          date: <code className={code}>{'{pubdate:YYYYMMDD}'}</code>,
+          optional: <code className={code}>{'<…>'}</code>,
+          slash: <code className={code}>/</code>
+        })}
       </div>
       <Group>
-        {NAMING_ROWS.map((r) => (
+        {rows.map((r) => (
           <div key={r.key} className="px-4 py-3">
             <div className="flex items-baseline gap-2">
               <span className="text-[13px] font-medium">{r.label}</span>
@@ -106,13 +104,15 @@ function NamingEditor() {
               className={`${fieldCls} mt-2 h-8 w-full px-2.5 font-mono text-[13px] ${errors[r.key] ? 'border-red-400 focus:border-red-400 focus:ring-red-400/15' : ''}`}
             />
             <div className={`mt-1.5 truncate text-xs ${errors[r.key] ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>
-              {errors[r.key] ?? `预览：${renderTemplate(draft[r.key], SAMPLE_VALUES[r.key])}.mp4`}
+              {errors[r.key] ?? t('settings.namingPreview', { file: `${renderTemplate(draft[r.key], SAMPLE_VALUES[r.key])}.mp4` })}
             </div>
           </div>
         ))}
       </Group>
       <div>
-        <div className="mb-2 text-xs text-muted">点击插入到“{NAMING_ROWS.find((r) => r.key === focused)?.label}”：</div>
+        <div className="mb-2 text-xs text-muted">
+          {t('settings.namingInsertTo', { label: rows.find((r) => r.key === focused)?.label ?? '' })}
+        </div>
         <div className="flex flex-wrap gap-1">
           {NAMING_VARS.map((v) => (
             <button
@@ -129,21 +129,22 @@ function NamingEditor() {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" disabled={!dirty || !valid} onClick={() => updateSettings({ naming: draft })}>
-          保存命名规则
+          {t('settings.namingSave')}
         </Button>
         <Button variant="ghost" onClick={() => setDraft({ ...DEFAULT_TEMPLATES })}>
-          恢复默认
+          {t('settings.namingReset')}
         </Button>
         <Button variant="ghost" onClick={() => setDraft({ ...draft, pgc: MEDIA_LIBRARY_PGC })} title={MEDIA_LIBRARY_PGC}>
-          番剧用媒体库风格（S01E01）
+          {t('settings.namingMediaLibrary')}
         </Button>
-        {dirty && <span className="text-xs text-amber-600 dark:text-amber-400">有未保存的修改</span>}
+        {dirty && <span className="text-xs text-amber-600 dark:text-amber-400">{t('settings.namingUnsaved')}</span>}
       </div>
     </div>
   )
 }
 
 function UpdateGroup() {
+  const t = useT()
   const s = useStore((st) => st.settings)!
   const u = useStore((st) => st.update)
   const set = useStore((st) => st.set)
@@ -165,14 +166,14 @@ function UpdateGroup() {
   }
 
   return (
-    <Group title="更新">
-      <Row label={`当前版本 ${u?.current ?? ''}`} hint={hint}>
-        {info && <Button onClick={() => set({ updateOpen: true })}>查看新版本</Button>}
+    <Group title={t('settings.updateGroup')}>
+      <Row label={t('updateUi.currentVersion', { version: u?.current ?? '' })} hint={hint}>
+        {info && <Button onClick={() => set({ updateOpen: true })}>{t('settings.viewNewVersion')}</Button>}
         <Button icon={RefreshCw} disabled={busy || u?.status === 'checking'} onClick={check}>
-          检查更新
+          {t('settings.checkUpdate')}
         </Button>
       </Row>
-      <Row label="自动检查更新" hint="启动时检查一次，后台运行时每天再查一次；跳过的版本不再提醒，手动检查时仍会显示">
+      <Row label={t('settings.autoCheckUpdate')} hint={t('settings.autoCheckUpdateHint')}>
         <Switch checked={s.autoCheckUpdate} onChange={(autoCheckUpdate) => updateSettings({ autoCheckUpdate })} />
       </Row>
     </Group>
@@ -180,31 +181,29 @@ function UpdateGroup() {
 }
 
 export function SettingsPage() {
+  const t = useT()
   const s = useStore((st) => st.settings)!
   const set = useStore((st) => st.set)
   const [tab, setTab] = useState<Tab>('general')
-  const [cleared, setCleared] = useState('')
+  const [cleared, setCleared] = useState<'' | 'downloads' | 'parses'>('')
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="设置" />
+      <PageHeader title={t('settings.title')} />
       <div className="px-8 pb-4">
-        <Segmented value={tab} onChange={setTab} options={TABS} />
+        <Segmented value={tab} onChange={setTab} options={tabs()} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10">
         <div className="flex max-w-2xl flex-col gap-6">
           {tab === 'general' && (
             <>
-              <Group title="存储">
-                <Row label="下载目录" hint={<span className="break-all">{s.downloadDir}</span>}>
+              <Group title={t('settings.storage')}>
+                <Row label={t('settings.downloadDir')} hint={<span className="break-all">{s.downloadDir}</span>}>
                   <Button icon={FolderOpen} onClick={async () => set({ settings: await api.settings.chooseDir() })}>
-                    更改
+                    {t('settings.change')}
                   </Button>
                 </Row>
-                <Row
-                  label="下载后去水印"
-                  hint="识别到画面角落的 B站水印才处理；AI 精修清楚得多但慢，第一次用会先下载约 200 MB 的模型。和“默认格式”里的水印是同一个设置"
-                >
+                <Row label={t('settings.watermark')} hint={t('settings.watermarkHint')}>
                   <Segmented
                     value={s.defaults.watermark}
                     options={WATERMARK_MODES}
@@ -212,57 +211,78 @@ export function SettingsPage() {
                   />
                 </Row>
               </Group>
-              <Group title="外观与行为">
-                <Row label="外观">
-                  <Segmented value={s.theme} options={THEMES} onChange={(theme: ThemeMode) => updateSettings({ theme })} />
+              <Group title={t('settings.appearanceGroup')}>
+                <Row label={t('settings.appearance')}>
+                  <Segmented value={s.theme} options={themes()} onChange={(theme: ThemeMode) => updateSettings({ theme })} />
                 </Row>
-                <Row label="下载时" hint="只在有任务进行时生效，全部完成后自动恢复系统默认">
+                <Row label={t('common.language')}>
+                  <Select
+                    value={s.language}
+                    onChange={(e) => updateSettings({ language: e.target.value as LanguageSetting })}
+                  >
+                    <option value="system">{t('common.languageSystem')}</option>
+                    {LANGS.map((l) => (
+                      <option key={l} value={l}>
+                        {LANG_NAMES[l]}
+                      </option>
+                    ))}
+                  </Select>
+                </Row>
+                <Row label={t('settings.power')} hint={t('settings.powerHint')}>
                   <Select value={s.powerMode} onChange={(e) => updateSettings({ powerMode: e.target.value as PowerMode })}>
-                    <option value="off">允许休眠</option>
-                    <option value="system">阻止系统睡眠（允许熄屏）</option>
-                    <option value="display">保持屏幕常亮</option>
+                    <option value="off">{t('settings.powerOff')}</option>
+                    <option value="system">{t('settings.powerSystem')}</option>
+                    <option value="display">{t('settings.powerDisplay')}</option>
                   </Select>
                 </Row>
                 <Row
-                  label="关闭窗口时"
-                  hint={`后台运行时下载和订阅照常进行，可以从${sysText.reopenFrom}重新打开；${sysText.quitKey} 总是完全退出`}
+                  label={t('settings.closeAction')}
+                  hint={t('settings.closeActionHint', { reopenFrom: sysText.reopenFrom, quitKey: sysText.quitKey })}
                 >
                   <Select value={s.closeAction} onChange={(e) => updateSettings({ closeAction: e.target.value as CloseAction })}>
-                    <option value="ask">每次询问</option>
-                    <option value="background">后台运行</option>
-                    <option value="quit">完全退出</option>
+                    <option value="ask">{t('settings.closeAsk')}</option>
+                    <option value="background">{t('settings.closeBackground')}</option>
+                    <option value="quit">{t('settings.closeQuit')}</option>
                   </Select>
                 </Row>
               </Group>
-              <Group title="提醒">
-                <Row label="完成通知" hint="队列全部结束后发系统通知">
+              <Group title={t('settings.reminders')}>
+                <Row label={t('settings.notify')} hint={t('settings.notifyHint')}>
                   <Switch checked={s.notify} onChange={(notify) => updateSettings({ notify })} />
                 </Row>
-                <Row label="剪贴板检测" hint="启动和切回应用时提示剪贴板里的 B站链接">
+                <Row label={t('settings.clipboard')} hint={t('settings.clipboardHint')}>
                   <Switch checked={s.clipboardWatch} onChange={(clipboardWatch) => updateSettings({ clipboardWatch })} />
                 </Row>
               </Group>
-              <Group title="记录">
+              <Group title={t('settings.records')}>
                 <Row
-                  label="下载历史与解析记录"
-                  hint={cleared ? <span className="text-green-600 dark:text-green-400">{cleared}</span> : '下载历史用于标记“已下载”和跳过重复；解析记录在侧边栏的“解析记录”里'}
+                  label={t('settings.recordsLabel')}
+                  hint={
+                    cleared ? (
+                      <span className="text-green-600 dark:text-green-400">
+                        {t(cleared === 'downloads' ? 'settings.downloadsCleared' : 'settings.parsesCleared')}
+                      </span>
+                    ) : (
+                      t('settings.recordsHint')
+                    )
+                  }
                 >
                   <Button
                     onClick={async () => {
-                      if (!confirm('清空下载历史？之后已下载的条目不再显示“已下载”。')) return
+                      if (!confirm(t('settings.clearDownloadsConfirm'))) return
                       await api.history.clearDownloads()
-                      setCleared('下载历史已清空')
+                      setCleared('downloads')
                     }}
                   >
-                    清空下载历史
+                    {t('settings.clearDownloads')}
                   </Button>
                   <Button
                     onClick={async () => {
                       await api.history.clearParses()
-                      setCleared('解析记录已清空')
+                      setCleared('parses')
                     }}
                   >
-                    清空解析记录
+                    {t('settings.clearParses')}
                   </Button>
                 </Row>
               </Group>
@@ -272,28 +292,32 @@ export function SettingsPage() {
 
           {tab === 'download' && (
             <>
-              <Group title="队列">
-                <Row label="同时下载" hint="同时进行的任务数，太多容易被 B站限速">
+              <Group title={t('settings.queue')}>
+                <Row label={t('settings.concurrency')} hint={t('settings.concurrencyHint')}>
                   <Select value={s.concurrency} onChange={(e) => updateSettings({ concurrency: Number(e.target.value) })}>
                     {[1, 2, 3, 4, 5].map((n) => (
                       <option key={n} value={n}>
-                        {n} 个
+                        {t('settings.concurrencyN', { count: n })}
                       </option>
                     ))}
                   </Select>
                 </Row>
-                <Row label="分段下载" hint="每个文件同时开几个连接分段下载，网速受单连接限制时能明显提速；太多容易触发风控">
+                <Row label={t('settings.threads')} hint={t('settings.threadsHint')}>
                   <Select value={s.threads} onChange={(e) => updateSettings({ threads: Number(e.target.value) })}>
                     {[1, 2, 4, 6, 8].map((n) => (
                       <option key={n} value={n}>
-                        {n === 1 ? '不分段' : `${n} 段`}
+                        {n === 1 ? t('settings.threadsOff') : t('settings.threadsN', { count: n })}
                       </option>
                     ))}
                   </Select>
                 </Row>
                 <Row
-                  label="限速"
-                  hint={s.speedLimit > 0 ? `所有任务共享，约 ${(s.speedLimit / 1024).toFixed(1)} MB/s` : '所有任务共享，0 表示不限速'}
+                  label={t('settings.speedLimit')}
+                  hint={
+                    s.speedLimit > 0
+                      ? t('settings.speedLimitOn', { speed: (s.speedLimit / 1024).toFixed(1) })
+                      : t('settings.speedLimitOff')
+                  }
                 >
                   <Input
                     type="number"
@@ -305,31 +329,31 @@ export function SettingsPage() {
                   />
                   <span className="text-xs text-muted">KB/s</span>
                 </Row>
-                <Row label="自动重试" hint="只针对断网、超时等网络错误；间隔从 30 秒开始逐次加长，最长 5 分钟">
+                <Row label={t('settings.autoRetry')} hint={t('settings.autoRetryHint')}>
                   <Select value={s.autoRetry} onChange={(e) => updateSettings({ autoRetry: Number(e.target.value) })}>
                     {[0, 3, 5, 10, 20].map((n) => (
                       <option key={n} value={n}>
-                        {n === 0 ? '关闭' : `最多 ${n} 次`}
+                        {n === 0 ? t('settings.autoRetryOff') : t('settings.autoRetryN', { count: n })}
                       </option>
                     ))}
                   </Select>
                 </Row>
-                <Row label="重复下载" hint="选中的条目在下载历史里已经有了时">
+                <Row label={t('settings.duplicate')} hint={t('settings.duplicateHint')}>
                   <Select
                     value={s.duplicateAction}
                     onChange={(e) => updateSettings({ duplicateAction: e.target.value as DuplicateAction })}
                   >
-                    <option value="ask">每次询问</option>
-                    <option value="skip">自动跳过</option>
-                    <option value="download">照常下载</option>
+                    <option value="ask">{t('settings.duplicateAsk')}</option>
+                    <option value="skip">{t('settings.duplicateSkip')}</option>
+                    <option value="download">{t('settings.duplicateDownload')}</option>
                   </Select>
                 </Row>
               </Group>
-              <Group title="弹幕">
-                <Row label="弹幕样式" hint="生成 .ass 文件时使用，可在 IINA 等播放器中加载" wide>
+              <Group title={t('settings.danmakuGroup')}>
+                <Row label={t('settings.danmakuStyle')} hint={t('settings.danmakuStyleHint')} wide>
                   <div className="flex flex-wrap items-center gap-5 text-[13px]">
                     <label className="flex items-center gap-2">
-                      字号
+                      {t('settings.danmakuFontSize')}
                       <Input
                         type="number"
                         min={12}
@@ -340,7 +364,7 @@ export function SettingsPage() {
                       />
                     </label>
                     <label className="flex items-center gap-2">
-                      不透明度
+                      {t('settings.danmakuOpacity')}
                       <input
                         type="range"
                         min={0.2}
@@ -353,16 +377,18 @@ export function SettingsPage() {
                       <span className="w-9 text-xs text-muted tabular-nums">{Math.round(s.danmaku.opacity * 100)}%</span>
                     </label>
                     <label className="flex items-center gap-2">
-                      停留
-                      <Input
-                        type="number"
-                        min={3}
-                        max={20}
-                        className="w-16"
-                        value={s.danmaku.duration}
-                        onChange={(e) => updateSettings({ danmaku: { ...s.danmaku, duration: Number(e.target.value) || 8 } })}
-                      />
-                      秒
+                      {rich(t('settings.danmakuDuration'), {
+                        input: (
+                          <Input
+                            type="number"
+                            min={3}
+                            max={20}
+                            className="w-16"
+                            value={s.danmaku.duration}
+                            onChange={(e) => updateSettings({ danmaku: { ...s.danmaku, duration: Number(e.target.value) || 8 } })}
+                          />
+                        )
+                      })}
                     </label>
                   </div>
                 </Row>
@@ -373,16 +399,16 @@ export function SettingsPage() {
           {tab === 'format' && (
             <>
               <Group>
-                <Row label="默认清晰度" hint="没有这么高的清晰度时自动选择最接近的较低档">
+                <Row label={t('settings.defaultQn')} hint={t('settings.defaultQnHint')}>
                   <Select value={s.defaultQn} onChange={(e) => updateSettings({ defaultQn: Number(e.target.value) })}>
-                    {QN.map((q) => (
-                      <option key={q.qn} value={q.qn}>
-                        {q.label}
+                    {QN.map((qn) => (
+                      <option key={qn} value={qn}>
+                        {t(`settings.qn${qn}`)}
                       </option>
                     ))}
                   </Select>
                 </Row>
-                <Row label="记住上次选择" hint="每次下载后把这次的选择存为默认">
+                <Row label={t('settings.rememberLast')} hint={t('settings.rememberLastHint')}>
                   <Switch checked={s.rememberLast} onChange={(rememberLast) => updateSettings({ rememberLast })} />
                 </Row>
               </Group>

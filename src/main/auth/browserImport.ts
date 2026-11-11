@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSyn
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { t } from '@shared/i18n'
 import type { AuthState, BrowserProfile } from '@shared/types'
 import { replaceLogin } from './cookieImport'
 import { unprotect } from './dpapi'
@@ -93,7 +94,6 @@ export function chromiumKey(password: string, iterations = IS_MAC ? 1003 : 1): B
 
 /** v10、v11 两种前缀各自用的密钥。macOS 上两种都用钥匙串里的密码；Linux 上 v10 用固定密码 peanuts，v11 用密钥环里的密码 */
 export type ChromiumKeys = Partial<Record<'v10' | 'v11', Buffer>>
-const APP_BOUND_COOKIE_ERROR = '应用绑定加密 Cookie 无法导入，请使用应用内登录或手动粘贴 Cookie'
 
 const encryptedPrefix = (enc: Uint8Array): 'v10' | 'v11' | undefined => {
   const prefix = Buffer.from(enc.subarray(0, 3)).toString('latin1')
@@ -110,7 +110,7 @@ export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVe
   const prefix = encryptedPrefix(buf)
   if (!prefix) return buf.toString('utf8')
   const key = keys[prefix]
-  if (!key) throw new Error(`缺少解密 ${prefix} 的密钥`)
+  if (!key) throw new Error(t('authErr.missingKey', { prefix }))
   const decipher = createDecipheriv('aes-128-cbc', key, Buffer.alloc(16, ' '))
   let out = Buffer.concat([decipher.update(buf.subarray(3)), decipher.final()])
   if (metaVersion >= 24) out = out.subarray(32)
@@ -120,7 +120,7 @@ export function decryptChromiumValue(enc: Uint8Array, keys: ChromiumKeys, metaVe
 /** Windows 的 v10：前缀 + 12 字节 nonce + AES-256-GCM 密文 + 16 字节认证标签，密钥是 Local State 里的主密钥；同样按 meta version 去掉域名哈希 */
 export function decryptWindowsChromiumValue(enc: Uint8Array, key: Buffer, metaVersion: number): string {
   const buf = Buffer.from(enc)
-  if (buf.length < 3 + 12 + 16) throw new Error('Chromium Cookie 加密数据不完整')
+  if (buf.length < 3 + 12 + 16) throw new Error(t('authErr.incompleteCookie'))
   const decipher = createDecipheriv('aes-256-gcm', key, buf.subarray(3, 15))
   decipher.setAuthTag(buf.subarray(-16))
   let plain = Buffer.concat([decipher.update(buf.subarray(15, -16)), decipher.final()])
@@ -176,7 +176,7 @@ function blockedEntry(key: string, browser: string): Found {
   return {
     browser: 'firefox',
     cookieFile: '',
-    profile: { id: `${key}::`, browser, profile: '无权限读取', hasBiliLogin: false, blocked: true }
+    profile: { id: `${key}::`, browser, profile: t('authErr.blockedProfile'), hasBiliLogin: false, blocked: true }
   }
 }
 
@@ -278,20 +278,31 @@ function findAll(): Found[] {
   return [...CHROMIUM.flatMap(chromiumProfiles), ...FIREFOX_ROOTS.flatMap(firefoxProfiles), ...safariProfiles()]
 }
 
-function hasSessData(f: Found): boolean {
+interface LoginProbe {
+  has: boolean
+  /** 有效的 SESSDATA 全是 v20 应用绑定加密：浏览器以外的程序读不出来，导入必然失败 */
+  appBound?: boolean
+}
+
+function probeLogin(f: Found): LoginProbe {
   const now = Date.now() / 1000
-  if (f.browser === 'safari') return readSafari(f).some((c) => c.name === 'SESSDATA' && c.value && (c.expires ?? Infinity) > now)
+  if (f.browser === 'safari') return { has: readSafari(f).some((c) => c.name === 'SESSDATA' && c.value && (c.expires ?? Infinity) > now) }
   return withDbCopy(f.cookieFile, (db) => {
     if (f.browser === 'firefox') {
       const rows = db.prepare(`SELECT host, expiry FROM moz_cookies WHERE name = 'SESSDATA'`).all()
-      return rows.some((r) => isBiliHost(String(r.host)) && firefoxExpiry(Number(r.expiry))! > now)
+      return { has: rows.some((r) => isBiliHost(String(r.host)) && firefoxExpiry(Number(r.expiry))! > now) }
     }
-    const stmt = db.prepare(`SELECT host_key, expires_utc FROM cookies WHERE name = 'SESSDATA'`)
+    // 只取密文前 3 字节看前缀，不解密
+    const stmt = db.prepare(
+      `SELECT host_key, expires_utc, value, substr(encrypted_value, 1, 3) AS prefix FROM cookies WHERE name = 'SESSDATA'`
+    )
     stmt.setReadBigInts(true)
-    return stmt.all().some((r) => {
+    const valid = stmt.all().filter((r) => {
       const exp = chromeTimeToUnix(r.expires_utc as bigint)
       return isBiliHost(String(r.host_key)) && (exp === undefined || exp > now)
     })
+    const sealed = (r: CookieRow): boolean => !r.value && r.prefix instanceof Uint8Array && isAppBound(r.prefix)
+    return { has: valid.length > 0, appBound: IS_WINDOWS && valid.length > 0 && valid.every(sealed) }
   })
 }
 
@@ -299,7 +310,8 @@ export function listBrowserProfiles(): BrowserProfile[] {
   return findAll().map((f) => {
     if (f.profile.blocked) return f.profile
     try {
-      return { ...f.profile, hasBiliLogin: hasSessData(f) }
+      const probe = probeLogin(f)
+      return { ...f.profile, hasBiliLogin: probe.has, appBoundLogin: probe.appBound || undefined }
     } catch (e) {
       // 目录能列出但 Cookies 文件被拦截，同样需要授权
       if (isPermissionError(e)) return { ...f.profile, blocked: true }
@@ -317,8 +329,8 @@ function keychainPassword(service: string): Promise<string> {
         const code = (err as { code?: number }).code
         reject(
           code === 44
-            ? new Error(`钥匙串里没有找到“${service}”`)
-            : new ImportError('keychain_denied', `没有拿到钥匙串授权（${service}），请在系统弹窗里点“允许”`)
+            ? new Error(t('authErr.keychainNotFound', { service }))
+            : new ImportError('keychain_denied', t('authErr.keychainDenied', { service }))
         )
       } else resolve(stdout.trim())
     })
@@ -331,13 +343,9 @@ function keyringPassword(application: string): Promise<string> {
     // 密钥环锁着时会弹出解锁窗口，留足时间
     execFile('secret-tool', ['lookup', 'application', application], { timeout: 120_000 }, (err, stdout) => {
       if ((err as { code?: unknown } | null)?.code === 'ENOENT') {
-        reject(
-          new Error(
-            '读取 Chrome 系浏览器的登录信息需要 secret-tool，请先安装（Debian / Ubuntu：sudo apt install libsecret-tools），或改用应用内登录'
-          )
-        )
+        reject(new Error(t('authErr.secretToolMissing')))
       } else if (err || !stdout.trim()) {
-        reject(new Error(`系统密钥环里没有找到浏览器的密码（application=${application}），或密钥环没有解锁。也可以改用应用内登录`))
+        reject(new Error(t('authErr.keyringNotFound', { application })))
       } else resolve(stdout.trim())
     })
   })
@@ -361,12 +369,12 @@ async function windowsMasterKey(b: ChromiumBrowser): Promise<Buffer> {
   try {
     encryptedKey = JSON.parse(readFileSync(join(b.root, 'Local State'), 'utf8')).os_crypt?.encrypted_key
   } catch {
-    throw new Error('无法读取 Windows 浏览器的加密密钥，请改用应用内登录或手动粘贴 Cookie')
+    throw new Error(t('authErr.winKeyUnreadable'))
   }
-  if (!encryptedKey) throw new Error('Windows 浏览器没有可读取的 DPAPI 密钥，请改用应用内登录或手动粘贴 Cookie')
+  if (!encryptedKey) throw new Error(t('authErr.winKeyMissing'))
   const wrapped = Buffer.from(encryptedKey, 'base64')
   if (wrapped.subarray(0, 5).toString('ascii') !== 'DPAPI') {
-    throw new Error('Windows 浏览器密钥格式不受支持，请改用应用内登录或手动粘贴 Cookie')
+    throw new Error(t('authErr.winKeyUnsupported'))
   }
   const [key] = await unprotect([wrapped.subarray(5)])
   return key
@@ -409,7 +417,11 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
 async function windowsCookies(b: ChromiumBrowser, rows: CookieRow[], version: number): Promise<PlainCookie[]> {
   const sealed = rows.filter((r) => !r.value && (r.encrypted_value as Uint8Array).length)
   const bound = sealed.filter((r) => isAppBound(r.encrypted_value as Uint8Array))
-  if (bound.some((r) => r.name === 'SESSDATA')) throw new ImportError('app_bound', APP_BOUND_COOKIE_ERROR)
+  // 只有 SESSDATA 全是 v20 时才导不了；还有能解开的（比如另一条过期的 v20 旁边有一条 v10），就跳过 v20 照常导入，和检测时的判断一致
+  const isSess = (r: CookieRow): boolean => r.name === 'SESSDATA'
+  if (bound.some(isSess) && !rows.some((r) => isSess(r) && !bound.includes(r))) {
+    throw new ImportError('app_bound', t('authErr.appBoundCookie'))
+  }
   const aes = sealed.filter((r) => encryptedPrefix(r.encrypted_value as Uint8Array))
   const legacy = sealed.filter((r) => !bound.includes(r) && !aes.includes(r))
   const key = aes.length ? await windowsMasterKey(b) : undefined
@@ -450,8 +462,7 @@ function readSafari(f: Found): PlainCookie[] {
   return parseBinaryCookies(readFileSync(f.cookieFile)).filter((c) => isBiliHost(c.domain))
 }
 
-const lockedMessage = (browser: string): string =>
-  `${browser} 正在运行，读不到它的登录信息。请完全退出 ${browser}（包括后台运行的）后再导入，或改用应用内登录`
+const lockedMessage = (browser: string): string => t('authErr.browserLocked', { browser })
 
 async function readCookies(f: Found): Promise<PlainCookie[]> {
   if (f.browser === 'firefox') return readFirefox(f)
@@ -474,18 +485,18 @@ export function isProfileLocked(id: string): boolean {
 /** shouldApply：替换登录前最后再确认一次，读浏览器要等钥匙串授权，等待期间用户可能已经用别的方式登录了 */
 export async function importFromBrowser(id: string, opts: { shouldApply?: () => boolean } = {}): Promise<AuthState> {
   const f = findAll().find((x) => x.profile.id === id)
-  if (!f) throw new ImportError('not_found', '找不到这个浏览器配置档，或没有读取权限')
-  if (f.profile.blocked) throw new ImportError('blocked', '找不到这个浏览器配置档，或没有读取权限')
+  if (!f) throw new ImportError('not_found', t('authErr.profileNotFound'))
+  if (f.profile.blocked) throw new ImportError('blocked', t('authErr.profileNotFound'))
   let cookies: PlainCookie[]
   try {
     cookies = await readCookies(f)
   } catch (e) {
     if (isLockedError(e)) throw new ImportError('locked', lockedMessage(f.profile.browser))
-    if (isPermissionError(e)) throw new ImportError('blocked', `没有权限读取 ${f.profile.browser} 的数据`)
+    if (isPermissionError(e)) throw new ImportError('blocked', t('authErr.noPermission', { browser: f.profile.browser }))
     throw e
   }
   if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) {
-    throw new ImportError('no_login', `${f.profile.browser}（${f.profile.profile}）里没有 B站登录信息`)
+    throw new ImportError('no_login', t('authErr.noLogin', { browser: f.profile.browser, profile: f.profile.profile }))
   }
-  return replaceLogin(cookies, '导入的登录信息已失效，请先在浏览器里重新登录 B站，或改用应用内登录', opts.shouldApply)
+  return replaceLogin(cookies, t('authErr.importedExpired'), opts.shouldApply)
 }

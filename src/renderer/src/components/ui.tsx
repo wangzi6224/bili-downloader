@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -8,6 +9,7 @@ import {
   type SelectHTMLAttributes
 } from 'react'
 import { ChevronDown, CircleAlert, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { useT } from '../i18n'
 
 /** 图标统一用这个线宽 */
 export const STROKE = 1.75
@@ -376,6 +378,7 @@ export function Banner({
   onClose?: () => void
   children: ReactNode
 }) {
+  const t = useT()
   const Icon = icon ?? BANNER_TONE[tone].icon
   return (
     <div className={`animate-fade flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] ${BANNER_TONE[tone].cls}`}>
@@ -385,8 +388,8 @@ export function Banner({
       {onClose && (
         <button
           type="button"
-          title="关闭"
-          aria-label="关闭"
+          title={t('common.close')}
+          aria-label={t('common.close')}
           onClick={onClose}
           className="-mr-1 rounded-md p-1 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
         >
@@ -442,6 +445,7 @@ export function ModalHeader({
   subtitle?: ReactNode
   onClose?: () => void
 }) {
+  const t = useT()
   return (
     <div className="flex items-start gap-3 px-6 pt-5">
       {Icon && (
@@ -453,7 +457,7 @@ export function ModalHeader({
         <div className="text-base font-semibold">{title}</div>
         {subtitle && <div className="mt-1 text-[13px] leading-relaxed text-muted">{subtitle}</div>}
       </div>
-      {onClose && <IconButton icon={X} label="关闭" size="sm" onClick={onClose} className="-mr-2" />}
+      {onClose && <IconButton icon={X} label={t('common.close')} size="sm" onClick={onClose} className="-mr-2" />}
     </div>
   )
 }
@@ -517,4 +521,9 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
       {actions && <div className="no-drag flex items-center gap-2">{actions}</div>}
     </div>
   )
+}
+
+/** 把文案里的 {name} 换成 React 节点（带样式的片段、输入框等），方便整句翻译、调整语序 */
+export function rich(text: string, nodes: Record<string, ReactNode>): ReactNode[] {
+  return text.split(/\{(\w+)\}/).map((part, i) => (i % 2 ? <Fragment key={i}>{part in nodes ? nodes[part] : `{${part}}`}</Fragment> : part))
 }
