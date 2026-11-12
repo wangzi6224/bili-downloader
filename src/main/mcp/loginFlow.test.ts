@@ -730,6 +730,30 @@ describe('竞态', () => {
     expect(flow.snapshot()).toMatchObject({ status: 'waiting_user', step: 'qr', tried: [] })
   })
 
+  it('导入卡在授权上时改用扫码：先放弃这次导入，再开扫码窗', async () => {
+    browsers = [profile('chrome::Default')]
+    deps.importBrowser.mockReturnValue(new Promise(() => {}))
+    await start()
+    const { signal } = deps.importBrowser.mock.calls[0][1]
+    expect(signal.aborted).toBe(false)
+    await start('qr')
+    expect(signal.aborted).toBe(true)
+    expect(deps.openQr).toHaveBeenCalledTimes(1)
+    expect(flow.snapshot()).toMatchObject({ status: 'waiting_user', step: 'qr' })
+  })
+
+  it('已经开始替换 Cookie 的导入不放弃', async () => {
+    browsers = [profile('chrome::Default')]
+    deps.importBrowser.mockImplementation((_id, { shouldApply }) => {
+      shouldApply()
+      return new Promise(() => {})
+    })
+    await start()
+    const { signal } = deps.importBrowser.mock.calls[0][1]
+    flow.start('qr')
+    expect(signal.aborted).toBe(false)
+  })
+
   it('shouldApply：流程作废或用户已登录后不再替换', async () => {
     browsers = [profile('chrome::Default')]
     deps.importBrowser.mockReturnValue(new Promise(() => {}))

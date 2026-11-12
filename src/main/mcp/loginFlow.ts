@@ -38,7 +38,10 @@ export interface LoginDeps {
   /** 登录、退出登录时回调；只注册一次，流程和应用同生共死 */
   onLoginChanged: (fn: () => void) => void
   listBrowsers: (key?: string) => BrowserProfile[]
-  importBrowser: (id: string, opts: { shouldApply: () => boolean }, target?: LoginTarget, guard?: LoginGuard) => Promise<AuthState>
+  /** signal：流程作废时放弃这次导入，好让扫码等其他登录方式接着用 */
+  importBrowser: (
+    id: string, opts: { shouldApply: () => boolean; signal: AbortSignal }, target?: LoginTarget, guard?: LoginGuard
+  ) => Promise<AuthState>
   /** 打开扫码窗口，窗口关闭时 resolve */
   openQr: (target?: LoginTarget, guard?: LoginGuard) => Promise<AuthState>
   isQrOpen: () => boolean
@@ -141,6 +144,8 @@ export class LoginFlow extends EventEmitter {
   private dismissDialog?: () => void
   /** Cookie 替换已经开始，中止不了：清分区时不能开登录窗，这期间的登录变化就是这次导入 */
   private swap?: Promise<void>
+  /** 进行中的浏览器导入；可能卡在钥匙串授权上，流程作废时放弃它 */
+  private importAbort?: AbortController
   private target?: LoginTarget
   private attemptTarget?: LoginTarget
   private guard?: LoginGuard
@@ -205,6 +210,8 @@ export class LoginFlow extends EventEmitter {
 
   private reset(): number {
     this.dismissDialog?.()
+    // 已经开始替换 Cookie 的导入马上就完，放弃它反而会丢掉这次登录
+    if (!this.swap) this.importAbort?.abort()
     this.reason = this.message = this.source = undefined
     this.tried = []
     this.alsoAvailable = []
@@ -345,6 +352,8 @@ export class LoginFlow extends EventEmitter {
       this.source = toSource(p)
       this.alsoAvailable = list.slice(i + 1).map(toSource)
       let finishSwap: (() => void) | undefined
+      const abort = new AbortController()
+      this.importAbort = abort
       const shouldApply = (): boolean => {
         // 读浏览器可能等了很久：用户可能已经登录，或者打开了登录窗
         if (gen !== this.generation || this.loggedIn() || this.deps.isQrOpen()) return false
@@ -352,7 +361,7 @@ export class LoginFlow extends EventEmitter {
         return true
       }
       try {
-        const auth = await this.deps.importBrowser(p.id, { shouldApply }, this.attemptTarget, this.guard)
+        const auth = await this.deps.importBrowser(p.id, { shouldApply, signal: abort.signal }, this.attemptTarget, this.guard)
         if (gen === this.generation) {
           this.attemptAuth = auth
           this.enter('idle')
@@ -381,6 +390,7 @@ export class LoginFlow extends EventEmitter {
           return false
         }
       } finally {
+        if (this.importAbort === abort) this.importAbort = undefined
         // 已作废的导入没开始过替换，不能清掉新流程的标记
         if (finishSwap) {
           this.swap = undefined

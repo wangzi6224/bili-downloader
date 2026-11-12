@@ -362,4 +362,38 @@ describe('多账号会话', () => {
     expect(await registry.logout()).toEqual({ loggedIn: false })
     expect(notify).toHaveBeenLastCalledWith(1, 'removed')
   })
+
+  it('发起方放弃的登录不再占着：下一次登录等它收尾后继续，迟到写入的 Cookie 会被清掉', async () => {
+    const { biliSession } = await import('./session')
+    const abandoned = new AbortController()
+    let reading!: () => void
+    let partition = ''
+    const stuck = registry.login(async () => {
+      partition = scope.authScope().partition
+      await new Promise<void>((resolve) => { reading = resolve })
+      await biliSession().cookies.set({ url: 'https://www.bilibili.com', name: 'SESSDATA', value: '9-late' })
+      return guard.checkAuth()
+    }, { mode: 'add' }, undefined, abandoned.signal)
+    const notAbandoned = registry.login(() => new Promise(() => {}))
+    await expect(notAbandoned).rejects.toThrow('已有登录操作')
+    abandoned.abort()
+    const next = loginCookie('1-current')
+    await expect(stuck).rejects.toMatchObject({ code: 'cancelled' })
+    await expect(next).resolves.toMatchObject({ loggedIn: true, user: { mid: 1 } })
+    reading()
+    await vi.waitFor(() => expect(h.cookies.has(partition)).toBe(false))
+    expect(registry.snapshot().accounts.map((account) => account.mid)).toEqual([1])
+  })
+
+  it('放弃信号在尝试完成之后才来时不影响已完成的登录', async () => {
+    const signal = new AbortController()
+    const done = registry.login(async () => {
+      const { biliSession } = await import('./session')
+      await biliSession().cookies.set({ url: 'https://www.bilibili.com', name: 'SESSDATA', value: '1-current' })
+      return guard.checkAuth()
+    }, { mode: 'add' }, undefined, signal.signal)
+    await expect(done).resolves.toMatchObject({ loggedIn: true })
+    signal.abort()
+    expect(registry.status(1)).toBe('ready')
+  })
 })

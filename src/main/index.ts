@@ -314,7 +314,7 @@ async function start(): Promise<void> {
     loginGuard: () => accounts.loginGuard(),
     onLoginChanged,
     listBrowsers: listBrowserProfiles,
-    importBrowser: (id, opts, target, guard) => accounts.login(() => importFromBrowser(id, opts), target, guard),
+    importBrowser: (id, opts, target, guard) => accounts.login(() => importFromBrowser(id, opts), target, guard, opts.signal),
     openQr: (target, guard) => accounts.login(openLoginWindow, target, guard),
     isQrOpen: isLoginWindowOpen,
     isLocked: isProfileLocked,

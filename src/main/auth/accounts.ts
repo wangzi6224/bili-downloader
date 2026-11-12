@@ -10,7 +10,7 @@ import {
 } from './authGuard'
 import { activeScope, GUEST_PARTITION, inAuthScope, isRetired, PARTITION, retirePartition, setActiveScope } from './scope'
 import { biliSession } from './session'
-import { LoginRevokedError } from './importError'
+import { ImportError, LoginRevokedError } from './importError'
 
 export type LoginGuard = (mid: number) => void
 
@@ -29,7 +29,8 @@ interface AccountFile {
 class Accounts {
   private file?: string
   private data: AccountFile = { profiles: [] }
-  private loginPending = false
+  /** 进行中的登录；带着 signal 的可以被发起方放弃 */
+  private pendingLogin?: { signal?: AbortSignal; settled: Promise<void> }
   private logoutRevision = 0
   private lastLogout = new Map<number, number>()
   private removals = new Map<number, Promise<void>>()
@@ -119,17 +120,25 @@ class Accounts {
 
   /** 登录在新分区里完成。只有服务端确认身份后才把会话交给下载和订阅。 */
   async login(
-    attempt: () => Promise<AuthState>, target: LoginTarget = { mode: 'add' }, guard = this.loginGuard()
+    attempt: () => Promise<AuthState>, target: LoginTarget = { mode: 'add' }, guard = this.loginGuard(), signal?: AbortSignal
   ): Promise<AuthState> {
     if (target.mode === 'reauth') guard(target.mid)
-    if (this.loginPending) throw new Error(t('accounts.loginBusy'))
-    this.loginPending = true
+    // 发起方已经放弃的登录（例如改用扫码时还在等钥匙串授权的浏览器导入）等它收尾，不算占着
+    if (this.pendingLogin?.signal?.aborted) await this.pendingLogin.settled
+    if (this.pendingLogin) throw new Error(t('accounts.loginBusy'))
+    let release!: () => void
+    this.pendingLogin = { signal, settled: new Promise((resolve) => (release = resolve)) }
     const partition = `persist:bilibili-${randomUUID()}`
     let saved = false
     try {
       const state = await inAuthScope({ partition, background: true }, async () => {
         await configureLoginSession()
-        const result = await attempt()
+        const work = attempt()
+        const result = await abandonOn(work, signal, () => {
+          // 停不下来的尝试稍后可能还会写入 Cookie，结束后再清一次这个分区
+          void work.then(() => {}, () => {}).then(() => this.clear(partition))
+            .catch((e) => console.warn('清理已放弃的登录会话失败', e))
+        })
         if (result.loggedIn) await biliSession().cookies.flushStore()
         return result
       })
@@ -160,8 +169,9 @@ class Accounts {
       if (previous?.partition) await this.clear(previous.partition).catch((e) => console.warn('清理旧登录会话失败', e))
       return state
     } finally {
-      this.loginPending = false
+      this.pendingLogin = undefined
       if (!saved) await this.clear(partition).catch((e) => console.warn('清理未保存的登录会话失败', e))
+      release()
     }
   }
 
@@ -300,6 +310,29 @@ class Accounts {
       await session.cookies.flushStore()
     })
   }
+}
+
+/** signal 触发时不再等 work：登录尝试本身停不下来（例如在等钥匙串授权），只是放弃它的结果 */
+function abandonOn<T>(work: Promise<T>, signal: AbortSignal | undefined, onAbandon: () => void): Promise<T> {
+  if (!signal) return work
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const abandon = (): void => {
+      if (settled) return
+      settled = true
+      onAbandon()
+      reject(new ImportError('cancelled', t('authErr.importCancelled')))
+    }
+    if (signal.aborted) return abandon()
+    signal.addEventListener('abort', abandon, { once: true })
+    const finish = (): boolean => {
+      signal.removeEventListener('abort', abandon)
+      if (settled) return false
+      settled = true
+      return true
+    }
+    work.then((value) => finish() && resolve(value), (e: unknown) => finish() && reject(e))
+  })
 }
 
 export const accounts = new Accounts()
