@@ -11,7 +11,7 @@ import type { ToolSet } from './tools'
  */
 
 /** initialize 时告诉客户端推荐的调用流程；按当前语言现算，客户端重连后拿到新语言 */
-const instructions = (): string => t('mcp.instructions', { appName: t('common.appName') })
+const instructions = (): string => `${t('mcp.instructions', { appName: t('common.appName') })}\n${t('mcpAccounts.instructions')}`
 
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05']
 const MAX_BODY = 1024 * 1024

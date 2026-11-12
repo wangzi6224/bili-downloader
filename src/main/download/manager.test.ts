@@ -8,6 +8,7 @@ import type { DownloadOptions, EnqueueRequest, MediaItem, Settings, TaskInfo } f
 import { WM_MARK, WM_NOTE } from '@shared/watermark'
 import type { DashStream, PlayInfo } from '../bili/playurl'
 import type { PreparedExtras } from './extras'
+import { activeScope, authScope, inAuthScope, setActiveScope } from '../auth/scope'
 
 vi.mock('electron', () => ({}))
 vi.mock('../bili/playurl', async (o) => ({ ...(await o<typeof import('../bili/playurl')>()), getPlayInfo: vi.fn() }))
@@ -207,6 +208,60 @@ describe('构造时恢复', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(JSON.parse(readFileSync(stateFile(), 'utf8'))[0].status).toBe('done')
   })
+})
+
+it('同一视频可由两个账号分别下载，切号后原任务继续取字幕，过期和重登只影响原账号', async () => {
+  const original = activeScope()
+  const a = { mid: 1, partition: 'a' }
+  const b = { mid: 2, partition: 'b' }
+  const status = new Map([[1, 'ready' as const], [2, 'ready' as const]]) as Map<number, 'ready' | 'expired'>
+  const accounts = {
+    run: <T>(mid: number | undefined, fn: () => Promise<T>) =>
+      status.get(mid!) === 'ready' ? inAuthScope(mid === 1 ? a : b, fn) : Promise.reject(new AuthExpiredError()),
+    partition: (mid: number) => mid === 1 ? a.partition : b.partition,
+    status: (mid: number) => status.get(mid) ?? 'removed' as const
+  }
+  const manager = new DownloadManager(join(root, 'tmp'), stateFile(), () => settings, accounts)
+  const stream = deferred<PlayInfo>()
+  const owners: Array<number | undefined> = []
+  vi.mocked(getPlayInfo).mockImplementation(async () => {
+    expect([1, 2]).toContain(authScope().mid)
+    return authScope().mid === 1 ? stream.promise : PLAY
+  })
+  vi.mocked(prepareExtras).mockImplementation(async (task) => {
+    owners.push(authScope().mid)
+    if (task.accountMid === 1 && status.get(1) === 'expired') throw new AuthExpiredError()
+    return { subtitles: [], notes: [] }
+  })
+  try {
+    setActiveScope(a)
+    const options = normalizeOptions({ subtitle: true })
+    const first = manager.enqueue(req([item(1)], { accountMid: 1, options }))
+    setActiveScope(b)
+    expect(manager.enqueue(req([item(1)], { accountMid: 1, options }))).toMatchObject({
+      created: [], skipped: [{ taskId: first.created[0].id }]
+    })
+    manager.enqueue(req([item(1)], { accountMid: 2, options }))
+    await settle()
+    expect(statuses(manager)).toEqual(['fetching', 'done'])
+    status.set(1, 'expired')
+    manager.accountChanged(1, 'expired')
+    stream.resolve(PLAY)
+    await settle()
+    expect(statuses(manager)).toEqual(['waitingAuth', 'done'])
+
+    status.set(1, 'ready')
+    manager.accountChanged(1, 'ready')
+    await settle()
+    expect(statuses(manager)).toEqual(['done', 'done'])
+    expect(owners).toEqual([2, 1])
+    const outputs = manager.list().map((task) => task.outputPath!)
+    expect(new Set(outputs).size).toBe(2)
+    expect(outputs.every((file) => existsSync(file))).toBe(true)
+    expect(activeScope()).toBe(b)
+  } finally {
+    setActiveScope(original)
+  }
 })
 
 describe('enqueue', () => {

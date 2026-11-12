@@ -1,4 +1,5 @@
 import type { MediaItem, ParseResult } from '@shared/types'
+import { authScope } from '../auth/scope'
 
 export interface FullParse {
   result: ParseResult
@@ -31,6 +32,7 @@ export class ParseCache {
   private entries = new Map<string, Entry>()
   private inflight = new Map<string, Promise<unknown>>()
   private parts = new Map<string, MediaItem[]>()
+  private partLoads = new Map<string, Promise<void>>()
 
   constructor(
     private fetchAll: (input: string, maxItems: number) => Promise<{ result: ParseResult; complete: boolean; error?: string }>,
@@ -42,11 +44,12 @@ export class ParseCache {
    * 同一个链接正在解析时（例如上次调用超时后 agent 又调了一次）先等它结束，不重复翻页
    */
   async get(input: string, maxItems: number, refresh = false): Promise<FullParse> {
-    const key = input.trim()
+    const url = input.trim()
+    const key = JSON.stringify([authScope().partition, url])
     for (let p = this.inflight.get(key); p; p = this.inflight.get(key)) await p.catch(() => {})
     const hit = this.entries.get(key)
     if (!refresh && hit && this.now() - hit.at < TTL && (hit.complete || hit.maxItems >= maxItems)) return upTo(hit, maxItems)
-    const task = this.fetchAll(key, maxItems)
+    const task = this.fetchAll(url, maxItems)
     this.inflight.set(key, task)
     try {
       const { result, complete, error } = await task
@@ -61,14 +64,42 @@ export class ParseCache {
   }
 
   partsOf(videoKey: string): MediaItem[] | undefined {
-    return this.parts.get(videoKey)
+    return this.parts.get(JSON.stringify([authScope().partition, videoKey]))
   }
 
   /** 列表里的视频展开出的分P，按视频的 key 记下 */
   setParts(videoKey: string, parts: MediaItem[]): void {
-    this.parts.delete(videoKey)
-    this.parts.set(videoKey, parts)
+    const key = JSON.stringify([authScope().partition, videoKey])
+    this.parts.delete(key)
+    this.parts.set(key, parts)
     // Map 按插入顺序遍历，超出上限时丢掉最早记下的
     if (this.parts.size > MAX_PARTS) this.parts.delete(this.parts.keys().next().value!)
+  }
+
+  /** 同一账号的并发解析和下载共用正在展开的分 P，请求失败后可重试。 */
+  async expandParts(items: MediaItem[], expand: (items: MediaItem[]) => Promise<MediaItem[]>): Promise<void> {
+    const pending = new Set<Promise<void>>()
+    const missing = new Map<string, MediaItem>()
+    for (const item of items) {
+      if (!item.lazy || item.unavailable || this.partsOf(item.key)) continue
+      const key = JSON.stringify([authScope().partition, item.key])
+      const load = this.partLoads.get(key)
+      if (load) pending.add(load)
+      else missing.set(key, item)
+    }
+    if (missing.size) {
+      const load = Promise.resolve().then(async () => {
+        const parts = await expand([...missing.values()])
+        for (const item of missing.values()) {
+          const matches = parts.filter((part) => part.bvid === item.bvid && !part.unavailable)
+          if (matches.length) this.setParts(item.key, matches)
+        }
+      }).finally(() => {
+        for (const key of missing.keys()) this.partLoads.delete(key)
+      })
+      for (const key of missing.keys()) this.partLoads.set(key, load)
+      pending.add(load)
+    }
+    await Promise.all(pending)
   }
 }

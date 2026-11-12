@@ -11,9 +11,10 @@ const parsesFile = (): string => join(app.getPath('userData'), 'parses.json')
 let downloads: Map<string, HistoryEntry> | undefined
 let parses: ParseRecord[] | undefined
 const downloadListeners = new Set<() => void>()
+const downloadId = (e: HistoryEntry): string => JSON.stringify([e.key, e.accountMid, e.path])
 
 function loadDownloads(): Map<string, HistoryEntry> {
-  downloads ??= new Map(readJsonArray<HistoryEntry>(downloadsFile()).map((e) => [e.key, e]))
+  downloads ??= new Map(readJsonArray<HistoryEntry>(downloadsFile()).map((e) => [downloadId(e), e]))
   return downloads
 }
 
@@ -32,19 +33,26 @@ function saveDownloads(): void {
   for (const listener of downloadListeners) listener()
 }
 
-/** 下载历史：用条目 key 判断是否下载过 */
+/** 每份文件保留发起账号，条目 key 仍可用于判断是否下载过。 */
 export function recordDownload(entry: HistoryEntry): void {
   const map = loadDownloads()
-  map.set(entry.key, entry)
+  map.set(downloadId(entry), entry)
   saveDownloads()
 }
 
-export const downloadedKeys = (): string[] => [...loadDownloads().keys()]
+export const downloadRecords = (): HistoryEntry[] => [...loadDownloads().values()]
+
+export function downloadedKeys(mid?: number): string[] {
+  return [...new Set(downloadRecords().filter((e) => mid === undefined || e.accountMid === mid).map((e) => e.key))]
+}
 
 /** 文件被删掉了，之后再选中不算“已下载” */
-export function removeDownloads(keys: string[]): void {
+export function removeDownloads(files: Pick<HistoryEntry, 'key' | 'path'>[]): void {
   const map = loadDownloads()
-  for (const k of keys) map.delete(k)
+  const removed = new Set(files.map((e) => JSON.stringify([e.key, e.path])))
+  for (const [id, entry] of map) {
+    if (removed.has(JSON.stringify([entry.key, entry.path]))) map.delete(id)
+  }
   saveDownloads()
 }
 
@@ -53,16 +61,16 @@ export function clearDownloads(): void {
   saveDownloads()
 }
 
-/** 解析记录：同一个链接只保留最新一条，最多 300 条 */
+/** 解析记录：每个账号对同一个链接只保留最新一条，最多 300 条 */
 export function recordParse(rec: ParseRecord): void {
-  parses = [rec, ...loadParses().filter((p) => p.input !== rec.input)].slice(0, MAX_PARSES)
+  parses = [rec, ...loadParses().filter((p) => p.input !== rec.input || p.accountMid !== rec.accountMid)].slice(0, MAX_PARSES)
   writeJson(parsesFile(), parses)
 }
 
 export const parseRecords = (): ParseRecord[] => loadParses()
 
-export function removeParse(input: string): ParseRecord[] {
-  parses = loadParses().filter((p) => p.input !== input)
+export function removeParse(input: string, accountMid?: number | null): ParseRecord[] {
+  parses = loadParses().filter((p) => p.input !== input || (accountMid !== undefined && (p.accountMid ?? null) !== accountMid))
   writeJson(parsesFile(), parses)
   return parses
 }

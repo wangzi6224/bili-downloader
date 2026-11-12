@@ -2,9 +2,9 @@
 export default {
   startTitle: '登录 B站',
   startDesc:
-    '应用没有登录时用它登录。默认导入用户浏览器里的登录信息：按 Chrome、其他 Chrome 系、Opera、Firefox、Safari 的顺序，先用能直接读到的；Cookie 只保存在应用里，结果不包含它。' +
+    '用于登录 B 站账号。默认导入用户浏览器里的登录信息：按 Chrome、其他 Chrome 系、Opera、Firefox、Safari 的顺序，先用能直接读到的；Cookie 只保存在应用里，结果不包含它。' +
     '导入不成时按返回的 next 操作，next=try_qr 时告诉用户后用 method=qr 弹出扫码窗口，再用 get_login_status 带 wait_seconds 等登录完成。' +
-    '已经登录时什么都不做，切换账号要用户在应用里操作。浏览器需要关闭时由应用弹窗问用户本人，这里没有直接关闭的参数。',
+    '默认模式在当前账号已登录时直接返回。浏览器需要关闭时由应用弹窗问用户本人，这里没有直接关闭的参数。',
   startMethod: 'browser 从浏览器导入（默认）；qr 弹出登录窗口让用户扫码',
   startSource: '指定浏览器，如 chrome、edge、opera、firefox、safari，或 get_login_status 列出的配置档 id。不传时自动选择',
   startWait: '最多等待多少秒，默认 {n}。登录完成、失败或需要用户操作时立即返回',
@@ -19,7 +19,7 @@ export default {
   // 失败后的下一步（按 reason）
   hintLocked: '浏览器正在运行。可以让用户完全退出浏览器（包括后台运行的）后再试，或改用扫码',
   hintAppBound: '这个浏览器用应用绑定加密保护登录信息，读不出来，请改用扫码',
-  hintBlocked: '没有权限读取这个浏览器的数据。macOS 上要在系统设置里给 {appName}“完全磁盘访问权限”并重启应用，其他系统请检查文件夹权限，也可以改用扫码',
+  hintBlocked: '在 macOS 上，请在 {appName} 的登录窗口选择浏览器文件夹。其他系统请检查文件夹权限。也可以改用扫码登录。',
   hintNoLogin: '浏览器里没有 B站登录。用户刚在浏览器里登录的话，稍等半分钟再试（浏览器不是马上写入），或改用扫码',
   hintExpired: '浏览器里的 B站登录已失效，请改用扫码，或让用户先在浏览器里重新登录',
   hintKeychainDenied: '用户没有在钥匙串弹窗里点“允许”。问问用户是否要重试，或改用扫码',

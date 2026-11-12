@@ -38,7 +38,7 @@ describe('定义', () => {
 
   it('没有替 agent 关闭浏览器的参数', () => {
     const def = loginDefinitions().find((d) => d.name === 'start_login')!
-    expect(Object.keys(def.inputSchema.properties as object)).toEqual(['method', 'source', 'wait_seconds'])
+    expect(Object.keys(def.inputSchema.properties as object)).toEqual(['method', 'source', 'wait_seconds', 'mode', 'account_mid', 'activate'])
   })
 })
 
@@ -110,6 +110,13 @@ describe('get_login_status', () => {
 })
 
 describe('结果里的下一步', () => {
+  it('浏览器读取被拒绝时提示在下载器里选择浏览器文件夹', async () => {
+    snapshot = { ...OUT, status: 'failed', reason: 'blocked' }
+    expect(await tools.call('get_login_status', {})).toMatchObject({
+      next: 'try_qr', hint: expect.stringContaining('登录窗口选择浏览器文件夹')
+    })
+  })
+
   it('进行中时让 agent 继续等，提醒可能要点允许', async () => {
     snapshot = { ...OUT, status: 'in_progress', step: 'importing' }
     expect(await tools.call('get_login_status', {})).toMatchObject({ next: 'wait', hint: expect.stringContaining('钥匙串') })
@@ -143,7 +150,8 @@ describe('结果里的下一步', () => {
     ['network', 'tell_user'],
     ['declined', 'tell_user'],
     ['confirm_timeout', 'tell_user'],
-    ['window_closed', 'tell_user']
+    ['window_closed', 'tell_user'],
+    ['revoked', 'none']
   ])('%s → %s', async (reason, next) => {
     snapshot = { ...OUT, status: 'failed', reason, message: '原因', tried: [{ browser: 'Chrome', profile: '个人', reason }] }
     const r = await tools.call('get_login_status', {})

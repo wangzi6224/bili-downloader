@@ -1,20 +1,23 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron'
-import type { TaskInfo } from '@shared/types'
-import { checkAuth, checkAuthThrottled, getAuthState, logout, onAuthRequired, onLoggedIn, onLoginChanged, requireLogin } from './auth/authGuard'
+import type { TaskInfo, UserInfo } from '@shared/types'
+import { activeAuthState, checkAuth, checkAuthThrottled, onLoginChanged, requireLogin } from './auth/authGuard'
+import { accounts } from './auth/accounts'
+import { activeScope, inAuthScope } from './auth/scope'
 import { canCloseBrowser, closeBrowser, confirmCloseBrowser } from './auth/browserClose'
 import { importFromBrowser, isProfileLocked, listBrowserProfiles } from './auth/browserImport'
-import { FULL_DISK_ACCESS_URL } from './auth/importError'
 import { isLoginWindowOpen, openLoginWindow } from './auth/loginWindow'
 import { expandLazy, loadAllPages } from './bili/lists'
 import { biliLookup } from './bili/lookup'
+import { downloadableQualities, getPlayInfo } from './bili/playurl'
+import { resolveInput } from './bili/resolve'
 import { DownloadManager } from './download/manager'
 import { makeEnqueue } from './enqueue'
-import { downloadedKeys, onDownloadsChanged, recordDownload, removeDownloads } from './history'
+import { downloadedKeys, downloadRecords, onDownloadsChanged, parseRecords, recordDownload, removeDownloads } from './history'
 import { limiter } from './download/rateLimiter'
 import { parseAndRecord, registerIpc, restoreSimulatedExpiry, simulateExpiry } from './ipc'
 import { initLogger, logDir } from './logger'
-import { stopsBatch } from './mcp/format'
+import { invalid, stopsBatch } from './mcp/format'
 import { LoginFlow } from './mcp/loginFlow'
 import { McpServer } from './mcp/server'
 import { McpTools } from './mcp/tools'
@@ -87,11 +90,10 @@ function createWindow(): BrowserWindow {
 
   // 窗口切回前台时顺便检查登录状态（至少间隔 10 分钟）
   win.on('focus', () => {
-    checkAuthThrottled(10 * 60_000)
-      .then((s) => {
-        if (!s.loggedIn) requireLogin()
-      })
-      .catch(() => {})
+    void inAuthScope(activeScope(), async () => {
+      const auth = await checkAuthThrottled(10 * 60_000)
+      if (!auth.loggedIn) requireLogin()
+    }).catch(() => {})
   })
 
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -192,7 +194,9 @@ function showAndSend(channel: string): void {
   send(channel)
 }
 
-async function confirmLogout(): Promise<void> {
+async function confirmLogout(user: UserInfo): Promise<void> {
+  const partition = accounts.partition(user.mid)
+  if (!partition || accounts.status(user.mid) !== 'ready') return
   const { response } = await showDialog({
     type: 'warning',
     message: t('dialogs.logoutMessage'),
@@ -201,7 +205,7 @@ async function confirmLogout(): Promise<void> {
     defaultId: 1,
     cancelId: 1
   })
-  if (response === 0) await logout()
+  if (response === 0 && accounts.partition(user.mid) === partition) await accounts.remove(user.mid)
 }
 
 async function checkUpdateFromTray(updater: Updater): Promise<void> {
@@ -217,16 +221,18 @@ let refreshTray: (() => void) | undefined
 function createTray(updater: Updater): void {
   tray = new Tray(trayImage())
   const refreshMenu = (): void => {
+    const auth = activeAuthState()
+    const trayAuth = auth.loggedIn && accounts.status(auth.user.mid) === 'ready' ? auth : { loggedIn: false } as const
     tray?.setToolTip(t('common.appName'))
     tray?.setContextMenu(
       Menu.buildFromTemplate(
-        trayMenu(getAuthState(), {
+        trayMenu(trayAuth, {
           show: showMainWindow,
           settings: () => showAndSend('app:openSettings'),
           checkUpdate: () => void checkUpdateFromTray(updater),
           // 这里只打开登录框；窗口获得焦点时的登录检查还是可能暂停下载队列，和平时切回窗口一样
           login: () => showAndSend('auth:required'),
-          logout: () => void confirmLogout().catch((e) => console.error('退出登录失败', e)),
+          logout: (user) => void confirmLogout(user).catch((e) => console.error('退出登录失败', e)),
           quit: () => app.quit()
         })
       )
@@ -265,6 +271,7 @@ async function start(): Promise<void> {
   applyLanguage(settings.language)
   nativeTheme.themeSource = settings.theme
   limiter.setLimit(settings.speedLimit)
+  accounts.init(join(app.getPath('userData'), 'accounts.json'))
   await applyNetwork(settings, true)
 
   // 先结束上次崩溃时没退出的转码进程，下面清理残留文件时它们就不会再占着文件
@@ -273,14 +280,15 @@ async function start(): Promise<void> {
   const manager = new DownloadManager(
     join(app.getPath('userData'), 'tmp'),
     join(app.getPath('userData'), 'tasks.json'),
-    getSettings
+    getSettings,
+    accounts
   )
   manager.on('update', (tasks) => send('dl:update', tasks))
   onDownloadsChanged(() => send('history:downloadsChanged'))
   manager.on('done', (t: TaskInfo) =>
-    recordDownload({ key: t.item.key, title: t.title, groupTitle: t.groupTitle, path: t.outputPath ?? '', at: Date.now() })
+    recordDownload({ key: t.item.key, title: t.title, groupTitle: t.groupTitle, path: t.outputPath ?? '', at: Date.now(), accountMid: t.accountMid })
   )
-  manager.on('purged', (tasks: TaskInfo[]) => removeDownloads(tasks.map((t) => t.item.key)))
+  manager.on('purged', (tasks: TaskInfo[]) => removeDownloads(tasks.map((t) => ({ key: t.item.key, path: t.outputPath ?? '' }))))
   manager.on('active', (active: boolean) => applyPower(active, getSettings().powerMode))
   manager.on('idle', ({ done, failed }: { done: number; failed: number }) =>
     failed
@@ -289,28 +297,30 @@ async function start(): Promise<void> {
   )
 
   const enqueue = makeEnqueue(manager)
-  const subs = new SubscriptionManager((request) => manager.enqueue(request).created.length)
+  const subs = new SubscriptionManager((request) => manager.enqueue(request).created.length, accounts)
   subs.on('update', (list) => send('subs:update', list))
   subs.on('found', ({ title, count }: { title: string; count: number }) =>
     notify(t('misc.notifySubsTitle'), t('misc.notifySubsBody', { title, count }))
   )
-  subs.start()
-
+  const loginTarget = () => {
+    const mid = activeScope().mid
+    return mid === undefined ? undefined : { mode: 'reauth' as const, mid, activate: false }
+  }
   const login = new LoginFlow({
-    checkAuth,
-    authState: getAuthState,
+    checkAuth: () => inAuthScope(activeScope(), checkAuth),
+    authState: activeAuthState,
+    accountAuth: (mid) => accounts.auth(mid),
+    currentTarget: loginTarget,
+    loginGuard: () => accounts.loginGuard(),
     onLoginChanged,
     listBrowsers: listBrowserProfiles,
-    importBrowser: importFromBrowser,
-    openQr: openLoginWindow,
+    importBrowser: (id, opts, target, guard) => accounts.login(() => importFromBrowser(id, opts), target, guard),
+    openQr: (target, guard) => accounts.login(openLoginWindow, target, guard),
     isQrOpen: isLoginWindowOpen,
     isLocked: isProfileLocked,
     canClose: canCloseBrowser,
     confirmClose: confirmCloseBrowser,
-    closeBrowser,
-    openPermissionSettings: isMac
-      ? () => void shell.openExternal(FULL_DISK_ACCESS_URL).catch((e) => console.warn('打开系统设置失败', e))
-      : undefined
+    closeBrowser
   })
   const mcpTools = new McpTools({
     parseAll: async (input, maxItems) => loadAllPages(await parseAndRecord(input), { maxItems }),
@@ -318,9 +328,32 @@ async function start(): Promise<void> {
     queue: manager,
     batchFile: join(app.getPath('userData'), 'mcp-batches.json'),
     downloadedKeys,
+    downloadRecords,
+    parseRecords,
+    probeQuality: async (url, itemId) => {
+      const source = await resolveInput(url)
+      const items = source.groups.flatMap((group) => group.items)
+      const matchesItem = (item: (typeof items)[number]): boolean =>
+        item.key === itemId || !!(item.lazy && itemId?.startsWith(`${item.key}:`))
+      let selected = itemId ? items.find(matchesItem)
+        : items.length === 1 ? items[0] : items.find((item) => source.defaultSelected.length === 1 && source.defaultSelected[0] === item.key)
+      if (!selected && itemId && source.paging?.hasMore) {
+        const { result, error } = await loadAllPages(source, { maxItems: 1000 })
+        selected = result.groups.flatMap((group) => group.items).find(matchesItem)
+        if (!selected && error) throw new Error(error)
+      }
+      if (!selected) throw invalid(t('mcpAccounts.qualityItemRequired'))
+      if (selected.unavailable) throw new Error(selected.unavailable)
+      const parts = selected.lazy ? await expandLazy([selected], undefined, stopsBatch) : [selected]
+      const item = itemId && itemId !== selected.key ? parts.find((part) => part.key === itemId) : parts[0]
+      if (!item) throw invalid(t('mcpAccounts.qualityItemRequired'))
+      if (item.unavailable) throw new Error(item.unavailable)
+      return { item_id: item.key, title: item.title, qualities: downloadableQualities(await getPlayInfo(item, 127)) }
+    },
     settings: getSettings,
     updateSettings,
     authState: () => checkAuthThrottled(60_000),
+    accounts,
     lookup: biliLookup,
     login,
     watermark: {
@@ -332,6 +365,26 @@ async function start(): Promise<void> {
   })
   const mcp = new McpServer(mcpTools)
   void mcp.apply(settings.mcp)
+
+  accounts.connect((mid, status) => {
+    manager.accountChanged(mid, status)
+    if (status === 'ready') {
+      mcpTools.batches.accountReady(mid)
+      void subs.accountReady(mid).catch((e) => console.warn('恢复订阅检查失败', e))
+    }
+  }, {
+    count: () => manager.list().filter((task) => task.accountMid === undefined && task.status !== 'done').length
+      + subs.list().filter((sub) => sub.accountMid === undefined).length
+      + mcpTools.batches.list().filter((batch) => batch.accountMid === undefined && (batch.pending.length || batch.failed.length)).length,
+    assign: (mid) => {
+      manager.assignLegacy(mid)
+      manager.flush()
+      subs.assignLegacy(mid)
+      mcpTools.batches.assignLegacy(mid)
+      mcpTools.batches.flush()
+    }
+  })
+  subs.start()
 
   onSettingsChange((s) => {
     send('settings:changed', s)
@@ -347,9 +400,6 @@ async function start(): Promise<void> {
     applyPower(manager.isActive(), s.powerMode)
     manager.schedule()
   })
-  onAuthRequired(() => manager.blockForAuth())
-  onLoggedIn(() => manager.unblockAuth())
-
   const updater = new Updater(join(app.getPath('userData'), 'update'), join(app.getPath('userData'), 'updater.json'))
 
   // 只注册这一个：退出被取消时其他监听器照样会执行，会把 quitting 置上、把后台服务停掉
@@ -366,7 +416,7 @@ async function start(): Promise<void> {
     updater.stop()
   })
 
-  registerIpc({ manager, subs, mcp, enqueue, updater })
+  registerIpc({ manager, subs, mcp, enqueue, updater, accounts })
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
@@ -375,11 +425,10 @@ async function start(): Promise<void> {
 
   // 启动时确认登录状态，未登录就弹出登录；稍后再检查更新，免得和登录弹窗挤在一起
   getMainWindow()?.webContents.once('did-finish-load', () => {
-    checkAuth()
-      .then((s) => {
-        if (!s.loggedIn) requireLogin()
-      })
-      .catch(() => {})
+    void inAuthScope(activeScope(), async () => {
+      const auth = await checkAuth()
+      if (!auth.loggedIn) requireLogin()
+    }).catch(() => {})
     setTimeout(() => updater.start(() => getSettings().autoCheckUpdate), 3000)
   })
 

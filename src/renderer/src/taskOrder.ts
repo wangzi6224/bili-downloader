@@ -3,7 +3,7 @@ import type { TaskInfo, TaskStatus } from '@shared/types'
 export const ACTIVE = new Set<TaskStatus>(['fetching', 'downloading', 'merging', 'extras', 'processing'])
 
 /** 同一次（或同一订阅陆续）加入的合集、番剧、收藏夹等归为一组 */
-export const groupKey = (t: TaskInfo): string => `${t.item.kind}|${t.groupTitle}`
+export const groupKey = (t: TaskInfo): string => JSON.stringify([t.accountMid, t.item.kind, t.groupTitle])
 
 export type Entry = { type: 'task'; t: TaskInfo } | { type: 'group'; key: string; tasks: TaskInfo[]; visible: TaskInfo[] }
 

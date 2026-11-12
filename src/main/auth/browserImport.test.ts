@@ -13,6 +13,10 @@ const m = vi.hoisted(() => ({
   execFile: vi.fn(),
   unprotect: vi.fn(),
   copyFileSync: vi.fn(),
+  readdirSync: vi.fn(),
+  statSync: vi.fn(),
+  readFileSync: vi.fn(),
+  showOpenDialog: vi.fn(),
   checkAuth: vi.fn(),
   clearBiliCookies: vi.fn(async () => {}),
   setBiliCookies: vi.fn(async (_list: unknown[]) => {}),
@@ -20,11 +24,15 @@ const m = vi.hoisted(() => ({
 }))
 
 vi.mock('node:child_process', () => ({ execFile: m.execFile }))
+vi.mock('electron', () => ({ dialog: { showOpenDialog: m.showOpenDialog } }))
 vi.mock('./dpapi', () => ({ unprotect: m.unprotect }))
 // 默认用真的复制，个别测试模拟浏览器锁住数据库
 vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs')>()),
-  copyFileSync: m.copyFileSync
+  copyFileSync: m.copyFileSync,
+  readdirSync: m.readdirSync,
+  statSync: m.statSync,
+  readFileSync: m.readFileSync
 }))
 const realFs = await vi.importActual<typeof import('node:fs')>('node:fs')
 vi.mock('./authGuard', () => ({ checkAuth: m.checkAuth }))
@@ -229,6 +237,10 @@ beforeEach(async () => {
   m.execFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: ExecCb) => cb(null, `${PASSWORD}\n`, ''))
   m.unprotect.mockReset().mockImplementation(async (list: Buffer[]) => list.map(() => Buffer.alloc(32, 7)))
   m.copyFileSync.mockReset().mockImplementation(realFs.copyFileSync)
+  m.readdirSync.mockReset().mockImplementation(realFs.readdirSync)
+  m.statSync.mockReset().mockImplementation(realFs.statSync)
+  m.readFileSync.mockReset().mockImplementation(realFs.readFileSync)
+  m.showOpenDialog.mockReset()
 })
 
 afterEach(() => {
@@ -242,11 +254,132 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true })
 })
 
+describe('macOS 浏览器文件夹授权', () => {
+  const chromeRoot = (): string => support('Google/Chrome')
+  let folder: typeof import('./browserFolder')
+
+  beforeEach(async () => {
+    await load('darwin')
+    folder = await import('./browserFolder')
+  })
+
+  it('系统拒绝读取 Chrome 根目录，用户在原生窗口选定该目录后重新检测并导入', async () => {
+    const root = chromeRoot()
+    chromeDb(join(root, 'Default/Cookies'), [sess()])
+    let approved = false
+    m.readdirSync.mockImplementation((path: string) => {
+      if (path === root && !approved) throw Object.assign(new Error('restricted'), { code: 'EPERM' })
+      return realFs.readdirSync(path)
+    })
+    expect(bi.listBrowserProfiles()).toMatchObject([{ id: 'chrome::', blocked: true, hasBiliLogin: false }])
+    await expect(bi.importFromBrowser('chrome::')).rejects.toMatchObject({ code: 'blocked', message: '没有权限读取 Chrome 的数据' })
+    m.showOpenDialog.mockImplementation(async () => {
+      approved = true
+      return { canceled: false, filePaths: [root] }
+    })
+    const win = {} as import('electron').BrowserWindow
+    await expect(folder.chooseBrowserFolder('chrome::', win)).resolves.toEqual([
+      { id: 'chrome::Default', browser: 'Chrome', profile: 'Default', hasBiliLogin: true }
+    ])
+    expect(m.showOpenDialog).toHaveBeenCalledWith(win, expect.objectContaining({ defaultPath: root, properties: ['openDirectory'] }))
+    expect(m.setBiliCookies).not.toHaveBeenCalled()
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+  })
+
+  it('原生选择器取消时保留检测结果且不重新扫描', async () => {
+    m.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
+    await expect(folder.chooseBrowserFolder('chrome::')).resolves.toBeNull()
+    expect(m.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: chromeRoot() }))
+    expect(m.readdirSync).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, 'Downloads', 'Library/Application Support/Google/Chrome/Default'])('拒绝空路径或不在受支持范围内的文件夹（%s）', async (relative) => {
+    m.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: relative ? [join(home, relative)] : [] })
+    await expect(folder.chooseBrowserFolder('chrome::')).rejects.toThrow('请选择受支持的浏览器数据文件夹')
+    expect(m.readdirSync).not.toHaveBeenCalled()
+  })
+
+  it('允许在选择器中选中其他受支持的浏览器根目录', async () => {
+    const edge = support('Microsoft Edge')
+    chromeDb(join(edge, 'Default/Cookies'), [sess()])
+    m.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [edge] })
+    await expect(folder.chooseBrowserFolder('chrome::')).resolves.toMatchObject([{ id: 'edge::Default', hasBiliLogin: true }])
+  })
+
+  it('选择后读取仍被拒绝时保留 blocked', async () => {
+    const root = chromeRoot()
+    m.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [root] })
+    m.readdirSync.mockImplementation((path: string) => {
+      if (path === root) throw Object.assign(new Error('restricted'), { code: 'EACCES' })
+      return realFs.readdirSync(path)
+    })
+    await expect(folder.chooseBrowserFolder('chrome::')).rejects.toMatchObject({ code: 'blocked', message: '没有权限读取 Chrome 的数据' })
+  })
+
+  it('无效浏览器和非 macOS 不打开原生选择器', async () => {
+    await expect(folder.chooseBrowserFolder('/some/folder')).rejects.toThrow()
+    await expect(folder.chooseBrowserFolder(null as never)).rejects.toThrow()
+    await load('linux')
+    const linux = await import('./browserFolder')
+    await expect(linux.chooseBrowserFolder('chrome::')).rejects.toThrow()
+    expect(m.showOpenDialog).not.toHaveBeenCalled()
+  })
+})
+
 describe('listBrowserProfiles（macOS）', () => {
   beforeEach(() => load('darwin'))
 
   it('什么浏览器都没装时返回空', () => {
     expect(bi.listBrowserProfiles()).toEqual([])
+  })
+
+  it('单个配置档路径损坏时，仍能列出同浏览器和其他浏览器的正常配置档', () => {
+    const broken = [support('Google/Chrome/Default/Network/Cookies'), support('Firefox/Profiles/broken/cookies.sqlite')]
+    for (const file of broken) mkdirSync(dirname(file), { recursive: true })
+    chromeDb(support('Google/Chrome/Profile 1/Cookies'), [sess()])
+    chromeDb(support('Microsoft Edge/Default/Cookies'), [sess()])
+    m.statSync.mockImplementation((path: string) => {
+      if (broken.includes(path)) throw Object.assign(new Error('symlink loop'), { code: 'ELOOP' })
+      return realFs.statSync(path)
+    })
+    expect(bi.listBrowserProfiles().map((p) => p.id)).toEqual(['chrome::Profile 1', 'edge::Default'])
+  })
+
+  it('其他浏览器根目录读取失败时，指定 Chrome 的操作只读取 Chrome', async () => {
+    const chromeRoot = support('Google/Chrome')
+    const unavailable = [support('Microsoft Edge'), support('Firefox/Profiles')]
+    chromeDb(join(chromeRoot, 'Default/Cookies'), [sess()])
+    m.readdirSync.mockImplementation((path: string) => {
+      if (unavailable.includes(path)) throw Object.assign(new Error('disk error'), { code: 'EIO' })
+      return realFs.readdirSync(path)
+    })
+    expect(bi.listBrowserProfiles()).toMatchObject([{ id: 'chrome::Default', hasBiliLogin: true }])
+    m.readdirSync.mockClear()
+    expect(bi.listBrowserProfiles('chrome')).toMatchObject([{ id: 'chrome::Default', hasBiliLogin: true }])
+    expect(bi.isProfileLocked('chrome::Default')).toBe(false)
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+    expect(m.readdirSync.mock.calls).toEqual([[chromeRoot], [chromeRoot], [chromeRoot]])
+  })
+
+  it('新版 Chrome 数据库和升级留下的旧库同时存在时，只从新版库导入', async () => {
+    const root = support('Google/Chrome/Default')
+    chromeDb(join(root, 'Cookies'), [sess()])
+    chromeDb(join(root, 'Network/Cookies'), [{ ...sess(), value: 'current-session' }])
+    expect(bi.listBrowserProfiles()).toMatchObject([{ id: 'chrome::Default', hasBiliLogin: true }])
+    await expect(bi.importFromBrowser('chrome::Default')).resolves.toBe(IN)
+    expect(lastImported().find((cookie) => cookie.name === 'SESSDATA')?.value).toBe('current-session')
+  })
+
+  it('Chrome 的 WAL 被系统拒绝时报告 blocked，避免误报未登录', async () => {
+    const file = support('Google/Chrome/Default/Cookies')
+    chromeDb(file, [])
+    m.copyFileSync.mockImplementation((source, dest) => {
+      if (source === file + '-wal') throw Object.assign(new Error('restricted'), { code: 'EPERM' })
+      realFs.copyFileSync(source, dest)
+    })
+    expect(bi.listBrowserProfiles()).toMatchObject([{ id: 'chrome::Default', blocked: true }])
+    await expect(bi.importFromBrowser('chrome::Default')).rejects.toMatchObject({ code: 'blocked' })
+    expect(leftovers()).toEqual([])
   })
 
   it('配置档名称取自 Local State，只认 Default 和 Profile *，Cookie 库可以在 Network/ 下', () => {
@@ -321,11 +454,14 @@ describe('listBrowserProfiles（macOS）', () => {
   })
 
   it('Local State 缺失或损坏时用目录名', () => {
+    chromeDb(support('Google/Chrome/Default/Cookies'), [])
     chromeDb(support('Microsoft Edge/Default/Cookies'), [])
     chromeDb(support('BraveSoftware/Brave-Browser/Default/Cookies'), [])
+    writeFileSync(support('Google/Chrome/Local State'), 'null')
     writeFileSync(support('BraveSoftware/Brave-Browser/Local State'), '{oops')
     expect(byId(bi.listBrowserProfiles()).map((p) => [p.id, p.profile])).toEqual([
       ['brave::Default', 'Default'],
+      ['chrome::Default', 'Default'],
       ['edge::Default', 'Default']
     ])
   })
@@ -526,7 +662,7 @@ describe('importFromBrowser（macOS）', () => {
     if (isRoot) return
     mkdirSync(support('Google/Chrome'), { recursive: true })
     lock(support('Google/Chrome'))
-    await expect(bi.importFromBrowser('chrome::')).rejects.toThrow('找不到这个浏览器配置档，或没有读取权限')
+    await expect(bi.importFromBrowser('chrome::')).rejects.toThrow('没有权限读取 Chrome 的数据')
   })
 
   it('里面没有 SESSDATA（或值为空）时报错，不动现有登录', async () => {
@@ -617,6 +753,67 @@ describe('Safari', () => {
   it('旧版 macOS 的文件在 ~/Library/Cookies', () => {
     safari([LOGIN], join(home, 'Library/Cookies/Cookies.binarycookies'))
     expect(bi.listBrowserProfiles().map((p) => [p.id, p.hasBiliLogin])).toEqual([['safari::Default', true]])
+  })
+
+  it.each([
+    { operation: 'statSync', id: 'safari::' },
+    { operation: 'readFileSync', id: 'safari::Default' }
+  ] as const)('当前文件在 $operation 时受限，授权后只导入当前账号', async ({ operation, id }) => {
+    safari([LOGIN])
+    const legacy = join(home, 'Library/Cookies/Cookies.binarycookies')
+    safari([{ ...LOGIN, value: 'legacy-account' }], legacy)
+    let approved = false
+    m[operation].mockImplementation((file: string, ...args: unknown[]) => {
+      if (file === safariFile() && !approved) throw Object.assign(new Error('restricted'), { code: 'EPERM' })
+      return Reflect.apply(realFs[operation], undefined, [file, ...args])
+    })
+    expect(bi.listBrowserProfiles()).toMatchObject([{ id, hasBiliLogin: false, blocked: true }])
+    await expect(bi.importFromBrowser('safari::Default')).rejects.toMatchObject({ code: 'blocked' })
+    expect(m.statSync).not.toHaveBeenCalledWith(legacy)
+    expect(m.setBiliCookies).not.toHaveBeenCalled()
+    const { chooseBrowserFolder } = await import('./browserFolder')
+    m.showOpenDialog.mockImplementation(async () => {
+      approved = true
+      return { canceled: false, filePaths: [dirname(safariFile())] }
+    })
+    await expect(chooseBrowserFolder(id)).resolves.toMatchObject([{ id: 'safari::Default', hasBiliLogin: true }])
+    expect(m.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: dirname(safariFile()) }))
+    await expect(bi.importFromBrowser('safari::Default')).resolves.toBe(IN)
+    expect(lastImported().find((cookie) => cookie.name === 'SESSDATA')?.value).toBe(LOGIN.value)
+  })
+
+  it('当前 Cookie 路径不是文件时不导入旧账号', async () => {
+    mkdirSync(safariFile(), { recursive: true })
+    safari([LOGIN], join(home, 'Library/Cookies/Cookies.binarycookies'))
+    expect(bi.listBrowserProfiles()).toEqual([])
+    await expect(bi.importFromBrowser('safari::Default')).rejects.toMatchObject({ code: 'not_found' })
+    expect(m.setBiliCookies).not.toHaveBeenCalled()
+  })
+
+  it('旧版路径是唯一来源时，授权对话框打开该目录，并可导入', async () => {
+    const file = join(home, 'Library/Cookies/Cookies.binarycookies')
+    safari([LOGIN], file)
+    const { chooseBrowserFolder } = await import('./browserFolder')
+    let approved = false
+    m.readFileSync.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === file && !approved) throw Object.assign(new Error('restricted'), { code: 'EPERM' })
+      return Reflect.apply(realFs.readFileSync, undefined, [path, ...args])
+    })
+    expect(bi.listBrowserProfiles()).toMatchObject([{ id: 'safari::Default', blocked: true }])
+    m.showOpenDialog.mockImplementation(async () => {
+      approved = true
+      return { canceled: false, filePaths: [dirname(file)] }
+    })
+    await expect(chooseBrowserFolder('safari::Default')).resolves.toMatchObject([{ id: 'safari::Default', hasBiliLogin: true }])
+    expect(m.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: dirname(file) }))
+    await expect(bi.importFromBrowser('safari::Default')).resolves.toBe(IN)
+  })
+
+  it('未检测到文件时，Safari 仍可打开当前版本的默认目录', async () => {
+    const { chooseBrowserFolder } = await import('./browserFolder')
+    m.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
+    await expect(chooseBrowserFolder('safari::')).resolves.toBeNull()
+    expect(m.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: dirname(safariFile()) }))
   })
 
   it('过期、其他网站、空值的 SESSDATA 不算登录', () => {

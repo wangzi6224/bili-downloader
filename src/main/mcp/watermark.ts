@@ -184,7 +184,7 @@ export interface RemoveQueue {
   startWatermark(id: string, region: WatermarkRegion, method: WatermarkMethod): void
 }
 
-type Skip = { task_id: string; title?: string; reason: string; suggested_region?: WatermarkRegion; size?: string }
+type Skip = { task_id: string; account_mid?: number; title?: string; reason: string; suggested_region?: WatermarkRegion; size?: string }
 
 /** remove_watermark：给已下载的视频去水印 */
 export async function removeWatermark(args: Args, taskIds: string[], queue: RemoveQueue, deps: WatermarkDeps) {
@@ -204,7 +204,8 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
       skipped.push({ task_id: id, reason: tr('mcp.noSuchTask') })
       continue
     }
-    const skip = (reason: string, extra: Partial<Skip> = {}): void => void skipped.push({ task_id: id, title: t.title, reason, ...extra })
+    const skip = (reason: string, extra: Partial<Skip> = {}): void =>
+      void skipped.push({ task_id: id, account_mid: t.accountMid, title: t.title, reason, ...extra })
     if (t.processing) {
       skip(tr('mcpWm.busy'))
       continue
@@ -261,7 +262,7 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
         queue.startWatermark(x.t.id, x.region, method)
         started.push(x)
       } catch (e) {
-        skipped.push({ task_id: x.t.id, title: x.t.title, reason: e instanceof Error ? e.message : String(e) })
+        skipped.push({ task_id: x.t.id, account_mid: x.t.accountMid, title: x.t.title, reason: e instanceof Error ? e.message : String(e) })
       }
     }
   }
@@ -278,6 +279,7 @@ export async function removeWatermark(args: Args, taskIds: string[], queue: Remo
     dry_run: dryRun || undefined,
     [dryRun ? 'would_start' : 'started']: list.map((x) => ({
       task_id: x.t.id,
+      account_mid: x.t.accountMid,
       title: x.t.title,
       region: x.region,
       region_source: x.source,

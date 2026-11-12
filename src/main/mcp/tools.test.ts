@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setLanguage } from '@shared/i18n'
 import { DICTS } from '@shared/i18n/locales'
 import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
-import type { AuthState, MediaItem, ParseResult, Settings } from '@shared/types'
+import type { AccountState, AuthState, BiliAccount, MediaItem, ParseResult, Settings } from '@shared/types'
 import { fakeWatermark, FakeQueue, makeTask, mediaItem, WM_REGION } from '../../test/fakeQueue'
+import { activeScope, authScope, inAuthScope, setActiveScope } from '../auth/scope'
+import type { AccountRegistry } from './accountTools'
 
 vi.mock('electron', () => ({}))
 // 透传真实实现，个别用例再改返回值
@@ -20,7 +22,7 @@ vi.mock('node:fs', async (orig) => {
 })
 const fs = await import('node:fs')
 const { statfs } = await import('node:fs/promises')
-const { BiliError, LoginRequiredError } = await import('../bili/http')
+const { AuthExpiredError, BiliError, LoginRequiredError } = await import('../bili/http')
 const { McpTools } = await import('./tools')
 type Lookup = import('../bili/lookup').BiliLookup
 type LoginFlow = import('./loginFlow').LoginFlow
@@ -100,6 +102,21 @@ const settle = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r))
 }
 
+const makeTools = (patch: Partial<import('./tools').McpDeps> = {}) => new McpTools({
+  ...deps,
+  queue,
+  batchFile: join(dir, 'batches.json'),
+  downloadedKeys: () => history,
+  downloadRecords: () => [],
+  parseRecords: () => [],
+  probeQuality: async () => ({ item_id: plain(1).key, title: '视频1', qualities: [] }),
+  settings: () => settings,
+  lookup: { searchUsers: deps.searchUsers, fetchVideoDetail: deps.fetchVideoDetail, expandShort: deps.expandShort } as unknown as Lookup,
+  login,
+  watermark: wm,
+  ...patch
+}, () => now)
+
 beforeEach(() => {
   // 恢复成最初的实现，免得上一个用例的 mockResolvedValue 留下来
   vi.resetAllMocks()
@@ -117,19 +134,7 @@ beforeEach(() => {
     defaultQn: 80,
     defaults: { ...DEFAULT_OPTIONS, subtitle: false }
   } as Settings
-  tools = new McpTools(
-    {
-      ...deps,
-      queue,
-      batchFile: join(dir, 'batches.json'),
-      downloadedKeys: () => history,
-      settings: () => settings,
-      lookup: { searchUsers: deps.searchUsers, fetchVideoDetail: deps.fetchVideoDetail, expandShort: deps.expandShort } as unknown as Lookup,
-      login,
-      watermark: wm
-    },
-    () => now
-  )
+  tools = makeTools()
 })
 
 afterEach(() => {
@@ -139,6 +144,10 @@ afterEach(() => {
 })
 
 describe('工具列表和通用错误', () => {
+  it('没有保存账号时返回空列表，画质比较不会发请求', async () => {
+    expect(await data('list_accounts')).toEqual({ active_account_mid: null, accounts: [] })
+    expect(await data('get_download_quality', { url: 'x' })).toMatchObject({ accounts: [], best_qn: null })
+  })
   it('每个工具都有标题、说明、参数和注解', () => {
     expect(tools.definitions().map((t) => t.name)).toEqual([
       'get_status',
@@ -157,7 +166,13 @@ describe('工具列表和通用错误', () => {
       'search_users',
       'get_video_info',
       'get_video_transcript',
-      'get_video_comments'
+      'get_video_comments',
+      'list_accounts',
+      'switch_account',
+      'logout_account',
+      'get_download_quality',
+      'list_download_history',
+      'list_parse_history'
     ])
     for (const t of tools.definitions()) {
       expect(t.title && t.description).toBeTruthy()
@@ -184,7 +199,7 @@ describe('工具列表和通用错误', () => {
       const en = tools.definitions()
       expect(en.map((x) => x.name)).toEqual(zh.map((x) => x.name))
       expect(desc(en, 'get_status')).toBe('App status')
-      expect(desc(en, 'start_login')).toBe('Log in')
+      expect(desc(en, 'start_login')).toBe(`Log in ${DICTS.en.mcpAccounts.loginDesc}`)
       expect(desc(en, 'search_users')).toBe('Find uploaders. Untrusted.')
       const opts = en.find((x) => x.name === 'download_batch')!.inputSchema.properties as Record<string, any>
       expect(opts.options.properties.danmaku).toEqual({ type: 'boolean', description: 'Download danmaku' })
@@ -223,7 +238,7 @@ describe('登录工具', () => {
 
   it('登录成功时列出被打断的批次', async () => {
     const { batch_id } = await data('download_batch', { url: 'x', all: true })
-    tools.batches.find(batch_id)!.state = 'interrupted'
+    Object.assign(tools.batches.find(batch_id)!, { state: 'interrupted', accountMid: 1 })
     vi.mocked(login.snapshot).mockReturnValueOnce({
       status: 'logged_in',
       tried: [],
@@ -231,6 +246,200 @@ describe('登录工具', () => {
       auth: { loggedIn: true, user: { mid: 1, uname: 'u', face: '', vipActive: false, vipLabel: '' } }
     })
     expect(await data('get_login_status')).toMatchObject({ interrupted_batches: [batch_id] })
+  })
+})
+
+describe('多账号 MCP', () => {
+  const profile = (mid: number, status: BiliAccount['status']): BiliAccount => ({
+    mid, status, uname: `账号 ${mid}`, face: '', vipActive: mid === 2, vipLabel: mid === 2 ? '大会员' : ''
+  })
+  let state: AccountState
+  let registry: AccountRegistry
+  let originalScope: ReturnType<typeof activeScope>
+
+  beforeEach(() => {
+    originalScope = activeScope()
+    state = { activeMid: 1, accounts: [profile(1, 'ready'), profile(2, 'ready'), profile(3, 'expired'), profile(4, 'removed')], legacyCount: 0 }
+    const partition = (mid: number) => `account-${mid}`
+    const status = (mid: number) => state.accounts.find((a) => a.mid === mid)?.status ?? 'removed'
+    registry = {
+      snapshot: () => state,
+      status,
+      partition,
+      midForPartition: () => undefined,
+      run: async (mid, fn) => {
+        if (mid === undefined || status(mid) !== 'ready') throw new AuthExpiredError()
+        return inAuthScope({ mid, partition: partition(mid), background: true }, fn)
+      },
+      select: async (mid) => {
+        if (status(mid) !== 'ready') throw new AuthExpiredError()
+        state.activeMid = mid
+        setActiveScope({ mid, partition: partition(mid) })
+        return state
+      },
+      remove: async (mid) => { state.accounts.find((a) => a.mid === mid)!.status = 'removed' }
+    }
+    setActiveScope({ mid: 1, partition: partition(1) })
+    tools = makeTools({ accounts: registry })
+  })
+
+  afterEach(() => setActiveScope(originalScope))
+
+  it.each(['parse_link', 'download_batch', 'search_videos', 'search_users', 'get_video_info', 'get_video_transcript', 'get_video_comments'])(
+    '%s 声明账号参数，指定账号过期时禁止回退到其他账号',
+    async (name) => {
+      const schema = tools.definitions().find((tool) => tool.name === name)?.inputSchema
+      expect(schema?.properties).toMatchObject({ account_mid: { type: 'integer', minimum: 1 } })
+      expect(await error(name, { account_mid: 3 })).toMatchObject({ code: 'NOT_LOGGED_IN', hint: expect.stringContaining('account_mid=3') })
+      expect(activeScope().mid).toBe(1)
+    }
+  )
+
+  it('搜索、解析和下载使用调用指定的账号，同一视频能分别入队且旧的跨账号链接无法暂停对方', async () => {
+    const scopes: number[] = []
+    deps.parseAll.mockImplementation(async () => {
+      scopes.push(authScope().mid!)
+      return { result: result([plain(1)]), complete: true }
+    })
+    deps.searchUsers.mockImplementation(async () => {
+      expect(authScope().mid).toBe(2)
+      return { list: [], total: 0, pages: 1 }
+    })
+    expect(await data('search_users', { keyword: '视频', account_mid: 2 })).toMatchObject({ account_mid: 2 })
+    const url = 'test'
+    expect(await data('parse_link', { url })).toMatchObject({ account_mid: 1 })
+    const a = await data('download_batch', { url, request_id: 'same' })
+    const b = await data('download_batch', { url, request_id: 'same', account_mid: '2' })
+    expect(scopes).toEqual([1, 2])
+    expect(activeScope().mid).toBe(1)
+    expect(a.batch_id).not.toBe(b.batch_id)
+    expect(await data('get_batch_status', { batch_id: b.batch_id, account_mid: 2 })).toMatchObject({ account_mid: 2 })
+    expect(await error('get_batch_status', { batch_id: b.batch_id, account_mid: 1 })).toMatchObject({ code: 'NOT_FOUND' })
+    expect((await data('list_batches', { account_mid: 2 })).batches).toMatchObject([{ account_mid: 2 }])
+    const tasks = (await data('list_tasks', { account_mid: 2 })).tasks
+    expect(tasks).toMatchObject([{ account_mid: 2 }])
+    const other = queue.list().find((task) => task.accountMid === 1)!
+    tools.batches.find(b.batch_id)!.linked = [other.id]
+    expect(await data('control_tasks', { action: 'pause', batch_id: b.batch_id })).toMatchObject({ affected_by_account: [{ account_mid: 2, count: 1 }] })
+    expect(other.status).toBe('queued')
+    expect(await data('control_tasks', { action: 'pause', account_mid: 1 })).toMatchObject({ affected: 1 })
+    expect(await error('parse_link', { url, account_mid: 3 })).toMatchObject({ code: 'NOT_LOGGED_IN', hint: expect.stringContaining('account_mid=3') })
+    expect(await error('parse_link', { url, account_mid: 42 })).toMatchObject({ code: 'NOT_FOUND' })
+    expect(await error('parse_link', { url, account_mid: null })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await error('update_settings', { account_mid: 2, concurrency: 8 })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(deps.updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('检查与管理指定账号，后台账号退出后当前账号还能解析', async () => {
+    expect(await data('list_accounts')).toMatchObject({ active_account_mid: 1, accounts: [
+      { account_mid: 1 }, { account_mid: 2, vip: true }, { account_mid: 3, status: 'expired' }, { account_mid: 4, status: 'removed' }
+    ] })
+    expect(await data('start_login', { mode: 'add', method: 'qr', wait_seconds: 0 })).toMatchObject({ active_account_mid: 1 })
+    expect(login.start).toHaveBeenLastCalledWith('qr', undefined, { mode: 'add', activate: false })
+    expect(await error('start_login', { mode: 'add', account_mid: 2 })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await error('start_login', { mode: 'reauth' })).toMatchObject({ code: 'INVALID_ARGS' })
+    await data('start_login', { mode: 'reauth', method: 'qr', account_mid: 3 })
+    expect(login.start).toHaveBeenLastCalledWith('qr', undefined, { mode: 'reauth', mid: 3, activate: false })
+    expect(await data('get_login_status', { account_mid: 2 })).toMatchObject({ account_mid: 2, account_status: 'ready', logged_in: true })
+    expect(await data('get_status', { account_mid: 3 })).toMatchObject({ account_mid: 3, login: { logged_in: false, status: 'expired' } })
+    expect(await data('switch_account', { account_mid: 2 })).toMatchObject({ active_account_mid: 2 })
+    expect(await error('switch_account', { account_mid: 3 })).toMatchObject({ code: 'NOT_LOGGED_IN', hint: expect.stringContaining('account_mid=3') })
+    expect(await data('logout_account', { account_mid: 1 })).toMatchObject({ account_mid: 1, status: 'removed', active_account_mid: 2 })
+    expect(await error('logout_account')).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await data('parse_link', { url: 'x' })).toMatchObject({ account_mid: 2 })
+  })
+
+  it('查询指定账号时跟踪它的重新登录，并区分未验证、退出和仍在登录的账号', async () => {
+    state.accounts.push(profile(5, 'unchecked'))
+    const snapshot = {
+      status: 'waiting_user', step: 'qr', auth: { loggedIn: false }, tried: [], alsoAvailable: [],
+      target: { mode: 'reauth', mid: 3, activate: false }
+    } satisfies LoginSnapshot
+    vi.mocked(login.snapshot).mockReturnValue(snapshot)
+    expect(await data('get_login_status', { account_mid: 3, wait_seconds: 1 })).toMatchObject({
+      account_mid: 3, status: 'waiting_user', step: 'qr', logged_in: false, account_status: 'expired'
+    })
+    expect(login.wait).toHaveBeenCalledOnce()
+    expect(await data('get_login_status', { account_mid: 4 })).toMatchObject({ account_mid: 4, status: 'idle', account_status: 'removed', logged_in: false })
+    expect(await data('get_login_status', { account_mid: 5 })).toMatchObject({ account_mid: 5, account_status: 'unchecked', logged_in: null })
+    expect(await data('get_login_status', { account_mid: 1 })).toMatchObject({ account_mid: 1, status: 'logged_in' })
+    expect(login.wait).toHaveBeenCalledOnce()
+  })
+
+  it('状态汇总和去水印都按归属筛选，无法借别的账号操作任务', async () => {
+    queue.add(makeTask('a', { accountMid: 1 }), makeTask('b', { accountMid: 2, status: 'done' }))
+    const b = await data('download_batch', { url: 'x', account_mid: 2 })
+    expect(await data('get_status', { account_mid: 2 })).toMatchObject({
+      account_mid: 2, queue: { total: 3 }, queue_by_account: [{ account_mid: 2, total: 3 }]
+    })
+    expect(await error('remove_watermark', { batch_id: b.batch_id, account_mid: 1, method: 'fast' })).toMatchObject({ code: 'NOT_FOUND' })
+    const wm = await data('remove_watermark', { task_ids: ['a', 'b'], account_mid: 2, method: 'fast', dry_run: true })
+    expect(wm.would_start).toMatchObject([{ task_id: 'b', account_mid: 2 }])
+    expect(wm.skipped).toMatchObject([{ task_id: 'a' }])
+  })
+
+  it('比较实际档位并报告过期账号，切换链接内容时不跨视频排名', async () => {
+    const probeQuality = vi.fn(async (_url: string, itemId?: string) => {
+      const mid = authScope().mid!
+      return { item_id: itemId ?? `item-${mid}`, title: '视频', qualities: [{ qn: mid === 1 ? 80 : 120, label: '高清', codecs: ['hevc'] }] }
+    })
+    tools = makeTools({ accounts: registry, probeQuality })
+    const r = await data('get_download_quality', { url: 'x', item_id: 'same' })
+    expect(r).toMatchObject({ best_qn: 120, best_account_mids: [2], accounts: [
+      { account_mid: 1, best_quality: { qn: 80 } }, { account_mid: 2, best_quality: { qn: 120 } },
+      { account_mid: 3, status: 'expired', best_quality: null, error: { code: 'NOT_LOGGED_IN' } }
+    ] })
+    expect(await data('get_download_quality', { url: 'x', account_mid: 1 })).toMatchObject({ best_qn: 80, best_account_mids: [1] })
+    expect(await data('get_download_quality', { url: 'x' })).toMatchObject({ best_qn: null, best_account_mids: [], hint: expect.any(String) })
+    probeQuality.mockResolvedValueOnce({ item_id: 'x', title: '视频', qualities: [] })
+    expect(await data('get_download_quality', { url: 'x', account_mid: 2 })).toMatchObject({ best_qn: null, accounts: [{ best_quality: null }] })
+    expect(activeScope().mid).toBe(1)
+  })
+
+  it('画质探测触发风控后停止请求其他账号', async () => {
+    const probeQuality = vi.fn(async () => { throw new BiliError('请求过于频繁', -412) })
+    tools = makeTools({ accounts: registry, probeQuality })
+    const r = await data('get_download_quality', { url: 'x' })
+    expect(probeQuality).toHaveBeenCalledOnce()
+    expect(r.best_qn).toBeNull()
+    expect(r.accounts.map((a: { error: { code: string } }) => a.error.code)).toEqual(['RATE_LIMITED', 'RATE_LIMITED', 'RATE_LIMITED'])
+  })
+
+  it('画质探测返回的分 P ID 可直接用于下载，同账号并发只展开和入队一次', async () => {
+    const parent = lazy(1)
+    const partId = `${parent.key}:2`
+    const expand = vi.fn(async (items: MediaItem[]) => {
+      expect(items).toEqual([parent])
+      return [{ ...parent, key: `${parent.key}:1`, lazy: false, cid: 1 }, { ...parent, key: partId, lazy: false, cid: 2 }]
+    })
+    tools = makeTools({
+      accounts: registry,
+      parseAll: async () => ({ result: result([parent, lazy(2)]), complete: true }),
+      expandLazy: expand,
+      probeQuality: async () => ({ item_id: partId, title: parent.title, qualities: [{ qn: 120, label: '4K', codecs: ['hevc'] }] })
+    })
+    await data('parse_link', { url: 'x', account_mid: 1, expand_parts: true, limit: 1 })
+    const quality = await data('get_download_quality', { url: 'x', item_id: parent.key, account_mid: 2 })
+    const args = { url: 'x', account_mid: 2, ids: [quality.accounts[0].item_id, 'ugc:BV999:3'], qn: quality.best_qn }
+    const [a, b] = await Promise.all([data('download_batch', args), data('download_batch', args)])
+    expect(a.batch_id).toBe(b.batch_id)
+    expect(expand).toHaveBeenCalledTimes(2)
+    expect(queue.list()).toMatchObject([{ accountMid: 2, item: { key: partId }, options: { qn: 120 } }])
+    expect((a.unknown_ids ?? b.unknown_ids)).toEqual(['ugc:BV999:3'])
+    expect(activeScope().mid).toBe(1)
+  })
+
+  it('下载和解析记录可按 UID 筛选，退出账号与没有归属的旧记录仍能查询', async () => {
+    const a = { key: 'one', title: '视频', groupTitle: '', path: '/dl/1.mp4', at: 1, accountMid: 1 }
+    const b = { ...a, at: 2, accountMid: 4, path: '/dl/2.mp4' }
+    tools = makeTools({ accounts: registry, downloadRecords: () => [a, b], parseRecords: () => [
+      { input: 'x', title: '视频', kind: 'ugc', cover: '', count: 1, at: 1 },
+      { input: 'x', title: '视频', kind: 'ugc', cover: '', count: 1, at: 2, accountMid: 2 }
+    ] })
+    expect(await data('list_download_history', { limit: 1 })).toMatchObject({ total: 2, next_offset: 1, records: [{ account_mid: 4, account_name: '账号 4' }] })
+    expect(await data('list_download_history', { account_mid: 1 })).toMatchObject({ total: 1, records: [{ account_mid: 1, path: '/dl/1.mp4' }] })
+    expect(await data('list_parse_history', { account_mid: null })).toMatchObject({ total: 1, records: [{ input: 'x', account_mid: null }] })
+    expect(await data('list_parse_history', { account_mid: 2 })).toMatchObject({ total: 1, records: [{ input: 'x', account_mid: 2 }] })
   })
 })
 
@@ -661,6 +870,19 @@ describe('download_batch 的并行提交', () => {
     expect(a.batch_id).toBe(b.batch_id)
     expect((await data('list_batches')).total).toBe(1)
   })
+
+  it('分 P 展开失败后可重试，超过单次展开上限时不发请求', async () => {
+    const videos = Array.from({ length: 101 }, (_, i) => lazy(i + 1))
+    deps.parseAll.mockResolvedValue({ result: result(videos), complete: true })
+    expect(await error('download_batch', { url: 'x', ids: videos.map((video) => `${video.key}:1`) }))
+      .toMatchObject({ code: 'INVALID_ARGS', message: expect.stringContaining('100') })
+    expect(deps.expandLazy).not.toHaveBeenCalled()
+    deps.expandLazy.mockRejectedValueOnce(new BiliError('请求过于频繁', -412))
+    const args = { url: 'x', ids: [`${videos[0].key}:1`] }
+    expect(await error('download_batch', args)).toMatchObject({ code: 'RATE_LIMITED' })
+    expect(queue.list()).toEqual([])
+    expect(await data('download_batch', args)).toMatchObject({ selected: 1 })
+  })
 })
 
 describe('get_batch_status / list_batches', () => {
@@ -795,6 +1017,7 @@ describe('control_tasks', () => {
       action: 'pause',
       matched: 4,
       affected: 3,
+      affected_by_account: [{ account_mid: null, count: 3 }],
       skipped: [
         { id: 'x', reason: '没有这个任务' },
         { id: 'p', status: 'paused', reason: 'paused 状态的任务不能 pause' }

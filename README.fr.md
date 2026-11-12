@@ -239,7 +239,7 @@ Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le je
 Connectez-vous et vous pourrez télécharger toutes les qualités et toutes les vidéos que votre compte peut regarder, 1080P et plus et contenus premium compris. Choisissez la méthode qui vous convient parmi les trois :
 
 - **从浏览器导入** (Importer depuis le navigateur) : réutilise les cookies de connexion de Chrome, Edge, Brave, Arc (macOS uniquement), Vivaldi, Opera, Chromium, Firefox ou Safari (macOS uniquement).
-  - macOS protège les données de Chrome, Edge, Brave et Safari : activez d'abord l'application dans **Réglages Système → Confidentialité et sécurité → Accès complet au disque**, puis redémarrez-la. L'import depuis un navigateur basé sur Chromium demande aussi l'accès au trousseau.
+  - Si macOS bloque la lecture, sélectionnez le dossier de données du navigateur concerné depuis la fenêtre de connexion. L’import depuis un navigateur basé sur Chromium peut aussi demander l’accès au trousseau.
   - Sous Linux, les navigateurs basés sur Chromium conservent la clé des cookies dans le trousseau du système (GNOME Keyring / libsecret). L'application la lit avec `secret-tool` (`sudo apt install libsecret-tools`), et le trousseau peut demander à être déverrouillé. Les versions Snap et Flatpak de Firefox, ainsi que Chromium en Snap, sont également prises en charge.
   - Sous Windows, les navigateurs basés sur Chromium verrouillent leur base de données de cookies pendant leur exécution : quittez complètement le navigateur (y compris ses processus en arrière-plan) avant l'import. Les cookies écrits par Chrome 127 ou ultérieur utilisent le chiffrement lié à l'application et ne peuvent pas être importés ; si le cookie de connexion en fait partie, utilisez plutôt la connexion dans l'application ou collez une chaîne de cookies.
 - **在应用内登录** (Se connecter dans l'application) : ouvre la page de connexion officielle de bilibili, avec connexion par QR code, mot de passe ou SMS.
@@ -252,7 +252,7 @@ L'application vérifie l'état de connexion au lancement, au retour sur la fenê
 - Vos cookies bilibili sont conservés dans le dossier de données de l'application et ne sont envoyés qu'à bilibili. Ils ne sont jamais renvoyés aux clients IA via MCP.
 - Les téléchargements, le multiplexage et la suppression du filigrane s'exécutent tous en local. Pas d'inscription, pas de télémétrie, aucun serveur à nous entre les deux.
 - En dehors de bilibili, l'application ne contacte que GitHub (pour vérifier les mises à jour) et ModelScope ou Hugging Face (pour télécharger une seule fois le modèle de retouche IA).
-- Via MCP, `start_login` ne fait rien si l'application est déjà connectée : un agent ne peut donc pas changer de compte. S'il faut d'abord fermer un navigateur (Windows verrouille la base de cookies tant que le navigateur tourne), l'application vous le demande dans une boîte de dialogue et vous seul pouvez l'accepter.
+- Le client MCP peut changer de compte ou déconnecter un compte précis à votre demande. S'il faut d'abord fermer un navigateur (Windows verrouille la base de cookies tant que le navigateur tourne), l'application vous le demande dans une boîte de dialogue et vous seul pouvez l'accepter.
 
 ## FAQ
 

@@ -17,6 +17,7 @@ export default {
   parseCount: '解析 {count} 个',
   placeholder: '粘贴视频、合集、番剧、课程、收藏夹或 UP 主链接',
   pasteAndParse: '从剪贴板粘贴并解析',
+  clearLink: '清空链接',
   parsing: '解析中',
   parse: '解析',
   batchButton: '批量解析：一次粘贴多行链接',

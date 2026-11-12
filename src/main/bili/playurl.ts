@@ -128,6 +128,20 @@ export function qualitiesFromInfo(info: PlayInfo): QualityOption[] {
     .sort((a, b) => b.qn - a.qn)
 }
 
+/** 只列出下载器确实拿到视频地址的档位。support_formats 也会列出账号无权下载的档位。 */
+export function downloadableQualities(info: PlayInfo) {
+  const formats = new Map(qualitiesFromInfo(info).map((q) => [q.qn, q.label]))
+  const byQuality = new Map<number, Set<string>>()
+  for (const stream of info.dash?.video ?? []) {
+    if (!streamUrls(stream).length) continue
+    const codecs = byQuality.get(stream.id) ?? new Set<string>()
+    codecs.add(codecOf(stream) ?? stream.codecs)
+    byQuality.set(stream.id, codecs)
+  }
+  return [...byQuality].sort(([a], [b]) => b - a)
+    .map(([qn, codecs]) => ({ qn, label: formats.get(qn) ?? String(qn), codecs: [...codecs] }))
+}
+
 /** dash 音轨的 id */
 const AAC_ID: Record<string, number> = { '192k': 30280, '132k': 30232, '64k': 30216 }
 

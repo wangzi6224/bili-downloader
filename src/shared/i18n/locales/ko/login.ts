@@ -17,9 +17,10 @@ export default {
   pasteManually: '직접 붙여넣기',
   appBoundBanner:
     '{browsers}은(는) 앱 바인딩 암호화로 로그인 정보를 보호하므로 브라우저 자신만 읽을 수 있고 이 앱에서는 가져올 수 없습니다. QR 코드로 로그인하거나 브라우저에서 쿠키를 복사해 직접 붙여넣으세요.',
-  openSystemSettings: '시스템 설정 열기',
-  macBlocked:
-    'macOS에서 이 앱이 {browsers}의 데이터를 읽도록 허용하지 않습니다. 이 브라우저에서 가져오려면 ‘시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한’에서 이 앱을 켠 다음 앱을 다시 시작하세요. 아래의 앱 내 로그인을 바로 사용할 수도 있습니다.',
+  chooseBrowserFolder: '브라우저 폴더 선택',
+  chooseBrowserFolderMessage: '다음 브라우저 데이터 폴더를 선택하세요. {path}',
+  wrongBrowserFolder: '{path}와 같이 지원되는 브라우저 데이터 폴더를 선택하세요.',
+  macBlocked: 'macOS가 {browsers} 데이터에 대한 접근을 차단했습니다. 브라우저 데이터 폴더를 선택해 접근을 허용하거나 앱에서 로그인하세요.',
   blocked:
     '{browsers}의 데이터를 읽을 권한이 없습니다(현재 사용자는 브라우저 프로필 폴더를 읽을 수 없습니다). 아래의 앱 내 로그인을 바로 사용할 수 있습니다.',
   locked: '{browsers}이(가) 실행 중이라 로그인 정보를 읽을 수 없습니다. 브라우저를 완전히 종료한 다음(백그라운드 실행 포함) ‘다시 감지’를 클릭하세요.',

@@ -3,7 +3,8 @@ import { t } from '@shared/i18n'
 import type { AuthState } from '@shared/types'
 import { getMainWindow } from '../windows'
 import { checkAuth, getAuthState } from './authGuard'
-import { biliSession, isBiliHost, PARTITION, UA } from './session'
+import { biliSession, isBiliHost, UA } from './session'
+import { authScope, inAuthScope } from './scope'
 
 const LOGIN_URL = 'https://passport.bilibili.com/login'
 
@@ -22,6 +23,7 @@ export function openLoginWindow(): Promise<AuthState> {
     loginWin?.focus()
     return pending
   }
+  const scope = authScope()
   const opening = new Promise<AuthState>((resolve) => {
     const main = getMainWindow()
     const win = new BrowserWindow({
@@ -30,7 +32,7 @@ export function openLoginWindow(): Promise<AuthState> {
       // 主窗口藏在后台或最小化时不挂上去，否则登录窗会跟着看不见
       parent: main?.isVisible() && !main.isMinimized() ? main : undefined,
       title: t('dialogs.loginWindowTitle'),
-      webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true }
+      webPreferences: { partition: scope.partition, sandbox: true, contextIsolation: true }
     })
     loginWin = win
     win.webContents.setUserAgent(UA)
@@ -41,7 +43,7 @@ export function openLoginWindow(): Promise<AuthState> {
       if (removed || cookie.name !== 'SESSDATA' || !cookie.value) return
       clearTimeout(timer)
       timer = setTimeout(async () => {
-        const s = await checkAuth().catch(() => null)
+        const s = await inAuthScope(scope, checkAuth).catch(() => null)
         if (s?.loggedIn && !win.isDestroyed()) win.close()
       }, 800)
     }
@@ -61,7 +63,7 @@ export function openLoginWindow(): Promise<AuthState> {
       clearTimeout(timer)
       loginWin = null
       pending = null
-      resolve(await checkAuth().catch(() => getAuthState()))
+      resolve(await inAuthScope(scope, () => checkAuth().catch(() => getAuthState())))
     })
 
     win.loadURL(LOGIN_URL)

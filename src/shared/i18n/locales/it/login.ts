@@ -18,9 +18,10 @@ export default {
   pasteManually: 'Incolla manualmente',
   appBoundBanner:
     '{browsers} protegge i dati di accesso con la crittografia legata all’app: solo il browser stesso può leggerli e questa app non può importarli. Accedi con il codice QR, oppure copia i cookie dal browser e incollali manualmente.',
-  openSystemSettings: 'Apri Impostazioni di Sistema',
-  macBlocked:
-    'macOS non consente a questa app di leggere i dati di {browsers}. Per importare da questi browser, attiva questa app in “Impostazioni di Sistema → Privacy e sicurezza → Accesso completo al disco”, quindi riavviala. In alternativa, accedi direttamente dall’app qui sotto.',
+  chooseBrowserFolder: 'Scegli la cartella del browser',
+  chooseBrowserFolderMessage: 'Seleziona questa cartella dei dati del browser: {path}',
+  wrongBrowserFolder: 'Seleziona una cartella dei dati di un browser supportato, ad esempio {path}.',
+  macBlocked: 'macOS ha bloccato l’accesso ai dati di {browsers}. Seleziona la cartella dei dati del browser per autorizzare l’accesso oppure accedi nell’app.',
   blocked:
     'Nessun permesso per leggere i dati di {browsers} (l’utente attuale non può leggere la cartella del profilo del browser). Puoi accedere direttamente dall’app qui sotto.',
   locked:

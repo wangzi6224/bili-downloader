@@ -18,9 +18,10 @@ export default {
   pasteManually: 'Coller manuellement',
   appBoundBanner:
     '{browsers} protège ses informations de connexion par un chiffrement lié à l’application : seul le navigateur peut les lire, cette application ne peut pas les importer. Connectez-vous par QR code, ou copiez les cookies depuis le navigateur et collez-les manuellement.',
-  openSystemSettings: 'Ouvrir Réglages Système',
-  macBlocked:
-    'macOS n’autorise pas cette application à lire les données de {browsers}. Pour importer depuis ces navigateurs, activez cette application dans « Réglages Système → Confidentialité et sécurité → Accès complet au disque », puis redémarrez-la. Vous pouvez aussi vous connecter directement dans l’application ci-dessous.',
+  chooseBrowserFolder: 'Choisir le dossier du navigateur',
+  chooseBrowserFolderMessage: 'Sélectionnez ce dossier de données du navigateur : {path}',
+  wrongBrowserFolder: 'Sélectionnez un dossier de données de navigateur pris en charge, par exemple {path}.',
+  macBlocked: 'macOS a bloqué l’accès aux données de {browsers}. Sélectionnez le dossier de données du navigateur pour autoriser l’accès, ou connectez-vous dans l’application.',
   blocked:
     'Impossible de lire les données de {browsers} (l’utilisateur actuel n’a pas accès au dossier de profil du navigateur). Vous pouvez vous connecter directement dans l’application ci-dessous.',
   locked:

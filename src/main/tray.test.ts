@@ -32,10 +32,16 @@ describe('trayMenu', () => {
     ])
   })
 
-  it('没登录时“退出登录”换成“登录”', () => {
-    const labels = trayMenu(LOGGED_OUT, actions()).map((i) => i.label)
+  it.each<AuthState>([LOGGED_OUT, { loggedIn: false, expired: true }])('未登录或登录过期时显示“登录”', (auth) => {
+    const labels = trayMenu(auth, actions()).map((i) => i.label)
     expect(labels).toContain('登录')
     expect(labels).not.toContain('退出登录')
+  })
+
+  it('托盘退出使用生成该菜单时的账号', () => {
+    const a = actions()
+    click(trayMenu(LOGGED_IN, a), '退出登录')
+    expect(a.logout).toHaveBeenCalledExactlyOnceWith(LOGGED_IN.user)
   })
 
   it.each<[string, keyof TrayActions, AuthState]>([

@@ -1,8 +1,9 @@
 import { t } from '@shared/i18n'
 import type { AuthState } from '@shared/types'
-import { getRaw, LoginRequiredError, NAV_URL, setAuthExpiredHook, updateWbiKeys } from '../bili/http'
+import { BiliError, getRaw, LoginRequiredError, NAV_URL, setAuthExpiredHook, updateWbiKeys } from '../bili/http'
 import { send } from '../windows'
 import { clearBiliCookies, getCookie } from './session'
+import { activeScope, authScope, inAuthScope, isRetired } from './scope'
 
 interface NavData {
   isLogin: boolean
@@ -15,14 +16,40 @@ interface NavData {
   wbi_img: { img_url: string; sub_url: string }
 }
 
-let state: AuthState = { loggedIn: false }
-let lastCheck = 0
-let lastRequired = 0
+interface SessionAuth {
+  state: AuthState
+  lastCheck: number
+  lastRequired: number
+  revision: number
+  pending?: Promise<AuthState>
+}
+
+const sessions = new Map<string, SessionAuth>()
+function sessionAuth(partition = authScope().partition): SessionAuth {
+  let auth = sessions.get(partition)
+  if (!auth) {
+    auth = { state: { loggedIn: false }, lastCheck: 0, lastRequired: 0, revision: 0 }
+    sessions.set(partition, auth)
+  }
+  return auth
+}
+
 const requiredListeners = new Set<() => void>()
 const loginListeners = new Set<() => void>()
 const loginChangeListeners = new Set<() => void>()
+const sessionListeners = new Set<(partition: string, state: AuthState) => void>()
 
-export const getAuthState = (): AuthState => state
+export const getAuthState = (): AuthState => sessionAuth().state
+export const activeAuthState = (): AuthState => sessionAuth(activeScope().partition).state
+export const authStateFor = (partition: string): AuthState | undefined => sessions.get(partition)?.state
+export const forgetSessionAuth = (partition: string): void => {
+  const auth = sessions.get(partition)
+  if (auth) auth.revision++
+  sessions.delete(partition)
+}
+export const onSessionAuthChanged = (fn: (partition: string, state: AuthState) => void): void => {
+  sessionListeners.add(fn)
+}
 
 /** 有人检测到登录失效时回调（下载队列据此暂停取流） */
 export function onAuthRequired(fn: () => void): void {
@@ -40,32 +67,70 @@ export function onLoginChanged(fn: () => void): void {
 }
 
 function setState(next: AuthState): void {
-  const wasLoggedIn = state.loggedIn
-  state = next
+  const { partition } = authScope()
+  const auth = sessionAuth(partition)
+  const wasLoggedIn = auth.state.loggedIn
+  auth.state = next
+  for (const fn of sessionListeners) fn(partition, next)
+  if (partition !== activeScope().partition) return
   send('auth:changed', next)
   if (next.loggedIn === wasLoggedIn) return
+  notifyLoginChange(next)
+}
+
+function notifyLoginChange(next: AuthState): void {
   for (const fn of loginChangeListeners) fn()
   if (next.loggedIn) for (const fn of loginListeners) fn()
 }
 
+export function publishActiveAuth(): void {
+  const next = activeAuthState()
+  send('auth:changed', next)
+  notifyLoginChange(next)
+}
+
 /** 通知渲染进程弹出登录对话框（短时间内只弹一次） */
 export function requireLogin(): void {
-  if (state.loggedIn) setState({ loggedIn: false, expired: true })
-  if (Date.now() - lastRequired < 3000) return
-  lastRequired = Date.now()
+  const scope = authScope()
+  if (isRetired(scope.partition)) return
+  const auth = sessionAuth(scope.partition)
+  auth.revision++
+  auth.lastCheck = Date.now()
+  if (auth.state.loggedIn || (scope.mid !== undefined && !auth.state.expired)) setState({ loggedIn: false, expired: true })
+  if (scope.background || scope.partition !== activeScope().partition) return
+  if (Date.now() - auth.lastRequired < 3000) return
+  auth.lastRequired = Date.now()
   for (const fn of requiredListeners) fn()
-  send('auth:required')
+  if (scope.mid === undefined) send('auth:required')
+  else send('auth:required', { mode: 'reauth', mid: scope.mid, activate: false })
 }
 
 setAuthExpiredHook(requireLogin)
 
 /** 调用 nav 接口确认登录状态；网络失败时保留原状态并抛错 */
-export async function checkAuth(): Promise<AuthState> {
+export function checkAuth(): Promise<AuthState> {
+  const auth = sessionAuth()
+  if (auth.pending) return auth.pending
+  const pending = inAuthScope(authScope(), readAuth).finally(() => {
+    if (auth.pending === pending) auth.pending = undefined
+  })
+  auth.pending = pending
+  return pending
+}
+
+async function readAuth(): Promise<AuthState> {
+  const scope = authScope()
+  const auth = sessionAuth(scope.partition)
+  const revision = ++auth.revision
   const json = await getRaw<NavData>(NAV_URL)
-  lastCheck = Date.now()
+  if (auth.revision !== revision) return auth.state
+  if (scope.mid !== undefined && json.code !== 0 && json.code !== -101) {
+    throw new BiliError(json.message, json.code)
+  }
   updateWbiKeys(json.data?.wbi_img)
   const d = json.data
-  if (json.code === 0 && d?.isLogin) {
+  if (json.code === 0 && d?.isLogin && (scope.mid === undefined || scope.mid === d.mid)) {
+    auth.lastCheck = Date.now()
     setState({
       loggedIn: true,
       user: {
@@ -77,14 +142,17 @@ export async function checkAuth(): Promise<AuthState> {
       }
     })
   } else {
-    // 有 SESSDATA 却未登录，说明 cookie 已过期
-    setState({ loggedIn: false, expired: Boolean(await getCookie('SESSDATA')) })
+    const expired = scope.mid !== undefined || Boolean(await getCookie('SESSDATA'))
+    if (auth.revision !== revision) return auth.state
+    auth.lastCheck = Date.now()
+    setState({ loggedIn: false, expired })
   }
-  return state
+  return auth.state
 }
 
 /** 距上次检查超过 minInterval 才真正请求 */
 export async function checkAuthThrottled(minInterval: number): Promise<AuthState> {
+  const { state, lastCheck } = sessionAuth()
   if (Date.now() - lastCheck < minInterval) return state
   return checkAuth()
 }
@@ -97,7 +165,7 @@ export async function logout(): Promise<AuthState> {
   } catch {
     // 断网时确认不了状态，但 cookie 已经清掉，确实退出了
     setState({ loggedIn: false })
-    return state
+    return getAuthState()
   }
 }
 

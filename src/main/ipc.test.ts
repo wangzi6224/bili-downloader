@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { IpcDeps } from './ipc'
+import type { AccountState, LoginTarget } from '@shared/types'
 
 type Result = { ok: true; data: unknown } | { ok: false; error: string }
 type Handler = (e: unknown, ...args: unknown[]) => Promise<Result>
@@ -23,7 +24,6 @@ const h = vi.hoisted(() => ({
   writeText: vi.fn(),
   showOpenDialog: vi.fn(),
   showItemInFolder: vi.fn(),
-  openExternal: vi.fn(),
   // ./auth/*
   checkAuth: vi.fn(),
   ensureLoggedIn: vi.fn(),
@@ -32,6 +32,7 @@ const h = vi.hoisted(() => ({
   requireLogin: vi.fn(),
   importFromBrowser: vi.fn(),
   listBrowserProfiles: vi.fn(),
+  chooseBrowserFolder: vi.fn(),
   importCookieText: vi.fn(),
   openLoginWindow: vi.fn(),
   cookiesGet: vi.fn(),
@@ -86,7 +87,7 @@ vi.mock('electron', () => ({
   },
   clipboard: { readText: h.readText, writeText: h.writeText },
   dialog: { showOpenDialog: h.showOpenDialog },
-  shell: { showItemInFolder: h.showItemInFolder, openExternal: h.openExternal }
+  shell: { showItemInFolder: h.showItemInFolder }
 }))
 vi.mock('./auth/authGuard', () => ({
   checkAuth: h.checkAuth,
@@ -99,10 +100,11 @@ vi.mock('./auth/browserImport', () => ({ importFromBrowser: h.importFromBrowser,
 vi.mock('./auth/cookieImport', () => ({ importCookieText: h.importCookieText }))
 vi.mock('./auth/loginWindow', () => ({ openLoginWindow: h.openLoginWindow }))
 vi.mock('./auth/session', () => ({
+  UA: 'test-agent',
   biliSession: () => ({ cookies: { get: h.cookiesGet, set: h.cookiesSet } })
 }))
 vi.mock('./bili/audio', () => ({ audioStreamInfo: () => h.AUDIO }))
-vi.mock('./bili/http', () => ({ api: vi.fn() }))
+vi.mock('./bili/http', async (original) => ({ ...await original<typeof import('./bili/http')>(), api: vi.fn() }))
 vi.mock('./bili/lists', () => ({ expandLazy: h.expandLazy, loadPage: h.loadPage, myFavFolders: h.myFavFolders }))
 vi.mock('./bili/playurl', () => ({ getPlayInfo: h.getPlayInfo, streamInfoFromPlay: h.streamInfoFromPlay }))
 vi.mock('./bili/resolve', () => ({ resolveBatch: h.resolveBatch, resolveInput: h.resolveInput }))
@@ -129,6 +131,8 @@ vi.mock('./watermark/manual', () => ({
   prepareManual: h.prepareManual,
   previewFrame: h.previewFrame
 }))
+
+vi.mock('./auth/browserFolder', () => ({ chooseBrowserFolder: h.chooseBrowserFolder }))
 
 const manager = {
   enqueue: vi.fn(),
@@ -235,7 +239,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(74)
+    expect(h.handlers.size).toBe(78)
   })
 })
 
@@ -252,6 +256,126 @@ describe('登录', () => {
     h.logout.mockResolvedValue(LOGGED_OUT)
     expect(await data('auth:logout')).toEqual(LOGGED_OUT)
     expect(h.logout).toHaveBeenCalledOnce()
+  })
+})
+
+describe('多账号 IPC', () => {
+  let scope: typeof import('./auth/scope')
+  const a = { partition: 'account-a', mid: 7 }
+  const b = { partition: 'account-b', mid: 8 }
+  const snapshot: AccountState = { activeMid: 7, accounts: [], legacyCount: 0 }
+  const accounts = {
+    snapshot: vi.fn(() => snapshot),
+    select: vi.fn(async () => snapshot),
+    remove: vi.fn(),
+    assignLegacy: vi.fn(),
+    logout: vi.fn(),
+    login: vi.fn<(fn: () => Promise<unknown>, target?: LoginTarget) => Promise<unknown>>((fn) => fn()),
+    run: <T>(mid: number, fn: () => Promise<T>, background: boolean) =>
+      scope.inAuthScope({ ...(mid === a.mid ? a : b), background }, fn)
+  }
+
+  beforeEach(async () => {
+    scope = await import('./auth/scope')
+    scope.setActiveScope(a)
+    mod.registerIpc({ ...deps, accounts: accounts as unknown as IpcDeps['accounts'] })
+    h.getAuthState.mockImplementation(() => loggedIn(scope.authScope().mid!))
+    h.getSettings.mockReturnValue({ ...SETTINGS, defaults: {}, defaultQn: 80 })
+  })
+
+  it('登录入口把账号目标传给会话管理器，管理操作使用指定 UID', async () => {
+    const target = { mode: 'reauth', mid: 8, activate: false }
+    await data('auth:login', target)
+    await data('auth:import', 'profile', target)
+    await data('auth:importCookie', 'SESSDATA=cookie', target)
+    expect(accounts.login.mock.calls.map((call) => call[1])).toEqual([target, target, target])
+    expect(h.openLoginWindow).toHaveBeenCalledOnce()
+    expect(h.importFromBrowser).toHaveBeenCalledWith('profile')
+    expect(h.importCookieText).toHaveBeenCalledWith('SESSDATA=cookie')
+    expect(await data('auth:accounts')).toEqual(snapshot)
+    await data('auth:switchAccount', 8)
+    await data('auth:assignLegacy', 8)
+    await data('auth:removeAccount', 8)
+    await data('auth:logout')
+    expect(accounts.select).toHaveBeenCalledWith(8)
+    expect(accounts.assignLegacy).toHaveBeenCalledWith(8)
+    expect(accounts.remove).toHaveBeenCalledWith(8)
+    expect(accounts.logout).toHaveBeenCalledOnce()
+  })
+
+  it('解析记录写入发起账号，删除记录时向历史模块传递账号', async () => {
+    h.resolveInput.mockResolvedValue({ title: '视频', kind: 'ugc', cover: '', groups: [], defaultSelected: [] })
+    await data('parse', 'BV1')
+    expect(h.recordParse).toHaveBeenCalledWith(expect.objectContaining({ input: 'BV1', accountMid: a.mid }))
+    await data('history:removeParse', 'BV1', a.mid)
+    expect(h.removeParse).toHaveBeenCalledWith('BV1', a.mid)
+  })
+
+  it('重开其他账号的稍后再看记录只读取原账号，并按原账号查询下载历史', async () => {
+    h.resolveInput.mockImplementation(async () => ({
+      title: `账号 ${scope.authScope().mid} 的稍后再看`, kind: 'ugc', cover: '', groups: [], defaultSelected: []
+    }))
+    expect(await data('parse', 'watchlater', b.mid)).toMatchObject({ title: '账号 8 的稍后再看' })
+    expect(h.recordParse).toHaveBeenCalledWith(expect.objectContaining({ input: 'watchlater', accountMid: b.mid }))
+    expect(scope.activeScope().mid).toBe(a.mid)
+    await data('history:downloadedKeys', b.mid)
+    expect(h.downloadedKeys).toHaveBeenCalledWith(b.mid)
+  })
+
+  it('原账号失效时请求该账号重登，不使用侧栏账号解析', async () => {
+    const { AuthExpiredError } = await import('./bili/http')
+    accounts.snapshot.mockReturnValueOnce({
+      ...snapshot, accounts: [{ mid: b.mid, uname: 'B', face: '', vipActive: false, vipLabel: '', status: 'expired' }]
+    })
+    h.resolveInput.mockRejectedValueOnce(new AuthExpiredError())
+    expect(await invoke('parse', 'watchlater', b.mid)).toMatchObject({ ok: false })
+    expect(h.resolveInput).toHaveBeenCalledOnce()
+    expect(h.recordParse).not.toHaveBeenCalled()
+    expect(h.send).toHaveBeenCalledWith('auth:required', { mode: 'reauth', mid: b.mid, activate: false })
+    expect(scope.activeScope().mid).toBe(a.mid)
+  })
+
+  it('从其他账号的本地订阅打开、翻页和下载都使用订阅所属账号', async () => {
+    const source = { type: 'subscription', id: 'b' }
+    const subscription = { id: 'b', accountMid: 8, input: 'watchlater' }
+    subs.list.mockReturnValue([subscription])
+    h.resolveInput.mockImplementation(async () => ({ owner: scope.authScope().mid }))
+    h.loadPage.mockImplementation(async () => ({ owner: scope.authScope().mid }))
+    h.expandLazy.mockImplementation(async (items) => items)
+    enqueue.mockImplementation(async (req, verify) => {
+      verify()
+      expect(req.accountMid).toBe(scope.authScope().mid)
+    })
+    subs.downloadSource.mockImplementation(async (request) => {
+      request.verifyAccount()
+      return { owner: scope.authScope().mid }
+    })
+    expect(await data('sources:open', source)).toEqual({ result: { owner: 8 }, accountMid: 8 })
+    expect(await data('parseMore', { type: 'watchlater' }, 2, 8)).toEqual({ owner: 8 })
+    expect(await data('sources:prepareItems', [], 8)).toEqual({ items: [], note: undefined })
+    expect(await data('sources:subscribeDownload', source)).toEqual({ owner: 8 })
+    expect(subs.downloadSource).toHaveBeenCalledWith(expect.objectContaining({ accountMid: 8, subscription }))
+    await data('dl:enqueue', { items: [] }, 8)
+    await data('dl:enqueue', { items: [] })
+    expect(enqueue.mock.calls.map(([req]) => req.accountMid)).toEqual([8, 7])
+    await data('subs:add', { input: 'BV-test' }, 8)
+    expect(subs.add).toHaveBeenCalledWith({ input: 'BV-test' }, 8)
+  })
+
+  it('切换期间仍以原账号读取，但丢弃迟到的明细和提交', async () => {
+    const source = { type: 'account', mid: 7, target: { type: 'watchlater' } }
+    h.resolveInput.mockImplementation(async () => {
+      scope.setActiveScope(b)
+      scope.setActiveScope(a)
+      expect(scope.authScope().mid).toBe(7)
+      return { items: [] }
+    })
+    expect(await invoke('sources:open', source)).toEqual({ ok: false, error: '账号已切换，请重新打开来源。' })
+    enqueue.mockImplementation(async (_req, verify) => {
+      scope.setActiveScope(b)
+      verify()
+    })
+    expect(await invoke('dl:enqueue', { items: [] }, 7)).toEqual({ ok: false, error: '账号已切换，请重新打开来源。' })
   })
 })
 
@@ -309,7 +433,7 @@ describe('解析', () => {
       return RESULT
     })
     expect(await data('parseBatch', ['a', 'b'])).toBe(RESULT)
-    expect(h.resolveBatch).toHaveBeenCalledWith(['a', 'b'], expect.any(Function))
+    expect(h.resolveBatch).toHaveBeenCalledWith(['a', 'b'], expect.any(Function), expect.any(Function))
     expect(order(h.ensureLoggedIn)).toBeLessThan(order(h.resolveBatch))
     expect(h.send.mock.calls).toEqual([
       ['parse:progress', { done: 1, total: 2, title: '第一个' }],
@@ -655,6 +779,15 @@ describe('网络', () => {
   })
 })
 
+it('打开浏览器文件夹选择器时传递主窗口，并返回重新检测的结果', async () => {
+  const win = { id: 1 }
+  const profiles = [{ id: 'chrome::Default', browser: 'Chrome', profile: 'Default', hasBiliLogin: true }]
+  h.getMainWindow.mockReturnValue(win)
+  h.chooseBrowserFolder.mockResolvedValue(profiles)
+  expect(await data('auth:chooseBrowserFolder', 'chrome::')).toEqual(profiles)
+  expect(h.chooseBrowserFolder).toHaveBeenCalledWith('chrome::', win)
+})
+
 describe('直接转发的频道', () => {
   const FORWARDS: { channel: string; args: unknown[]; fn: Mock; called?: unknown[] }[] = [
     { channel: 'auth:login', args: [], fn: h.openLoginWindow },
@@ -700,13 +833,7 @@ describe('直接转发的频道', () => {
     { channel: 'update:openPage', args: [], fn: updater.openPage },
     { channel: 'clipboard:read', args: [], fn: h.readText },
     { channel: 'clipboard:write', args: ['hello'], fn: h.writeText },
-    { channel: 'shell:showInFolder', args: ['/dl/a.mp4'], fn: h.showItemInFolder },
-    {
-      channel: 'shell:openFullDiskAccess',
-      args: [],
-      fn: h.openExternal,
-      called: ['x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles']
-    }
+    { channel: 'shell:showInFolder', args: ['/dl/a.mp4'], fn: h.showItemInFolder }
   ]
 
   it.each(FORWARDS)('$channel', async ({ channel, args, fn, called = args }) => {

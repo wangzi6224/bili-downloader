@@ -45,6 +45,7 @@ import { useLazyNextPage } from '../useLazyNextPage'
 import { summaryTags, type EditableOptions } from '../viewLogic'
 import { OptionsEditor, Section } from './OptionsEditor'
 import { intervals } from './SubscriptionsPage'
+import { AccountOrigin } from './AccountOrigin'
 import { Badge, Banner, Button, Dropdown, IconButton, Input, MenuItem, Modal, Select, STROKE } from './ui'
 
 const KIND_TEXT: Record<ParseResult['kind'], Key> = {
@@ -90,8 +91,9 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
   const settings = useStore((s) => s.settings)!
   const auth = useStore((s) => s.auth)
   const accountMid = useStore((s) => s.sourceAccountMid)
+  const account = useStore((s) => s.accounts?.accounts.find((account) => account.mid === accountMid))
   const progress = useStore((s) => s.progress)
-  const isVip = auth?.loggedIn ? auth.user.vipActive : false
+  const isVip = account?.vipActive ?? (auth?.loggedIn === true && (accountMid === undefined || auth.user.mid === accountMid) && auth.user.vipActive)
   const audioKind = result.kind === 'audio'
 
   const [groups, setGroups] = useState<MediaGroup[]>(result.groups)
@@ -127,7 +129,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
     let request = 0
     const refresh = (): void => {
       const id = ++request
-      api.history.downloadedKeys().then((keys) => {
+      api.history.downloadedKeys(accountMid).then((keys) => {
         if (id !== request) return
         setDownloaded(keys)
         setHistoryError(false)
@@ -143,7 +145,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
       request++
       off()
     }
-  }, [historyAttempt])
+  }, [accountMid, historyAttempt])
 
   const statusFor = useMemo(() => downloadStatusMatcher(downloaded ?? []), [downloaded])
   const isDownloaded = useMemo(
@@ -174,7 +176,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
     setInfo(null)
     setInfoError(null)
     api
-      .streamInfo(probe)
+      .streamInfo(probe, accountMid)
       .then((s) => {
         if (!alive) return
         setInfo(s)
@@ -185,11 +187,13 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
     return () => {
       alive = false
     }
-  }, [probe?.key])
+  }, [probe?.key, accountMid])
 
   const appendPage = async (page: number): Promise<boolean> => {
     if (!paging) return false
-    const r = await api.parseMore(paging.source, page)
+    const r = accountMid === undefined
+      ? await api.parseMore(paging.source, page)
+      : await api.parseMore(paging.source, page, accountMid)
     setGroups((gs) => appendToFirst(gs, r.items))
     setPaging({ ...paging, page, total: r.total, hasMore: r.hasMore })
     return r.hasMore
@@ -306,7 +310,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
         setFeedback({ tone: 'error', message: prepared.note ?? t('subs.noDownloadableSelection') })
         return
       }
-      const keys = new Set(await api.history.downloadedKeys())
+      const keys = new Set(await api.history.downloadedKeys(accountMid))
       if (useStore.getState().parse !== result) return
       const exact = (item: MediaItem): boolean => keys.has(item.key)
       const decision = resolveDuplicates(prepared.items, exact, settings.duplicateAction)
@@ -327,7 +331,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
       const { items, note } = dupPrompt.prepared
       setSubmitting(true)
       try {
-        const keys = skip ? new Set(await api.history.downloadedKeys()) : null
+        const keys = skip ? new Set(await api.history.downloadedKeys(accountMid)) : null
         if (useStore.getState().parse !== result) return
         setDupPrompt(null)
         await enqueue(keys ? items.filter((item) => !keys.has(item.key)) : items, note)
@@ -367,7 +371,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
         intervalMin: subInterval,
         includeExisting: subExisting,
         currentKeys: all.map((i) => i.key)
-      })
+      }, accountMid)
       const label = intervals().find((i) => i.min === subInterval)?.label ?? ''
       set({ notice: t('selection.subscribed', { title: result.title, interval: label }) })
       close()
@@ -647,6 +651,9 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
               {summaryTags(audioKind ? { ...opts, output: 'audio' } : opts, info).map((tag) => (
                 <Badge key={tag}>{tag}</Badge>
               ))}
+            </div>
+            <div className="mb-2 text-xs text-muted">
+              <AccountOrigin mid={accountMid ?? (auth?.loggedIn ? auth.user.mid : undefined)} />
             </div>
             {submitting && lazyCount > 0 && progress ? (
               <div className="flex items-center gap-2 text-xs text-muted">

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState, BrowserProfile } from '@shared/types'
-import { ImportError } from '../auth/importError'
+import { ImportError, LoginRevokedError } from '../auth/importError'
 import { BiliError } from '../bili/http'
 import { LoginFlow, rankProfiles, type LoginDeps } from './loginFlow'
 
@@ -69,8 +69,7 @@ beforeEach(() => {
     isLocked: vi.fn(() => false),
     canClose: vi.fn((key: string) => key !== 'arc'),
     confirmClose: vi.fn(async (): Promise<'close' | 'qr' | 'cancel'> => 'close'),
-    closeBrowser: vi.fn(async () => true),
-    openPermissionSettings: vi.fn()
+    closeBrowser: vi.fn(async () => true)
   }
   deps = fakes as unknown as typeof deps
   flow = new LoginFlow(deps)
@@ -90,6 +89,39 @@ describe('rankProfiles', () => {
     ])
     expect(list.map((p) => p.id)).toEqual(['chrome::Profile 1', 'chrome::Default', 'edge::Default', 'firefox::a'])
   })
+})
+
+it('已有登录时仍可扫码添加后台账号，切换当前账号不会中断或冒充这次登录', async () => {
+  auth = IN
+  const scan = deferred<AuthState>()
+  const added = { ...IN, user: { ...IN.user, mid: 2 } }
+  let addedAuth: AuthState = added
+  const scoped = new LoginFlow({ ...deps, accountAuth: () => addedAuth })
+  deps.openQr.mockReturnValue(scan.promise)
+  scoped.start('qr', undefined, { mode: 'add', activate: false })
+  await flush()
+  expect(deps.checkAuth).not.toHaveBeenCalled()
+  expect(deps.openQr).toHaveBeenCalledWith({ mode: 'add', activate: false }, undefined)
+  expect(scoped.snapshot()).toMatchObject({ status: 'waiting_user', auth: { loggedIn: false } })
+  expect(() => scoped.start('qr', undefined, { mode: 'reauth', mid: 3, activate: false })).toThrow()
+  changed()
+  scan.resolve(added)
+  await flush()
+  expect(scoped.snapshot()).toMatchObject({ status: 'logged_in', auth: { user: { mid: 2 } } })
+  addedAuth = OUT
+  expect(scoped.snapshot()).toMatchObject({ status: 'idle', auth: { loggedIn: false } })
+})
+
+it('旧登录被退出撤销后停止尝试其他浏览器配置', async () => {
+  const guard = vi.fn()
+  const scoped = new LoginFlow({ ...deps, loginGuard: () => guard })
+  browsers = [profile('chrome::Default'), profile('edge::Default')]
+  deps.importBrowser.mockRejectedValue(new LoginRevokedError('账号已退出，这次登录已取消。'))
+  const target = { mode: 'reauth', mid: 2, activate: false } as const
+  scoped.start('browser', undefined, target)
+  await flush()
+  expect(deps.importBrowser).toHaveBeenCalledExactlyOnceWith('chrome::Default', expect.any(Object), target, guard)
+  expect(scoped.snapshot()).toMatchObject({ status: 'failed', reason: 'revoked' })
 })
 
 describe('自动选择', () => {
@@ -191,7 +223,6 @@ describe('自动选择', () => {
     expect(flow.snapshot()).toMatchObject({ status: 'failed', reason })
     expect(deps.importBrowser).not.toHaveBeenCalled()
     expect(deps.confirmClose).not.toHaveBeenCalled()
-    expect(deps.openPermissionSettings).not.toHaveBeenCalled()
   })
 
   it('有的没权限、其余没登录时说明缺权限的是哪个', async () => {
@@ -211,6 +242,7 @@ describe('指定浏览器', () => {
     deps.importBrowser.mockClear()
     await start('browser', 'edge')
     expect(deps.importBrowser.mock.calls[0][0]).toBe('edge::Default')
+    expect(deps.listBrowsers.mock.calls).toEqual([['edge'], ['edge']])
   })
 
   it('没有这个浏览器', async () => {
@@ -234,18 +266,12 @@ describe('指定浏览器', () => {
     expect(flow.snapshot()).toMatchObject({ status: 'failed', reason: 'keychain_denied' })
   })
 
-  it('缺权限时打开系统设置', async () => {
+  it.each(['safari', 'safari::Default'])('来源 %s 缺权限时返回 blocked，不尝试导入', async (source) => {
     browsers = [profile('safari::', { browser: 'Safari', blocked: true, hasBiliLogin: false })]
-    await start('browser', 'safari')
-    expect(deps.openPermissionSettings).toHaveBeenCalledTimes(1)
-    expect(flow.snapshot()).toMatchObject({ reason: 'blocked' })
-  })
-
-  it('没有这个系统设置页的平台不打开', async () => {
-    deps.openPermissionSettings = undefined as never
-    browsers = [profile('firefox::', { blocked: true, hasBiliLogin: false })]
-    await start('browser', 'firefox')
-    expect(flow.snapshot()).toMatchObject({ reason: 'blocked' })
+    await start('browser', source)
+    expect(deps.listBrowsers).toHaveBeenCalledExactlyOnceWith('safari')
+    expect(deps.importBrowser).not.toHaveBeenCalled()
+    expect(flow.snapshot()).toMatchObject({ reason: 'blocked', message: '没有权限读取 Safari 的数据' })
   })
 
   it('点名的浏览器登录是应用绑定加密的', async () => {
@@ -291,6 +317,7 @@ describe('关闭浏览器', () => {
     })
     await start()
     expect(deps.closeBrowser.mock.calls[0][0]).toBe('chrome')
+    expect(deps.listBrowsers.mock.calls).toEqual([[], ['chrome']])
     expect(deps.importBrowser.mock.calls.map((c) => c[0])).toEqual(['chrome::Profile 1'])
     expect(flow.snapshot().status).toBe('logged_in')
   })
@@ -478,14 +505,22 @@ describe('扫码', () => {
     expect(flow.snapshot()).toMatchObject({ status: 'logged_in', reason: undefined })
   })
 
-  it('窗口迟到的错误不影响新流程', async () => {
+  it('扫码开窗前和开窗后重复发起，都保留原来的扫码和结果', async () => {
+    auth = IN
     const d = deferred<AuthState>()
-    deps.openQr.mockReturnValueOnce(d.promise)
-    await start('qr')
-    await start('qr')
-    d.reject(new Error('旧窗口'))
+    deps.openQr.mockReturnValueOnce(d.promise).mockRejectedValue(new Error('已有登录操作正在进行。'))
+    const target = { mode: 'add', activate: false } as const
+    flow.start('qr', undefined, target)
+    flow.start('qr', undefined, target)
     await flush()
+    flow.start('qr', undefined, target)
+    await flush()
+    expect(deps.openQr).toHaveBeenCalledOnce()
     expect(flow.snapshot()).toMatchObject({ status: 'waiting_user', step: 'qr' })
+    const added = { ...IN, user: { ...IN.user, mid: 2 } }
+    d.resolve(added)
+    await flush()
+    expect(flow.snapshot()).toMatchObject({ status: 'logged_in', auth: added })
   })
 
   it('登录窗已经开着时不导入，直接等它', async () => {

@@ -20,6 +20,7 @@ export default {
   parseCount: 'Analizza {count}',
   placeholder: 'Incolla il link di un video, raccolta, anime, corso, cartella dei preferiti o creator',
   pasteAndParse: 'Incolla dagli appunti e analizza',
+  clearLink: 'Cancella il link',
   parsing: 'Analisi',
   parse: 'Analizza',
   batchButton: 'Analisi multipla: incolla più link, uno per riga',

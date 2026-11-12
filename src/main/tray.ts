@@ -1,12 +1,12 @@
 import { t } from '@shared/i18n'
-import type { AuthState, UpdateState } from '@shared/types'
+import type { AuthState, UpdateState, UserInfo } from '@shared/types'
 
 export interface TrayActions {
   show: () => void
   settings: () => void
   checkUpdate: () => void
   login: () => void
-  logout: () => void
+  logout: (user: UserInfo) => void
   quit: () => void
 }
 
@@ -17,7 +17,7 @@ export function trayMenu(auth: AuthState, a: TrayActions): Electron.MenuItemCons
     { label: t('menu.traySettings'), click: () => a.settings() },
     { label: t('menu.trayCheckUpdate'), click: () => a.checkUpdate() },
     { type: 'separator' },
-    auth.loggedIn ? { label: t('menu.trayLogout'), click: () => a.logout() } : { label: t('menu.trayLogin'), click: () => a.login() },
+    auth.loggedIn ? { label: t('menu.trayLogout'), click: () => a.logout(auth.user) } : { label: t('menu.trayLogin'), click: () => a.login() },
     { type: 'separator' },
     { label: t('menu.trayQuit'), click: () => a.quit() }
   ]

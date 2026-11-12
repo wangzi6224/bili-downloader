@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Film, FileType, FolderOpen, Globe, Monitor, Moon, RefreshCw, SlidersHorizontal, Sun } from 'lucide-react'
 import {
   DEFAULT_TEMPLATES,
@@ -17,6 +17,7 @@ import { useT } from '../i18n'
 import { api, sysText, updateSettings, useStore } from '../store'
 import { updateHint } from '../viewLogic'
 import { AdvancedSettings } from './AdvancedSettings'
+import { AccountSettings } from './AccountControls'
 import { OptionsEditor } from './OptionsEditor'
 import { Button, fieldCls, Group, Input, PageHeader, rich, Row, Segmented, Select, Switch } from './ui'
 
@@ -186,6 +187,18 @@ export function SettingsPage() {
   const set = useStore((st) => st.set)
   const [tab, setTab] = useState<Tab>('general')
   const [cleared, setCleared] = useState<'' | 'downloads' | 'parses'>('')
+  const showAccounts = useStore((st) => st.showAccountSettings)
+  const accountSection = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showAccounts) return
+    if (tab !== 'general') {
+      setTab('general')
+      return
+    }
+    accountSection.current?.scrollIntoView({ block: 'nearest' })
+    set({ showAccountSettings: false })
+  }, [showAccounts, tab, set])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -287,6 +300,7 @@ export function SettingsPage() {
                 </Row>
               </Group>
               <UpdateGroup />
+              <div ref={accountSection}><AccountSettings /></div>
             </>
           )}
 

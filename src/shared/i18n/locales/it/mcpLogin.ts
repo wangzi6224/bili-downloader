@@ -3,9 +3,9 @@ import type { Messages } from '../types'
 export default {
   startTitle: 'Accedi a Bilibili',
   startDesc:
-    'Usalo per accedere quando l’app non ha effettuato l’accesso. Per impostazione predefinita importa i dati di accesso dal browser dell’utente, nell’ordine Chrome, altri browser basati su Chrome, Opera, Firefox, Safari, usando prima quelli leggibili direttamente; i cookie restano salvati solo nell’app e non compaiono nel risultato. ' +
+    'Usalo per accedere a Bilibili. Per impostazione predefinita importa i dati di accesso dal browser dell’utente, nell’ordine Chrome, altri browser basati su Chrome, Opera, Firefox, Safari, usando prima quelli leggibili direttamente; i cookie restano salvati solo nell’app e non compaiono nel risultato. ' +
     'Se l’importazione non riesce, segui l’operazione indicata in next: con next=try_qr avvisa l’utente, poi usa method=qr per aprire la finestra con il codice QR e get_login_status con wait_seconds per attendere il completamento dell’accesso. ' +
-    'Se l’accesso è già stato effettuato non fa nulla; per cambiare account l’utente deve farlo nell’app. Se il browser deve essere chiuso, è l’app a chiederlo all’utente stesso con una finestra di dialogo: qui non c’è un parametro per chiuderlo direttamente.',
+    'In modalità predefinita, se l’account attivo ha già effettuato l’accesso, lo strumento restituisce subito il suo stato. Se il browser deve essere chiuso, è l’app a chiederlo all’utente stesso con una finestra di dialogo: qui non c’è un parametro per chiuderlo direttamente.',
   startMethod: 'browser importa dal browser (predefinito); qr apre la finestra di accesso per far scansionare il codice QR all’utente',
   startSource:
     'Browser da usare, ad esempio chrome, edge, opera, firefox, safari, oppure l’id di un profilo elencato da get_login_status. Se omesso viene scelto automaticamente',
@@ -23,8 +23,7 @@ export default {
   hintLocked:
     'Il browser è in esecuzione. Puoi chiedere all’utente di chiuderlo completamente (anche i processi in background) e riprovare, oppure usare il codice QR',
   hintAppBound: 'Questo browser protegge i dati di accesso con la crittografia legata all’app e non sono leggibili: usa il codice QR',
-  hintBlocked:
-    'Nessun permesso per leggere i dati di questo browser. Su macOS bisogna concedere a {appName} l’“Accesso completo al disco” in Impostazioni di Sistema e riavviare l’app; sugli altri sistemi controlla i permessi della cartella. In alternativa usa il codice QR',
+  hintBlocked: 'Su macOS, scegli la cartella del browser nella finestra di accesso di {appName}. Sugli altri sistemi, verifica i permessi della cartella. Puoi anche accedere con un codice QR.',
   hintNoLogin:
     'Il browser non contiene un accesso a Bilibili. Se l’utente ha appena effettuato l’accesso nel browser, attendi mezzo minuto e riprova (il browser non scrive subito i dati), oppure usa il codice QR',
   hintExpired: 'L’accesso a Bilibili nel browser è scaduto: usa il codice QR, oppure chiedi all’utente di accedere di nuovo nel browser',

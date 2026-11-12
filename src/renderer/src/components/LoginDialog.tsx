@@ -9,6 +9,10 @@ import { Badge, Banner, Button, fieldCls, IconButton, Modal, ModalFooter, ModalH
 export function LoginDialog() {
   const t = useT()
   const auth = useStore((s) => s.auth)
+  const target = useStore((s) => s.loginTarget)
+  const targetAccount = useStore((s) => target?.mode === 'reauth'
+    ? s.accounts?.accounts.find((account) => account.mid === target.mid)
+    : undefined)
   const set = useStore((s) => s.set)
   const [profiles, setProfiles] = useState<BrowserProfile[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -18,6 +22,7 @@ export function LoginDialog() {
 
   const detect = (): void => {
     setProfiles(null)
+    setError(null)
     api.auth
       .listBrowsers()
       .then(setProfiles)
@@ -29,15 +34,28 @@ export function LoginDialog() {
   useEffect(detect, [])
 
   const done = (state: Awaited<ReturnType<typeof api.auth.check>>): void => {
-    set({ auth: state })
-    if (state.loggedIn) set({ loginOpen: false, error: null })
+    if (state.loggedIn) set({ loginOpen: false, loginTarget: undefined, error: null })
+  }
+  const close = (): void => set({ loginOpen: false, loginTarget: undefined })
+
+  const chooseFolder = async (id: string): Promise<void> => {
+    setBusy('folder')
+    setError(null)
+    try {
+      const detected = await api.auth.chooseBrowserFolder(id)
+      if (detected) setProfiles(detected)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
   }
 
   const importFrom = async (p: BrowserProfile): Promise<void> => {
     setBusy(p.id)
     setError(null)
     try {
-      done(await api.auth.importFromBrowser(p.id))
+      done(await api.auth.importFromBrowser(p.id, target))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -49,7 +67,7 @@ export function LoginDialog() {
     setBusy('window')
     setError(null)
     try {
-      const s = await api.auth.openLoginWindow()
+      const s = await api.auth.openLoginWindow(target)
       done(s)
       if (!s.loggedIn) setError(t('login.windowClosedNotLoggedIn'))
     } catch (e) {
@@ -59,26 +77,25 @@ export function LoginDialog() {
     }
   }
 
-  const expired = auth && !auth.loggedIn && auth.expired
+  const expired = target?.mode === 'reauth' || (auth && !auth.loggedIn && auth.expired)
   const withLogin = profiles?.filter((p) => p.hasBiliLogin && !p.appBoundLogin) ?? []
   // Windows 上新版 Chrome、Edge 的登录只有浏览器自己读得出：提前标出来，不让用户点了才失败
   const sealed = profiles?.filter((p) => p.hasBiliLogin && p.appBoundLogin) ?? []
-  // Safari 没有完全磁盘访问权限时总是读不了，已经有别的浏览器可以导入就不用提醒
-  const blocked = profiles?.filter((p) => p.blocked && (p.browser !== 'Safari' || !withLogin.length)) ?? []
+  const blocked = [...new Map(profiles?.filter((p) => p.blocked).map((p) => [p.browser, p])).values()]
   const locked = profiles?.filter((p) => p.locked) ?? []
   const withoutLogin = profiles?.filter((p) => !p.hasBiliLogin && !p.blocked && !p.locked) ?? []
 
   const section = 'flex items-center gap-2 text-[13px] font-medium'
 
   return (
-    <Modal onClose={() => set({ loginOpen: false })} className="max-w-xl">
+    <Modal onClose={close} className="max-w-xl">
       <ModalHeader
         icon={expired ? KeyRound : LogIn}
-        title={expired ? t('login.expiredTitle') : t('login.title')}
+        title={targetAccount ? t('accounts.reauthTitle', { name: targetAccount.uname }) : t(expired ? 'login.expiredTitle' : 'login.title')}
         subtitle={
           expired ? t('login.expiredSubtitle') : t('login.subtitle')
         }
-        onClose={() => set({ loginOpen: false })}
+        onClose={close}
       />
 
       <div className="flex max-h-[62vh] flex-col gap-5 overflow-y-auto px-6 pt-5">
@@ -87,7 +104,7 @@ export function LoginDialog() {
             <Globe size={15} strokeWidth={STROKE} className="text-muted" />
             {t('login.fromBrowser')}
             <div className="flex-1" />
-            <IconButton icon={RefreshCw} label={t('login.redetect')} size="sm" onClick={detect} />
+            <IconButton icon={RefreshCw} label={t('login.redetect')} size="sm" disabled={busy === 'folder'} onClick={detect} />
           </div>
           <div className="mt-2 flex flex-col gap-1.5">
             {profiles === null && (
@@ -144,7 +161,21 @@ export function LoginDialog() {
               (sysText.isMac ? (
                 <Banner
                   tone="warn"
-                  actions={<Button size="sm" onClick={() => api.openFullDiskAccessSettings()}>{t('login.openSystemSettings')}</Button>}
+                  actions={
+                    <div className="flex max-w-[55%] flex-wrap justify-end gap-1.5">
+                      {blocked.map((p) => (
+                        <Button
+                          key={p.id}
+                          size="sm"
+                          disabled={busy !== null}
+                          aria-label={blocked.length > 1 ? `${t('login.chooseBrowserFolder')} · ${p.browser}` : undefined}
+                          onClick={() => chooseFolder(p.id)}
+                        >
+                          {blocked.length > 1 ? p.browser : t('login.chooseBrowserFolder')}
+                        </Button>
+                      ))}
+                    </div>
+                  }
                 >
                   {t('login.macBlocked', { browsers: joinList(blocked.map((p) => p.browser)) })}
                 </Banner>
@@ -219,7 +250,7 @@ export function LoginDialog() {
               setBusy('cookie')
               setError(null)
               try {
-                done(await api.auth.importCookie(cookieText))
+                done(await api.auth.importCookie(cookieText, target))
                 setCookieText('')
               } catch (e) {
                 setError((e as Error).message)
@@ -236,7 +267,7 @@ export function LoginDialog() {
       </div>
 
       <ModalFooter>
-        <Button variant="ghost" onClick={() => set({ loginOpen: false })}>
+        <Button variant="ghost" onClick={close}>
           {t('common.later')}
         </Button>
       </ModalFooter>

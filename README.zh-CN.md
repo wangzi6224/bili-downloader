@@ -155,6 +155,9 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | 工具 | 说明 |
 | --- | --- |
+| `list_accounts` / `switch_account` / `logout_account` | 查看账号 UID 和登录状态，切换当前账号，或按 UID 退出指定账号 |
+| `get_download_quality` | 实际探测各账号能下载的视频清晰度。结果中的 `best_qn` 和 `best_account_mids` 可用于提交下载 |
+| `list_download_history` / `list_parse_history` | 查询下载和解析历史，按 `account_mid` 筛选，结果含发起账号 |
 | `get_status` | 登录和大会员状态、队列汇总、下载目录剩余空间和需要注意的提示，建议第一个调用 |
 | `parse_link` | 解析 B站链接（视频、合集、番剧、课程、收藏夹、UP 主等），列表会自动翻页；条目 id 稳定，可分段读取、展开分P |
 | `download_batch` | 把整个链接或选中的条目作为一个批次加入下载，返回 `batch_id`；默认跳过已下载的，重复提交不会重复下载；用 `videos` 可以把多个视频（例如搜索结果）合成一个批次 |
@@ -169,10 +172,12 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_video_info` | 一次查询最多 20 个视频的详情：播放点赞等数据、标签、简介、分P数、所属合集，可以带相关视频 |
 | `get_video_transcript` | 了解视频主要内容：B站的 AI 总结和提纲、章节、字幕全文，字幕可以分段读取。不是每个视频都有，AI 总结和 AI 字幕要登录 |
 | `get_video_comments` | 读取评论和楼中楼，游标翻页，可按热门或时间排序；没有登录时 B站只给几条 |
-| `start_login` | 应用没有登录时用它登录：导入用户浏览器里的登录信息（Chrome 优先，先用能直接读到的），或用 `method=qr` 弹出登录窗口扫码 |
-| `get_login_status` | 跟踪登录进度，或列出本机的浏览器。带 `wait_seconds` 时登录成功的那一刻立即返回，Agent 由此知道扫码完成 |
+| `start_login` | 导入浏览器登录或用 `method=qr` 扫码；`mode=add` 添加账号，`mode=reauth` 配合 `account_mid` 重新登录指定账号 |
+| `get_login_status` | 跟踪登录进度、查询指定账号或列出本机浏览器。可传 `wait_seconds` 等待扫码完成 |
 
 </details>
+
+解析、下载和 B 站检索工具可以传 `account_mid`，省略时使用侧栏当前账号。批次、任务和历史查询省略该参数时返回全部账号，传 `null` 查归属未知的旧记录。全局下载设置由所有账号共用。
 
 服务只监听 `127.0.0.1`（端口可改），必须带 Bearer 令牌，并校验 `Host` / `Origin` 以防 DNS 重绑定。令牌可以随时重新生成。
 
@@ -237,7 +242,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 登录之后，你的账号能看的清晰度和内容（1080P 及以上、大会员内容）都能下。三种登录方式，挑顺手的：
 
 - **从浏览器导入**：复用 Chrome、Edge、Brave、Arc（仅 macOS）、Vivaldi、Opera、Chromium、Firefox 或 Safari（仅 macOS）里的登录 cookie。
-  - Chrome、Edge、Brave、Safari 的数据受 macOS 隐私保护，需要先在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 里打开本应用并重启应用；导入 Chromium 系浏览器时还会弹出钥匙串授权。
+  - 如果 macOS 拒绝读取，请在登录弹窗里为对应的浏览器选择数据文件夹。导入 Chromium 系浏览器时，系统还可能要求钥匙串授权。
   - 在 Linux 上，Chromium 系浏览器把 cookie 加密密钥存放在系统密钥环（GNOME Keyring / libsecret）里。应用通过 `secret-tool` 读取密钥（用 `sudo apt install libsecret-tools` 安装），密钥环可能会弹窗要求解锁。也支持 Snap 和 Flatpak 安装的 Firefox，以及 Snap 版 Chromium。
   - 在 Windows 上，Chrome 系浏览器运行时会锁住 Cookie 数据库，导入前请完全退出浏览器（包括后台运行的）。Chrome 127 起新写入的 Cookie 使用应用绑定加密，无法导入；登录 Cookie 也是这种时，请改用应用内登录或手动粘贴 Cookie。
 - **在应用内登录**：打开 B站官方登录页，支持扫码、密码和短信登录。
@@ -250,7 +255,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 - B站 cookie 保存在应用自己的数据目录里，只发给 B站，通过 MCP 也不会返回给 AI 客户端。
 - 下载、合并、去水印全在本地跑。不用注册，没有遥测，中间也没有我们的服务器。
 - 除了 B站，应用只会访问 GitHub（检查更新）和 ModelScope 或 Hugging Face（第一次使用 AI 精修时下载模型）。
-- 通过 MCP 调用时，已经登录的情况下 `start_login` 什么都不做，Agent 不能切换账号。需要先关闭浏览器时（Windows 上浏览器运行时会锁住 Cookie 数据库），应用会弹窗询问，只有你本人能同意。
+- MCP 客户端可以在你明确要求时切换或退出指定账号。添加账号和重新登录可通过应用扫码或导入浏览器登录。需要先关闭浏览器时（Windows 上浏览器运行时会锁住 Cookie 数据库），应用会弹窗询问，只有你本人能同意。
 
 ## 常见问题
 

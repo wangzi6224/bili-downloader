@@ -12,12 +12,24 @@ export interface UserInfo {
 
 export type AuthState = { loggedIn: false; expired?: boolean } | { loggedIn: true; user: UserInfo }
 
+export interface BiliAccount extends UserInfo {
+  status: 'ready' | 'unchecked' | 'expired' | 'removed'
+}
+
+export interface AccountState {
+  activeMid?: number
+  accounts: BiliAccount[]
+  legacyCount: number
+}
+
+export type LoginTarget = { mode: 'add'; activate?: boolean } | { mode: 'reauth'; mid: number; activate: boolean }
+
 export interface BrowserProfile {
   id: string
   browser: string
   profile: string
   hasBiliLogin: boolean
-  /** 没有权限读取：macOS 上是隐私保护拦截了，需要给本应用“完全磁盘访问权限”；Linux 上是文件夹权限不允许 */
+  /** 浏览器数据目录或 Cookie 文件读取被拒绝 */
   blocked?: boolean
   /** 浏览器正在运行，Cookie 数据库被它锁着（Windows 上的 Chrome 系浏览器），要先退出浏览器 */
   locked?: boolean
@@ -295,6 +307,7 @@ export interface EnqueueRequest {
   multi?: boolean
   /** 加入后先暂停，不开始下载 */
   paused?: boolean
+  accountMid?: number
 }
 
 export type TaskStatus =
@@ -316,6 +329,7 @@ export interface TaskInfo {
   title: string
   groupTitle: string
   item: MediaItem
+  accountMid?: number
   options: DownloadOptions
   /** 输出文件不含扩展名的相对路径（相对下载目录）；合并时会按实际画质重新计算 */
   relBase: string
@@ -383,7 +397,7 @@ export interface Subscription {
   intervalMin: number
   enabled: boolean
   options: DownloadOptions
-  /** 稍后再看属于登录账号 */
+  /** 订阅检查和下载使用的账号 */
   accountMid?: number
   /** 已经见过的条目 key，只有之后新增的才会下载 */
   seen: string[]
@@ -398,6 +412,7 @@ export interface Subscription {
    * 早先的订阅只记下了第一页，没有这个标记时先补记最后一页，免得把中间的旧视频当成新的
    */
   tailBaseline?: boolean
+  resetBaseline?: boolean
 }
 
 export interface NewSubscription {
@@ -518,6 +533,7 @@ export interface HistoryEntry {
   groupTitle: string
   path: string
   at: number
+  accountMid?: number
 }
 
 export interface ParseRecord {
@@ -527,6 +543,7 @@ export interface ParseRecord {
   cover: string
   count: number
   at: number
+  accountMid?: number
 }
 
 /** preload 通过 contextBridge 暴露给渲染进程的接口 */
@@ -543,23 +560,29 @@ export interface BiliApi {
   platform: string
   auth: {
     check(): Promise<AuthState>
-    openLoginWindow(): Promise<AuthState>
+    accounts(): Promise<AccountState>
+    switchAccount(mid: number): Promise<AccountState>
+    removeAccount(mid: number): Promise<void>
+    assignLegacy(mid: number): Promise<void>
+    onAccountsChanged(cb: (state: AccountState) => void): () => void
+    openLoginWindow(target?: LoginTarget): Promise<AuthState>
     listBrowsers(): Promise<BrowserProfile[]>
-    importFromBrowser(id: string): Promise<AuthState>
+    chooseBrowserFolder(id: string): Promise<BrowserProfile[] | null>
+    importFromBrowser(id: string, target?: LoginTarget): Promise<AuthState>
     /** 手动粘贴的 Cookie：分号分隔或浏览器插件导出的 JSON */
-    importCookie(text: string): Promise<AuthState>
+    importCookie(text: string, target?: LoginTarget): Promise<AuthState>
     logout(): Promise<AuthState>
     simulateExpiry(): Promise<void>
-    onRequired(cb: () => void): () => void
+    onRequired(cb: (target?: LoginTarget) => void): () => void
     onChanged(cb: (state: AuthState) => void): () => void
   }
-  parse(input: string): Promise<ParseResult>
+  parse(input: string, accountMid?: number): Promise<ParseResult>
   /** 加载分页来源的下一页 */
-  parseMore(source: PagedSource, page: number): Promise<PageResult>
+  parseMore(source: PagedSource, page: number, accountMid?: number): Promise<PageResult>
   /** 多个链接逐个解析（间隔 0.5 秒，避免触发风控） */
   parseBatch(inputs: string[]): Promise<ParseResult>
   onParseProgress(cb: (p: { done: number; total: number; title?: string }) => void): () => void
-  streamInfo(item: MediaItem): Promise<StreamInfo>
+  streamInfo(item: MediaItem, accountMid?: number): Promise<StreamInfo>
   /** 当前账号创建的收藏夹 */
   myFavFolders(): Promise<{ id: number; title: string; count: number }[]>
   sources: {
@@ -612,11 +635,11 @@ export interface BiliApi {
   }
   history: {
     /** 已下载过的条目 key */
-    downloadedKeys(): Promise<string[]>
+    downloadedKeys(accountMid?: number): Promise<string[]>
     onDownloadsChanged(cb: () => void): () => void
     clearDownloads(): Promise<void>
     parses(): Promise<ParseRecord[]>
-    removeParse(input: string): Promise<ParseRecord[]>
+    removeParse(input: string, accountMid?: number | null): Promise<ParseRecord[]>
     clearParses(): Promise<void>
   }
   i18n: {
@@ -633,7 +656,7 @@ export interface BiliApi {
   }
   subs: {
     list(): Promise<Subscription[]>
-    add(req: NewSubscription): Promise<Subscription[]>
+    add(req: NewSubscription, accountMid?: number): Promise<Subscription[]>
     update(id: string, patch: Partial<Pick<Subscription, 'enabled' | 'intervalMin' | 'options'>>): Promise<Subscription[]>
     remove(id: string): Promise<Subscription[]>
     check(id: string): Promise<Subscription[]>
@@ -678,5 +701,4 @@ export interface BiliApi {
   readClipboard(): Promise<string>
   writeClipboard(text: string): Promise<void>
   showInFolder(path: string): Promise<void>
-  openFullDiskAccessSettings(): Promise<void>
 }

@@ -1,13 +1,18 @@
 import { t } from '@shared/i18n'
 import type { EnqueueRequest, MediaItem } from '@shared/types'
 import { expandLazy } from './bili/lists'
+import { activeRevision, activeScope, authScope } from './auth/scope'
 import type { DownloadManager } from './download/manager'
 import { send } from './windows'
 
 export async function prepareEnqueueItems(items: MediaItem[]): Promise<{ items: MediaItem[]; failed: MediaItem[]; note?: string }> {
-  const expanded = await expandLazy(items, (done, total) =>
-    send('parse:progress', { done, total, title: t('misc.fetchingParts') })
-  )
+  const revision = activeRevision()
+  const scope = authScope()
+  const expanded = await expandLazy(items, (done, total) => {
+    if (!scope.background && revision === activeRevision() && scope.partition === activeScope().partition) {
+      send('parse:progress', { done, total, title: t('misc.fetchingParts') })
+    }
+  })
   const failed = expanded.filter((i) => i.unavailable)
   return {
     items: expanded.filter((i) => !i.unavailable),

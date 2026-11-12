@@ -4,9 +4,9 @@ import type { Messages } from '../types'
 export default {
   startTitle: 'Sign in to Bilibili',
   startDesc:
-    'Use this to sign in when the app is not signed in. By default it imports the login from the user’s browsers in this order: Chrome, other Chrome-based browsers, Opera, Firefox, Safari, using the first one that can be read directly. The cookies are stored only in the app and are not included in the result. ' +
+    'Use this to sign in to Bilibili. By default it imports the login from the user’s browsers in this order: Chrome, other Chrome-based browsers, Opera, Firefox, Safari, using the first one that can be read directly. The cookies are stored only in the app and are not included in the result. ' +
     'If the import fails, follow the returned next action: when next=try_qr, tell the user, then use method=qr to open the QR code window, and use get_login_status with wait_seconds to wait for sign-in to complete. ' +
-    'If already signed in, it does nothing; switching accounts must be done by the user in the app. If a browser needs to be closed, the app asks the user directly in a dialog; there is no parameter here to close it directly.',
+    'In the default mode, an already signed-in account is returned immediately. If a browser needs to be closed, the app asks the user directly in a dialog; there is no parameter here to close it directly.',
   startMethod: 'browser imports from a browser (default); qr opens a sign-in window for the user to scan a QR code',
   startSource:
     'A specific browser, such as chrome, edge, opera, firefox or safari, or a profile id listed by get_login_status. Chosen automatically if omitted',
@@ -23,8 +23,7 @@ export default {
   hintLocked:
     'The browser is running. You can ask the user to quit the browser completely (including background processes) and try again, or use a QR code instead',
   hintAppBound: 'This browser protects its login data with app-bound encryption, so it can’t be read. Use a QR code instead',
-  hintBlocked:
-    'No permission to read this browser’s data. On macOS, {appName} needs to be given “Full Disk Access” in System Settings and then restarted; on other systems, check the folder permissions. You can also use a QR code instead',
+  hintBlocked: 'On macOS, choose the browser folder in the {appName} sign-in window. On other systems, check the folder permissions. You can also sign in with a QR code.',
   hintNoLogin:
     'There is no Bilibili login in the browser. If the user just signed in in the browser, wait half a minute and try again (the browser doesn’t write it immediately), or use a QR code instead',
   hintExpired: 'The Bilibili login in the browser has expired. Use a QR code instead, or ask the user to sign in again in the browser first',

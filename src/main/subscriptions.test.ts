@@ -4,11 +4,12 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeOptions } from '@shared/options'
 import type { EnqueueRequest, MediaItem, NewSubscription, ParseResult, Subscription } from '@shared/types'
+import { authScope, inAuthScope } from './auth/scope'
 
 const h = vi.hoisted(() => ({
   userData: '',
   resolveInput: vi.fn(),
-  downloadedKeys: vi.fn((): string[] => []),
+  downloadedKeys: vi.fn<(_mid?: number) => string[]>(() => []),
   loadAllPages: vi.fn(),
   loadHeadPages: vi.fn(),
   prepare: vi.fn(),
@@ -215,6 +216,57 @@ describe('一键订阅并下载', () => {
     await m.check('watch')
     expect(h.resolveInput).toHaveBeenCalledWith('watchlater')
   })
+})
+
+it('同一个稍后再看地址按所属账号检查，A 过期时 B 照常入队', async () => {
+  const availability = new Map<number, 'ready' | 'expired'>([[1, 'expired'], [2, 'ready']])
+  m = new SubscriptionManager(enqueue, {
+    status: (mid) => availability.get(mid) ?? 'removed',
+    run: (mid, fn) => inAuthScope({ partition: `account-${mid}`, mid, background: true }, fn)
+  })
+  h.auth.mockImplementation(() => ({ loggedIn: true, user: { mid: authScope().mid } }))
+  h.resolveInput.mockImplementation(async () => result([item(`ugc:BV${authScope().mid}:1`)]))
+  const input = 'https://www.bilibili.com/list/watchlater'
+  const a = sub({ id: 'a', input, accountMid: 1 })
+  const b = sub({ id: 'b', input, accountMid: 2 })
+  m.replaceAll([a, b])
+  await m.check('a')
+  await m.check('b')
+  expect(enqueue).toHaveBeenCalledTimes(1)
+  expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ accountMid: 2, items: [item('ugc:BV2:1')] }))
+  availability.set(1, 'ready')
+  await m.check('a')
+  expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ accountMid: 1, items: [item('ugc:BV1:1')] }))
+  expect(m.list().map((s) => s.seen)).toEqual([['ugc:BV1:1'], ['ugc:BV2:1']])
+})
+
+it('定时检查与一键补下载都只使用订阅账号的历史，并在展开后按分 P 去重', async () => {
+  const first = item('ugc:BV1:1')
+  const lazy = item('ugc:BV2', { lazy: true, bvid: 'BV2' })
+  const partA = item('ugc:BV2:10')
+  const partB = item('ugc:BV2:11')
+  let accountBHistory: string[] = []
+  h.downloadedKeys.mockImplementation((mid) => mid === 2 ? accountBHistory : [first.key, partA.key, partB.key])
+  h.auth.mockImplementation(() => ({ loggedIn: true, user: { mid: authScope().mid } }))
+  h.resolveInput.mockResolvedValue(result([first, lazy]))
+  h.prepare.mockImplementation(async (items: MediaItem[]) => ({
+    items: items.flatMap((entry) => entry.lazy ? [partA, partB] : [entry]), failed: []
+  }))
+  m = new SubscriptionManager(enqueue, {
+    status: () => 'ready',
+    run: (mid, fn) => inAuthScope({ partition: 'account-2', mid, background: true }, fn)
+  })
+  const subscription = sub({ id: 'b', input: 'watchlater', accountMid: 2 })
+  m.replaceAll([subscription])
+  await m.check('b')
+  expect(enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ accountMid: 2, items: [first, partA, partB] }))
+  expect(m.list()[0].seen).toEqual([first.key, lazy.key])
+
+  enqueue.mockClear()
+  accountBHistory = [partA.key]
+  expect(await m.downloadSource({ input: subscription.input, subscription, accountMid: 2, defaults: OPTIONS, verifyAccount: () => {} }))
+    .toMatchObject({ count: 2, subscribed: false })
+  expect(enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ accountMid: 2, items: [first, partB] }))
 })
 
 describe('add', () => {

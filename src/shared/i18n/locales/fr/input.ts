@@ -23,6 +23,7 @@ export default {
   parseCount: { one: 'Analyser {count} lien', other: 'Analyser {count} liens' },
   placeholder: 'Collez un lien de vidéo, collection, anime, cours, dossier de favoris ou créateur',
   pasteAndParse: 'Coller depuis le presse-papiers et analyser',
+  clearLink: 'Effacer le lien',
   parsing: 'Analyse…',
   parse: 'Analyser',
   batchButton: 'Analyse groupée : coller plusieurs liens à la fois',

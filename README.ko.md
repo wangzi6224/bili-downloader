@@ -239,7 +239,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 로그인하면 1080P 이상과 프리미엄 회원 콘텐츠까지, 내 계정으로 볼 수 있는 화질과 영상은 전부 받을 수 있어요. 세 가지 방법 중 편한 걸 고르세요:
 
 - **从浏览器导入**(브라우저에서 가져오기): Chrome, Edge, Brave, Arc(macOS 전용), Vivaldi, Opera, Chromium, Firefox, Safari(macOS 전용)의 로그인 쿠키를 재사용합니다.
-  - Chrome, Edge, Brave, Safari의 데이터는 macOS 개인정보 보호 대상이므로 먼저 **시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한**에서 이 앱을 허용하고 앱을 다시 시작하세요. Chromium 계열 브라우저에서 가져올 때는 키체인 접근 허용도 요청됩니다.
+  - macOS가 읽기를 차단하면 로그인 창에서 해당 브라우저의 데이터 폴더를 선택하세요. Chromium 계열 브라우저에서 가져올 때는 키체인 접근 권한을 요청할 수도 있습니다.
   - Linux에서는 Chromium 계열 브라우저가 쿠키 암호화 키를 시스템 키링(GNOME Keyring / libsecret)에 보관합니다. 앱은 `secret-tool`(`sudo apt install libsecret-tools`로 설치)로 이 키를 읽으며, 이때 키링 잠금 해제를 요청받을 수 있습니다. Snap·Flatpak으로 설치한 Firefox와 Snap 버전 Chromium도 지원합니다.
   - Windows에서는 Chromium 계열 브라우저가 실행 중에 쿠키 데이터베이스를 잠그므로, 가져오기 전에 브라우저를 완전히 종료하세요(백그라운드 프로세스 포함). Chrome 127 이상에서 기록된 쿠키는 앱 바인딩 암호화를 사용하므로 가져올 수 없습니다. 로그인 쿠키가 여기에 해당하면 대신 앱 안에서 로그인하거나 쿠키 문자열을 붙여 넣으세요.
 - **在应用内登录**(앱 안에서 로그인): bilibili 공식 로그인 페이지를 열며 QR 코드, 비밀번호, SMS 로그인을 지원합니다.
@@ -252,7 +252,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 - bilibili 쿠키는 앱 자체의 데이터 폴더에 보관되며 bilibili로만 전송됩니다. MCP를 통해 AI 클라이언트에 반환되는 일은 없습니다.
 - 다운로드, 병합, 워터마크 제거는 모두 로컬에서 실행됩니다. 회원 가입도, 원격 측정도, 중간에 거치는 자체 서버도 없습니다.
 - 앱이 bilibili 외에 접속하는 곳은 GitHub(업데이트 확인)와 ModelScope 또는 Hugging Face(AI 보정 모델을 한 번 다운로드)뿐입니다.
-- MCP에서 앱이 이미 로그인되어 있으면 `start_login`은 아무것도 하지 않으므로 에이전트가 계정을 바꿀 수 없습니다. 브라우저를 먼저 닫아야 할 때(Windows에서는 브라우저 실행 중 쿠키 데이터베이스가 잠깁니다)는 앱이 대화상자로 묻고, 사용자 본인만 승인할 수 있습니다.
+- MCP 클라이언트는 사용자 요청에 따라 계정을 전환하거나 지정한 계정에서 로그아웃할 수 있습니다. 브라우저를 먼저 닫아야 할 때(Windows에서는 브라우저 실행 중 쿠키 데이터베이스가 잠깁니다)는 앱이 대화상자로 묻고, 사용자 본인만 승인할 수 있습니다.
 
 ## 자주 묻는 질문
 

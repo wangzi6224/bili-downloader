@@ -157,6 +157,9 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 
 | Tool | Description |
 | --- | --- |
+| `list_accounts` / `switch_account` / `logout_account` | See account UIDs and login status, switch the active account, or sign out a specified UID |
+| `get_download_quality` | Check the video qualities available to each account. Use `best_qn` and a UID from `best_account_mids` when submitting a download |
+| `list_download_history` / `list_parse_history` | Read download and parse history with the initiating account, optionally filtered by UID |
 | `get_status` | Login and premium (大会员) status, queue summary, free space in the download folder, and anything that needs attention. Call it first |
 | `parse_link` | Parse a bilibili link (video, collection, anime, course, favorites, uploader…); lists are paged through automatically. Item ids are stable; results can be read in pages and multi-part videos expanded |
 | `download_batch` | Queue a whole link or selected items as one batch and return a `batch_id`. Already-downloaded items are skipped by default, and resubmitting does not download anything twice. Pass `videos` to submit several videos, such as search results, as one batch |
@@ -171,10 +174,12 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `get_video_info` | Details for up to 20 videos at once: stats, tags, description, part count and collection, optionally with related videos |
 | `get_video_transcript` | What a video is about: Bilibili's AI summary and outline, chapters and full subtitles, which can be read in pieces. Availability varies by video, and the AI summary and AI subtitles need a login |
 | `get_video_comments` | Comments and their replies with cursor paging, sorted by popularity or time. Without a login Bilibili returns only a few |
-| `start_login` | Sign in when the app is not logged in: imports the login from the user's browser (Chrome first, using whichever browser is readable), or opens the login window for a QR scan with `method=qr` |
-| `get_login_status` | Follows the login, or lists the browsers on this computer. With `wait_seconds` it returns the moment the login succeeds, which is how the agent learns the scan is done |
+| `start_login` | Import a browser login or use `method=qr`. Use `mode=add` to add an account or `mode=reauth` with `account_mid` to sign a specific account back in |
+| `get_login_status` | Track a login, check a specified account, or list local browsers. Pass `wait_seconds` to wait for the scan to complete |
 
 </details>
+
+Parsing, downloading, and Bilibili lookup tools accept `account_mid` and default to the sidebar account. Batch, task, and history queries show all accounts when the field is omitted. Pass `null` to find older records with unknown ownership. Download settings apply to all accounts.
 
 The server listens only on `127.0.0.1` (the port is configurable), requires the Bearer token, and checks the `Host` / `Origin` headers to prevent DNS rebinding. You can regenerate the token at any time.
 
@@ -239,7 +244,7 @@ The server listens only on `127.0.0.1` (the port is configurable), requires the 
 Sign in and you can download every quality and video your account can watch, including 1080P and above and premium content. Pick whichever of the three ways suits you:
 
 - **从浏览器导入** (Import from browser): reuse the login cookies from Chrome, Edge, Brave, Arc (macOS only), Vivaldi, Opera, Chromium, Firefox or Safari (macOS only).
-  - macOS protects the data of Chrome, Edge, Brave and Safari, so first enable the app under **System Settings → Privacy & Security → Full Disk Access** and restart it. Importing from Chromium-based browsers also asks for Keychain access.
+  - If macOS blocks access, select the affected browser’s data folder from the sign-in dialog. Importing from Chromium-based browsers may also ask for Keychain access.
   - On Linux, Chromium-based browsers keep the cookie key in the system keyring (GNOME Keyring / libsecret). The app reads it with `secret-tool` (`sudo apt install libsecret-tools`), and the keyring may ask to be unlocked. Snap and Flatpak installs of Firefox and the Snap Chromium are supported too.
   - On Windows, Chromium-based browsers lock their cookie database while running, so quit the browser completely (including any background process) before importing. Cookies written by Chrome 127 or later use app-bound encryption and cannot be imported; if the login cookie is one of them, use in-app sign-in or paste a cookie string instead.
 - **在应用内登录** (Sign in within the app): opens bilibili's official login page, supporting QR code, password and SMS login.
@@ -252,7 +257,7 @@ The app checks the login state on launch, when you return to the window, while p
 - Your bilibili cookies are kept in the app's own data folder and are only sent to bilibili. They are never returned to AI clients over MCP.
 - Downloads, merging and watermark removal all run locally. There is no sign-up, no telemetry and no server of ours in between.
 - Besides bilibili, the app only contacts GitHub (to check for updates) and ModelScope or Hugging Face (to download the AI refine model once).
-- Over MCP, `start_login` does nothing if the app is already logged in, so an agent cannot switch accounts. If a browser must be closed first (Windows locks the cookie database while the browser runs), the app asks you in a dialog and only you can approve it.
+- MCP clients can switch or sign out a specified account at your request. Adding an account or signing back in uses a QR code or an existing browser login. If a browser must be closed first (Windows locks the cookie database while the browser runs), the app asks you in a dialog and only you can approve it.
 
 ## FAQ
 

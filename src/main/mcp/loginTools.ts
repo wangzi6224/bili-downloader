@@ -1,10 +1,13 @@
 import { t, type Key } from '@shared/i18n'
-import type { BrowserProfile } from '@shared/types'
+import type { BrowserProfile, LoginTarget } from '@shared/types'
+import { accountInput, accountMid, findAccount, type AccountRegistry } from './accountTools'
 import { optionalBool, optionalEnum, optionalInt, optionalString, type Args } from './args'
+import { invalid } from './format'
 import { browserKey, rankProfiles, type LoginFlow, type LoginMethod, type LoginReason, type LoginSnapshot } from './loginFlow'
 import type { ToolDefinition } from './tools'
 
 const METHODS = ['browser', 'qr'] as const
+const MODES = ['current', 'add', 'reauth'] as const
 const MAX_WAIT = 50
 /** 不用钥匙串授权时导入几秒就完成，一次调用就能拿到结果 */
 const DEFAULT_WAIT = 15
@@ -14,7 +17,7 @@ export const loginDefinitions = (): ToolDefinition[] => [
   {
     name: 'start_login',
     title: t('mcpLogin.startTitle'),
-    description: t('mcpLogin.startDesc'),
+    description: `${t('mcpLogin.startDesc')} ${t('mcpAccounts.loginDesc')}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -25,7 +28,10 @@ export const loginDefinitions = (): ToolDefinition[] => [
           minimum: 0,
           maximum: MAX_WAIT,
           description: t('mcpLogin.startWait', { n: DEFAULT_WAIT })
-        }
+        },
+        mode: { type: 'string', enum: MODES, description: t('mcpAccounts.loginMode') },
+        account_mid: { ...accountInput(), description: t('mcpAccounts.loginAccount') },
+        activate: { type: 'boolean', description: t('mcpAccounts.loginActivate') }
       },
       additionalProperties: false
     },
@@ -34,12 +40,13 @@ export const loginDefinitions = (): ToolDefinition[] => [
   {
     name: 'get_login_status',
     title: t('mcpLogin.statusTitle'),
-    description: t('mcpLogin.statusDesc'),
+    description: `${t('mcpLogin.statusDesc')} ${t('mcpAccounts.loginStatusDesc')}`,
     inputSchema: {
       type: 'object',
       properties: {
         wait_seconds: { type: 'integer', minimum: 0, maximum: MAX_WAIT, description: t('mcpLogin.statusWait') },
-        include_browsers: { type: 'boolean', description: t('mcpLogin.statusBrowsers') }
+        include_browsers: { type: 'boolean', description: t('mcpLogin.statusBrowsers') },
+        account_mid: accountInput()
       },
       additionalProperties: false
     },
@@ -62,6 +69,7 @@ const FAILURES: Record<LoginReason, { next: Next; hint: Key }> = {
   close_failed: { next: 'try_qr', hint: 'mcpLogin.hintCloseFailed' },
   window_closed: { next: 'tell_user', hint: 'mcpLogin.hintWindowClosed' },
   not_found: { next: 'try_qr', hint: 'mcpLogin.hintNotFound' },
+  revoked: { next: 'none', hint: 'accounts.loginRevoked' },
   failed: { next: 'try_qr', hint: 'mcpLogin.hintFailed' }
 }
 
@@ -103,7 +111,8 @@ export class LoginTools {
 
   constructor(
     private flow: LoginFlow,
-    private interruptedBatches: () => string[]
+    private interruptedBatches: (mid: number) => string[],
+    private accounts?: AccountRegistry
   ) {}
 
   handles(name: string): boolean {
@@ -116,10 +125,13 @@ export class LoginTools {
 
   private out(s: LoginSnapshot): Record<string, unknown> {
     const user = s.auth.loggedIn ? s.auth.user : undefined
-    const batches = user ? this.interruptedBatches() : []
+    const batches = user ? this.interruptedBatches(user.mid) : []
     return {
       status: s.status,
       logged_in: Boolean(user),
+      account_mid: user?.mid ?? (s.target?.mode === 'reauth' ? s.target.mid : undefined),
+      active_account_mid: this.accounts?.snapshot().activeMid ?? null,
+      mode: s.target?.mode,
       user: user?.uname,
       vip: user?.vipActive,
       vip_label: user?.vipLabel || undefined,
@@ -140,7 +152,18 @@ export class LoginTools {
     const method = optionalEnum<LoginMethod>(args, 'method', METHODS, 'browser')
     const source = optionalString(args, 'source')
     const wait = optionalInt(args, 'wait_seconds', 0, MAX_WAIT, DEFAULT_WAIT)
-    this.flow.start(method, source)
+    const mode = optionalEnum(args, 'mode', MODES, 'current')
+    const mid = accountMid(args, mode === 'reauth')
+    const activate = optionalBool(args, 'activate', false)
+    if ((mode !== 'reauth' && mid !== undefined) || (mode === 'current' && activate)) throw invalid(t('mcpAccounts.loginArgs'))
+    let target: LoginTarget | undefined
+    if (mode === 'add') target = { mode, activate }
+    if (mode === 'reauth') {
+      findAccount(this.accounts, mid!)
+      target = { mode, mid: mid!, activate }
+    }
+    if (target) this.flow.start(method, source, target)
+    else this.flow.start(method, source)
     // 已经在等用户时不用再等：agent 要先去提醒用户
     if (this.flow.snapshot().status === 'in_progress') await this.flow.wait(wait * 1000)
     return this.out(this.flow.snapshot())
@@ -149,10 +172,35 @@ export class LoginTools {
   private async status(args: Args) {
     const wait = optionalInt(args, 'wait_seconds', 0, MAX_WAIT, 0)
     const browsers = optionalBool(args, 'include_browsers', false)
-    await this.flow.wait(wait * 1000)
+    const mid = accountMid(args)
+    const browserList = () => browsers ? rankProfiles(this.flow.browsers()).map(browserOut) : undefined
+    if (mid === undefined) {
+      await this.flow.wait(wait * 1000)
+      return { ...this.out(this.flow.snapshot()), browsers: browserList() }
+    }
+    let snapshot = this.flow.snapshot()
+    const matchesAttempt = snapshot.target?.mode === 'reauth' && snapshot.target.mid === mid
+    const followsActive = !snapshot.target && this.accounts?.snapshot().activeMid === mid
+    if (matchesAttempt || followsActive) {
+      await this.flow.wait(wait * 1000)
+      snapshot = this.flow.snapshot()
+    }
+    const stillMatches = snapshot.target?.mode === 'reauth' && snapshot.target.mid === mid
+    const account = findAccount(this.accounts, mid)
+    const out = !stillMatches ? {
+      ...this.out({
+        status: account.status === 'ready' ? 'logged_in' : 'idle',
+        auth: account.status === 'ready' ? { loggedIn: true, user: account } : { loggedIn: false },
+        tried: [], alsoAvailable: []
+      }),
+      account_mid: account.mid,
+      account_status: account.status,
+      user: account.uname,
+      logged_in: account.status === 'unchecked' ? null : account.status === 'ready'
+    } : { ...this.out(snapshot), account_status: account.status }
     return {
-      ...this.out(this.flow.snapshot()),
-      browsers: browsers ? rankProfiles(this.flow.browsers()).map(browserOut) : undefined
+      ...out,
+      browsers: browserList()
     }
   }
 }

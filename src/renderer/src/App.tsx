@@ -11,7 +11,7 @@ import { UpdateDialog } from './components/UpdateDialog'
 import { UrlInput } from './components/UrlInput'
 import { applyLanguage } from './i18n'
 import { isSettingsShortcut } from './platform'
-import { api, updateAuth, useStore } from './store'
+import { api, openLogin, updateAccounts, updateAuth, useStore } from './store'
 
 export default function App() {
   const s = useStore()
@@ -24,10 +24,14 @@ export default function App() {
     void api.auth.check().then((auth) => {
       if (useStore.getState().auth === null) updateAuth(auth)
     })
+    void api.auth.accounts().then((accounts) => {
+      if (useStore.getState().accounts === null) updateAccounts(accounts)
+    })
     void api.update.state().then((update) => set({ update }))
     const offs = [
-      api.auth.onRequired(() => set({ loginOpen: true })),
+      api.auth.onRequired(openLogin),
       api.auth.onChanged(updateAuth),
+      api.auth.onAccountsChanged(updateAccounts),
       api.download.onUpdate((tasks) => set({ tasks: [...tasks] })),
       // MCP 改了设置时同步过来，免得界面之后用旧值写回去
       api.settings.onChanged((settings) => set({ settings })),

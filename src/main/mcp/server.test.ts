@@ -99,7 +99,7 @@ describe('McpServer', () => {
     setLanguage('en')
     try {
       const init = (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).body
-      expect(init.result.instructions).toBe(`Local service of ${t('common.appName')}`)
+      expect(init.result.instructions).toBe(`Local service of ${t('common.appName')}\n${t('mcpAccounts.instructions')}`)
       await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
       expect(deps.definitions).toHaveBeenCalledTimes(1)
     } finally {
@@ -375,6 +375,9 @@ describe('和真实的工具一起', () => {
       queue,
       batchFile: join(dir, 'batches.json'),
       downloadedKeys: () => ['ugc:BV1:1'],
+      downloadRecords: () => [],
+      parseRecords: () => [],
+      probeQuality: async () => ({ item_id: 'ugc:BV1:1', title: '第1集', qualities: [] }),
       settings: () => ({ downloadDir: join(dir, 'dl'), defaultQn: 80, defaults: DEFAULT_OPTIONS }) as never,
       updateSettings: (p) => p as never,
       authState: async () => ({ loggedIn: false }),

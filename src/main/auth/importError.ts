@@ -19,5 +19,5 @@ export class ImportError extends Error {
   }
 }
 
-/** macOS 系统设置里的“完全磁盘访问权限” */
-export const FULL_DISK_ACCESS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+/** 用户在登录尝试完成前退出了这个账号。 */
+export class LoginRevokedError extends Error {}

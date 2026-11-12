@@ -1,0 +1,33 @@
+import type { Messages } from '../types'
+
+export default {
+  instructions: 'For multiple accounts, get UIDs with list_accounts. Parsing, search, video lookup, and download_batch accept account_mid and default to the active account. For the highest quality, call get_download_quality for the video, then pass the returned UID and qn to download_batch. Add an account with start_login mode=add. Sign a specific account back in with mode=reauth and account_mid. Use switch_account or logout_account only when requested by the user. Use list_download_history and list_parse_history to find records by UID.',
+  useAccount: 'Bilibili account UID from list_accounts. Defaults to the active account.',
+  filterAccount: 'Filter by Bilibili account UID. Omit for all accounts; null matches older records with unknown ownership.',
+  sharedSettings: 'These settings apply to all accounts and do not take account_mid.',
+  listTitle: 'List Bilibili accounts',
+  listDesc: 'Show saved accounts, the active UID, membership and login status. Signed-out accounts can still identify historical records.',
+  switchTitle: 'Switch the active Bilibili account',
+  switchDesc: 'Change the desktop app’s browsing account and the default for future MCP requests. Existing downloads keep their original account.',
+  logoutTitle: 'Sign out of a Bilibili account',
+  logoutDesc: 'Sign out locally from the given UID. Downloads and subscriptions waiting for this account are paused. Local files and history are retained. Call only when the user specifically requests it.',
+  qualityTitle: 'Compare download quality across accounts',
+  qualityDesc: 'Check the video qualities and codecs actually available to each account. Pass best_qn and a UID from best_account_mids to download_batch. To select only the probed part, pass its item_id in ids.',
+  qualityItem: 'Item ID from parse_link. Required for links with multiple items and no single default.',
+  qualityAccount: 'Check this UID only. Omit to compare all accounts that have not been signed out.',
+  qualityItemRequired: 'Provide a direct video or episode link, or use parse_link to find the item_id you want.',
+  partSelectionLimit: 'One request can expand parts for at most {max} uncached videos. Split the request into smaller batches.',
+  differentItems: 'The link resolved to different videos across accounts. Use a direct video link or the same item_id to compare.',
+  downloadHistoryTitle: 'List download history',
+  downloadHistoryDesc: 'Show completed download records, including files kept after tasks were cleared, with the initiating account UID and known name.',
+  parseHistoryTitle: 'List parse history',
+  parseHistoryDesc: 'Show parsed links by time, with the initiating account UID and known name.',
+  notFound: 'No account with UID {mid}',
+  relogin: 'Use start_login mode=reauth account_mid={mid} to sign this account back in, then retry.',
+  loginDesc: 'Use mode=add to add an account while already signed in, or mode=reauth to refresh a specific account.',
+  loginMode: 'current checks the active account (default); add adds an account; reauth refreshes a specific account.',
+  loginAccount: 'Required with mode=reauth. Bilibili UID of the account to sign in again.',
+  loginActivate: 'Switch to the account after add or reauth succeeds. Defaults to false; adding the first account selects it.',
+  loginStatusDesc: 'Pass account_mid to check a specific account. Omit it to follow the most recent login attempt.',
+  loginArgs: 'account_mid is only for mode=reauth; activate is only for mode=add or mode=reauth.'
+} satisfies Messages['mcpAccounts']

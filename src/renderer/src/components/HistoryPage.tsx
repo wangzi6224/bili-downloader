@@ -3,13 +3,13 @@ import { History, Search, Trash2, X } from 'lucide-react'
 import type { ParseRecord } from '@shared/types'
 import { ago, thumb } from '../format'
 import { useT } from '../i18n'
-import { api, parseLink, useStore } from '../store'
+import { api, reopenParseRecord } from '../store'
+import { AccountOrigin } from './AccountOrigin'
 import { Badge, Button, EmptyState, IconButton, Input, PageHeader } from './ui'
 
 /** 解析记录：方便下次接着下合集里剩下的集 */
 export function HistoryPage() {
   const t = useT()
-  const set = useStore((s) => s.set)
   const [records, setRecords] = useState<ParseRecord[] | null>(null)
   const [q, setQ] = useState('')
 
@@ -56,18 +56,12 @@ export function HistoryPage() {
         {records && records.length > 0 && shown.length === 0 && <EmptyState icon={Search} title={t('history.noMatch')} />}
         {shown.map((r) => (
           <div
-            key={r.input}
+            key={JSON.stringify([r.input, r.accountMid])}
             role="button"
             tabIndex={0}
-            onClick={() => {
-              set({ view: 'downloads' })
-              void parseLink(r.input)
-            }}
+            onClick={() => void reopenParseRecord(r)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                set({ view: 'downloads' })
-                void parseLink(r.input)
-              }
+              if (e.target === e.currentTarget && e.key === 'Enter') void reopenParseRecord(r)
             }}
             className="group flex cursor-pointer items-center gap-4 rounded-xl px-3 py-2.5 transition-colors outline-none hover:bg-hover focus-visible:bg-hover"
           >
@@ -81,6 +75,8 @@ export function HistoryPage() {
                 <span className="tabular-nums">{t('history.itemCount', { count: r.count })}</span>
                 <span>·</span>
                 <span>{ago(r.at, Date.now())}</span>
+                <span>·</span>
+                <AccountOrigin mid={r.accountMid} />
               </div>
               <div className="mt-0.5 truncate text-[11px] text-subtle">{r.input}</div>
             </div>
@@ -91,7 +87,7 @@ export function HistoryPage() {
               className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               onClick={async (e) => {
                 e.stopPropagation()
-                setRecords(await api.history.removeParse(r.input))
+                setRecords(await api.history.removeParse(r.input, r.accountMid ?? null))
               }}
             />
           </div>

@@ -35,7 +35,7 @@ describe('下载历史', () => {
   it('删除和清空', () => {
     history.recordDownload(entry('a'))
     history.recordDownload(entry('b'))
-    history.removeDownloads(['a', 'nope'])
+    history.removeDownloads([entry('a'), entry('nope')])
     expect(history.downloadedKeys()).toEqual(['b'])
     history.clearDownloads()
     expect(history.downloadedKeys()).toEqual([])
@@ -47,7 +47,7 @@ describe('下载历史', () => {
     const off = history.onDownloadsChanged(() => snapshots.push(history.downloadedKeys()))
     history.recordDownload(entry('pgc:1'))
     history.recordDownload(entry('pgc:2'))
-    history.removeDownloads(['pgc:1'])
+    history.removeDownloads([entry('pgc:1')])
     history.clearDownloads()
     off()
     history.recordDownload(entry('pgc:3'))
@@ -59,6 +59,19 @@ describe('下载历史', () => {
     expect(history.downloadedKeys()).toEqual(['old'])
     writeFileSync(join(h.userData, 'parses.json'), '{oops')
     expect(history.parseRecords()).toEqual([])
+  })
+
+  it('同一视频的文件分别记录账号，删除其中一份只移除对应文件', () => {
+    const a = { ...entry('a'), accountMid: 1 }
+    const b = { ...entry('a', 2), accountMid: 2, path: '/dl/a (2).mp4' }
+    history.recordDownload(a)
+    history.recordDownload(b)
+    expect(history.downloadRecords()).toEqual([a, b])
+    expect(history.downloadedKeys()).toEqual(['a'])
+    expect(history.downloadedKeys(2)).toEqual(['a'])
+    history.removeDownloads([b])
+    expect(history.downloadRecords()).toEqual([a])
+    expect(history.downloadedKeys(2)).toEqual([])
   })
 
   it('文件内容不是数组时当作空，不会崩溃（回归）', () => {
@@ -78,6 +91,20 @@ describe('解析记录', () => {
     history.recordParse(parse('x', 3))
     expect(history.parseRecords()).toEqual([parse('x', 3), parse('y', 2)])
     expect(saved('parses.json')).toEqual([parse('x', 3), parse('y', 2)])
+  })
+
+  it('同一个链接保留各账号的记录，按账号删除不影响其他记录', () => {
+    const a = { ...parse('x', 1), accountMid: 11 }
+    const b = { ...parse('x', 2), accountMid: 22 }
+    const legacy = parse('x', 0)
+    history.recordParse(legacy)
+    history.recordParse(a)
+    history.recordParse(b)
+    history.recordParse({ ...a, at: 3 })
+    expect(history.parseRecords()).toEqual([{ ...a, at: 3 }, b, legacy])
+    expect(history.removeParse('x', 11)).toEqual([b, legacy])
+    expect(history.removeParse('x', null)).toEqual([b])
+    expect(saved('parses.json')).toEqual([b])
   })
 
   it('最多 300 条，超出时丢掉最旧的', () => {

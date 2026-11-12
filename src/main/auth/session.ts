@@ -1,12 +1,12 @@
 import { session, type Cookie, type CookiesSetDetails } from 'electron'
+import { authScope } from './scope'
 
-/** 应用唯一的 cookie 存储：登录窗口、浏览器导入、API 请求都用它 */
-export const PARTITION = 'persist:bilibili'
+export { PARTITION } from './scope'
 
 export const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 
-export const biliSession = (): Electron.Session => session.fromPartition(PARTITION)
+export const biliSession = (): Electron.Session => session.fromPartition(authScope().partition)
 
 /** bilibili.com 本身或它的子域名（可带前导点）；evilbilibili.com 这类不算 */
 export const isBiliHost = (host: string): boolean => {

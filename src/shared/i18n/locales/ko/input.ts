@@ -19,6 +19,7 @@ export default {
   parseCount: '{count}개 분석',
   placeholder: '영상, 컬렉션, 애니메이션, 강의, 즐겨찾기 폴더 또는 업로더 링크를 붙여넣으세요',
   pasteAndParse: '클립보드에서 붙여넣고 분석',
+  clearLink: '링크 지우기',
   parsing: '분석 중',
   parse: '분석',
   batchButton: '일괄 분석: 여러 줄의 링크를 한 번에 붙여넣기',

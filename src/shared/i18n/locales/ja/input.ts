@@ -20,6 +20,7 @@ export default {
   parseCount: '{count} 件を解析',
   placeholder: '動画、コレクション、アニメ、講座、お気に入りフォルダ、投稿者のリンクを貼り付け',
   pasteAndParse: 'クリップボードから貼り付けて解析',
+  clearLink: 'リンクを消去',
   parsing: '解析中',
   parse: '解析',
   batchButton: '一括解析：複数行のリンクをまとめて貼り付け',

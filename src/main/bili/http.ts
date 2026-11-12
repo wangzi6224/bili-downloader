@@ -1,5 +1,6 @@
 import { t } from '@shared/i18n'
 import { cookieHeader, getCookie, setBiliCookies, UA } from '../auth/session'
+import { authScope, inAuthScope, isRetired } from '../auth/scope'
 import { encWbi, keyFromUrl } from './wbi'
 
 export class BiliError extends Error {
@@ -61,13 +62,25 @@ export async function biliFetch(
   /** 风控（HTTP 412）时直接失败：接着请求只会让风控更严，由调用方决定什么时候再试 */
   noRiskRetry = false
 ): Promise<Response> {
+  const scope = authScope()
+  return inAuthScope(scope, () => fetchInScope(url, init, retries, noRiskRetry))
+}
+
+async function fetchInScope(url: string, init: RequestInit, retries: number, noRiskRetry: boolean): Promise<Response> {
+  const { partition } = authScope()
   let lastErr: unknown
   for (let i = 0; i <= retries; i++) {
+    if (isRetired(partition)) throw new AuthExpiredError()
     try {
       const t0 = Date.now()
       const cookie = await cookieHeader()
+      if (isRetired(partition)) throw new AuthExpiredError()
       const t1 = Date.now()
       const res = await fetch(url, { ...init, headers: { ...BASE_HEADERS, Cookie: cookie, ...init.headers } })
+      if (isRetired(partition)) {
+        await res.body?.cancel().catch(() => {})
+        throw new AuthExpiredError()
+      }
       const t2 = Date.now()
       if (t2 - t0 > 1500) {
         console.warn(`[slow] cookie ${t1 - t0}ms + 请求 ${t2 - t1}ms HTTP ${res.status} ${url.split('?')[0]}`)
@@ -77,7 +90,7 @@ export async function biliFetch(
       return res
     } catch (e) {
       lastErr = e
-      if (init.signal?.aborted) throw e
+      if (init.signal?.aborted || e instanceof AuthExpiredError) throw e
       if (noRiskRetry && e instanceof BiliError && e.code === 412) throw e
       console.warn(`[retry ${i + 1}/${retries}] ${url.split('?')[0]}: ${(e as Error).message}`)
       if (i < retries) await sleep(1000 * 2 ** i)
@@ -109,10 +122,22 @@ async function getWbiKeys(): Promise<{ img: string; sub: string }> {
 
 // ---- buvid：缺少时部分接口会触发风控 ----
 
-let buvidChecked = false
-async function ensureBuvid(): Promise<void> {
-  if (buvidChecked) return
-  buvidChecked = true
+const buvidReady = new Map<string, Promise<void>>()
+export function forgetBuvid(partition: string): void {
+  buvidReady.delete(partition)
+}
+
+function ensureBuvid(): Promise<void> {
+  const scope = authScope()
+  let ready = buvidReady.get(scope.partition)
+  if (!ready) {
+    ready = inAuthScope(scope, prepareBuvid)
+    buvidReady.set(scope.partition, ready)
+  }
+  return ready
+}
+
+async function prepareBuvid(): Promise<void> {
   if (await getCookie('buvid3')) return
   try {
     const json = (await (

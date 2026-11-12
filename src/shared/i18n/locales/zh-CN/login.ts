@@ -14,9 +14,10 @@ export default {
   scanToLogin: '扫码登录',
   pasteManually: '手动粘贴',
   appBoundBanner: '{browsers} 用应用绑定加密保护登录信息，只有浏览器自己读得出，本应用无法导入。请用扫码登录，或从浏览器复制 Cookie 手动粘贴。',
-  openSystemSettings: '打开系统设置',
-  macBlocked:
-    'macOS 不允许本应用读取 {browsers} 的数据。要从这些浏览器导入，请在“系统设置 → 隐私与安全性 → 完全磁盘访问权限”中打开本应用，然后重启本应用。也可以直接用下面的应用内登录。',
+  chooseBrowserFolder: '选择浏览器文件夹',
+  chooseBrowserFolderMessage: '请选择这个浏览器的数据文件夹：{path}',
+  wrongBrowserFolder: '请选择受支持的浏览器数据文件夹，例如 {path}。',
+  macBlocked: 'macOS 拒绝读取 {browsers} 的数据。选择对应的浏览器数据文件夹以授权读取，也可以在应用内登录。',
   blocked: '没有权限读取 {browsers} 的数据（浏览器的配置文件夹不允许当前用户读取）。可以直接用下面的应用内登录。',
   locked: '{browsers} 正在运行，读不到它的登录信息。请完全退出浏览器（包括后台运行的）后点“重新检测”。',
   lockedAppBound: '新版 Chrome、Edge 用应用绑定加密保护登录信息，退出后也很可能读不出，建议直接扫码登录。',

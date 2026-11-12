@@ -9,7 +9,7 @@ vi.mock('electron', () => ({}))
 vi.mock('./http', async (orig) => ({ ...(await orig<typeof import('./http')>()), api }))
 
 const { AuthExpiredError, BiliError, UnsupportedError } = await import('./http')
-const { getPlayInfo, isDolbyVision, isHevc, pickStreams, qualitiesFromInfo, streamInfoFromPlay, streamUrls } = await import('./playurl')
+const { downloadableQualities, getPlayInfo, isDolbyVision, isHevc, pickStreams, qualitiesFromInfo, streamInfoFromPlay, streamUrls } = await import('./playurl')
 
 const v = (id: number, codecid: number, codecs: string): DashStream => ({ id, codecid, codecs, bandwidth: id * 1000, baseUrl: `v${id}-${codecid}` })
 const a = (id: number, bandwidth: number, codecs = 'mp4a.40.2'): DashStream => ({ id, codecs, bandwidth, baseUrl: `a${id}` })
@@ -145,6 +145,18 @@ describe('streamInfoFromPlay', () => {
 })
 
 describe('qualitiesFromInfo', () => {
+  it('比较下载画质时只采用有视频地址的档位，忽略只出现在清晰度列表里的 4K', () => {
+    const video = [
+      ...INFO.dash!.video, { ...v(120, 12, 'hevc'), baseUrl: undefined },
+      { ...v(32, 0, 'custom'), baseUrl: undefined, backup_url: ['backup'] }
+    ]
+    expect(downloadableQualities({ ...INFO, dash: { ...INFO.dash!, video } })).toEqual([
+      { qn: 80, label: '1080P 高清', codecs: ['avc', 'hevc'] },
+      { qn: 64, label: '720P 准高清', codecs: ['avc', 'av1'] },
+      { qn: 32, label: '32', codecs: ['custom'] }
+    ])
+    expect(downloadableQualities({ quality: 80, durl: [{}] })).toEqual([])
+  })
   it('没有 support_formats 时用 accept_quality，按清晰度从高到低排', () => {
     const q = qualitiesFromInfo({
       quality: 80,

@@ -1,6 +1,7 @@
 import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
 import type { AuthState } from '@shared/types'
+import { authScope } from '../auth/scope'
 import type { BiliLookup, Comment, VideoDetail } from '../bili/lookup'
 import type { SubtitleLine, SubtitleTrack, ViewPoint } from '../bili/subtitle'
 import {
@@ -229,7 +230,8 @@ export class LookupTools {
   }
 
   private detail(ref: { bvid?: string; aid?: number }): Promise<VideoDetail> {
-    return this.details.get(ref.bvid ?? `av${ref.aid}`, () => this.lane.run(() => this.api.fetchVideoDetail(ref)))
+    const key = `${authScope().partition}:${ref.bvid ?? `av${ref.aid}`}`
+    return this.details.get(key, () => this.lane.run(() => this.api.fetchVideoDetail(ref)))
   }
 
   /** 一个 BV 号的详情，下载单个视频时取标题和封面用 */
@@ -467,7 +469,7 @@ export class LookupTools {
   }
 
   private async player(bvid: string, cid: number): Promise<Player> {
-    const key = String(cid)
+    const key = `${authScope().partition}:${cid}`
     const player = await this.players.get(key, () => this.lane.run(() => this.api.fetchPlayer(bvid, cid)))
     // 没登录时字幕列表是空的，不能留着：用户登录后再查要能拿到
     if (!player.tracks.length) this.players.delete(key)
@@ -501,7 +503,7 @@ export class LookupTools {
     if (!track) return { status: 'not_found', available }
     let lines: SubtitleLine[]
     try {
-      lines = await this.subtitles.get(`${cid}:${track.lan}`, () =>
+      lines = await this.subtitles.get(`${authScope().partition}:${cid}:${track.lan}`, () =>
         this.lane.run(async () => {
           const body = await this.api.fetchSubtitleLines(track)
           if (!body) throw new ToolError('FAILED', t('mcpLookup.subtitleFailed'))

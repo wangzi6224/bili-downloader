@@ -21,20 +21,28 @@ const api: BiliApi = {
   platform: process.platform,
   auth: {
     check: () => invoke('auth:check'),
-    openLoginWindow: () => invoke('auth:login'),
+    accounts: () => invoke('auth:accounts'),
+    switchAccount: (mid) => invoke('auth:switchAccount', mid),
+    removeAccount: (mid) => invoke('auth:removeAccount', mid),
+    assignLegacy: (mid) => invoke('auth:assignLegacy', mid),
+    onAccountsChanged: on('auth:accountsChanged'),
+    openLoginWindow: (target) => invoke('auth:login', target),
     listBrowsers: () => invoke('auth:listBrowsers'),
-    importFromBrowser: (id) => invoke('auth:import', id),
-    importCookie: (text) => invoke('auth:importCookie', text),
+    chooseBrowserFolder: (id) => invoke('auth:chooseBrowserFolder', id),
+    importFromBrowser: (id, target) => invoke('auth:import', id, target),
+    importCookie: (text, target) => invoke('auth:importCookie', text, target),
     logout: () => invoke('auth:logout'),
     simulateExpiry: () => invoke('auth:simulateExpiry'),
     onRequired: on('auth:required'),
     onChanged: on('auth:changed')
   },
-  parse: (input) => invoke('parse', input),
-  parseMore: (source, page) => invoke('parseMore', source, page),
+  parse: (input, mid) => mid === undefined ? invoke('parse', input) : invoke('parse', input, mid),
+  parseMore: (source, page, mid) => mid === undefined
+    ? invoke('parseMore', source, page)
+    : invoke('parseMore', source, page, mid),
   parseBatch: (inputs) => invoke('parseBatch', inputs),
   onParseProgress: on('parse:progress'),
-  streamInfo: (item) => invoke('streamInfo', item),
+  streamInfo: (item, mid) => invoke('streamInfo', item, mid),
   myFavFolders: () => invoke('myFavFolders'),
   sources: {
     listAccount: (mid, category, page) => invoke('sources:listAccount', mid, category, page),
@@ -75,11 +83,13 @@ const api: BiliApi = {
     speed: () => invoke('wm:speed')
   },
   history: {
-    downloadedKeys: () => invoke('history:downloadedKeys'),
+    downloadedKeys: (mid) => mid === undefined ? invoke('history:downloadedKeys') : invoke('history:downloadedKeys', mid),
     onDownloadsChanged: on('history:downloadsChanged'),
     clearDownloads: () => invoke('history:clearDownloads'),
     parses: () => invoke('history:parses'),
-    removeParse: (input) => invoke('history:removeParse', input),
+    removeParse: (input, accountMid) => accountMid === undefined
+      ? invoke('history:removeParse', input)
+      : invoke('history:removeParse', input, accountMid),
     clearParses: () => invoke('history:clearParses')
   },
   i18n: {
@@ -94,7 +104,7 @@ const api: BiliApi = {
   },
   subs: {
     list: () => invoke('subs:list'),
-    add: (req) => invoke('subs:add', req),
+    add: (req, mid) => invoke('subs:add', req, mid),
     update: (id, patch) => invoke('subs:update', id, patch),
     remove: (id) => invoke('subs:remove', id),
     check: (id) => invoke('subs:check', id),
@@ -132,8 +142,7 @@ const api: BiliApi = {
   },
   readClipboard: () => invoke('clipboard:read'),
   writeClipboard: (text) => invoke('clipboard:write', text),
-  showInFolder: (path) => invoke('shell:showInFolder', path),
-  openFullDiskAccessSettings: () => invoke('shell:openFullDiskAccess')
+  showInFolder: (path) => invoke('shell:showInFolder', path)
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -239,7 +239,7 @@ Il server ascolta solo su `127.0.0.1` (la porta è configurabile), richiede il t
 Accedi e puoi scaricare tutte le qualità e tutti i video che il tuo account può guardare, compresi 1080P e oltre e i contenuti premium. Ci sono tre modi:
 
 - **从浏览器导入** (Importa dal browser): riutilizza i cookie di accesso di Chrome, Edge, Brave, Arc (solo macOS), Vivaldi, Opera, Chromium, Firefox o Safari (solo macOS).
-  - macOS protegge i dati di Chrome, Edge, Brave e Safari: abilita prima l'app in **Impostazioni di Sistema → Privacy e sicurezza → Accesso completo al disco** e riavviala. L'importazione dai browser basati su Chromium chiede anche l'accesso al Portachiavi.
+  - Se macOS blocca la lettura, seleziona la cartella dei dati del browser interessato dalla finestra di accesso. L’importazione dai browser basati su Chromium può richiedere anche l’accesso al Portachiavi.
   - Su Linux i browser basati su Chromium conservano la chiave dei cookie nel portachiavi di sistema (GNOME Keyring / libsecret). L'app la legge con `secret-tool` (`sudo apt install libsecret-tools`) e il portachiavi potrebbe chiederti di sbloccarlo. Sono supportati anche Firefox installato tramite Snap o Flatpak e Chromium in versione Snap.
   - Su Windows i browser basati su Chromium bloccano il database dei cookie mentre sono in esecuzione, quindi chiudi completamente il browser (compresi eventuali processi in background) prima di importare. I cookie scritti da Chrome 127 o successivo usano la crittografia legata all'app e non possono essere importati; se il cookie di accesso è tra questi, usa invece l'accesso nell'app oppure incolla una stringa di cookie.
 - **在应用内登录** (Accedi nell'app): apre la pagina di accesso ufficiale di bilibili, con accesso tramite codice QR, password o SMS.
@@ -252,7 +252,7 @@ L'app controlla lo stato di accesso all'avvio, quando torni alla finestra, duran
 - I tuoi cookie di bilibili sono conservati nella cartella dati dell'app e vengono inviati solo a bilibili. Non vengono mai restituiti ai client IA tramite MCP.
 - Download, unione dei flussi e rimozione della filigrana avvengono tutti in locale. Nessuna registrazione, nessuna telemetria e nessun nostro server di mezzo.
 - Oltre a bilibili, l'app contatta solo GitHub (per controllare gli aggiornamenti) e ModelScope o Hugging Face (per scaricare una volta il modello del ritocco IA).
-- Tramite MCP, `start_login` non fa nulla se l'app è già connessa, quindi un agente non può cambiare account. Se prima bisogna chiudere un browser (su Windows il database dei cookie è bloccato mentre il browser è in esecuzione), l'app te lo chiede in una finestra di dialogo e solo tu puoi approvare.
+- Su richiesta, il client MCP può cambiare account o disconnettere un account specifico. Se prima bisogna chiudere un browser (su Windows il database dei cookie è bloccato mentre il browser è in esecuzione), l'app te lo chiede in una finestra di dialogo e solo tu puoi approvare.
 
 ## Domande frequenti
 

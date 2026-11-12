@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { t } from '@shared/i18n'
-import type { AuthState, BrowserProfile } from '@shared/types'
-import { ImportError } from '../auth/importError'
+import type { AuthState, BrowserProfile, LoginTarget } from '@shared/types'
+import type { LoginGuard } from '../auth/accounts'
+import { ImportError, LoginRevokedError } from '../auth/importError'
 import { BiliError } from '../bili/http'
 
 /**
@@ -23,6 +24,7 @@ export type LoginReason =
   | 'close_failed'
   | 'window_closed'
   | 'not_found'
+  | 'revoked'
   | 'failed'
 
 export type LoginMethod = 'browser' | 'qr'
@@ -30,19 +32,20 @@ export type LoginMethod = 'browser' | 'qr'
 export interface LoginDeps {
   checkAuth: () => Promise<AuthState>
   authState: () => AuthState
+  accountAuth?: (mid: number) => AuthState
+  currentTarget?: () => LoginTarget | undefined
+  loginGuard?: () => LoginGuard
   /** 登录、退出登录时回调；只注册一次，流程和应用同生共死 */
   onLoginChanged: (fn: () => void) => void
-  listBrowsers: () => BrowserProfile[]
-  importBrowser: (id: string, opts: { shouldApply: () => boolean }) => Promise<AuthState>
+  listBrowsers: (key?: string) => BrowserProfile[]
+  importBrowser: (id: string, opts: { shouldApply: () => boolean }, target?: LoginTarget, guard?: LoginGuard) => Promise<AuthState>
   /** 打开扫码窗口，窗口关闭时 resolve */
-  openQr: () => Promise<AuthState>
+  openQr: (target?: LoginTarget, guard?: LoginGuard) => Promise<AuthState>
   isQrOpen: () => boolean
   isLocked: (id: string) => boolean
   canClose: (key: string) => boolean
   confirmClose: (browser: string, appBound: boolean, signal: AbortSignal) => Promise<'close' | 'qr' | 'cancel'>
   closeBrowser: (key: string, isLocked: () => boolean, alive: () => boolean) => Promise<boolean>
-  /** 只有 macOS 有这个系统设置页 */
-  openPermissionSettings?: () => void
 }
 
 type Phase = 'idle' | 'checking' | 'importing' | 'awaiting_confirm' | 'closing' | 'qr_waiting' | 'failed'
@@ -68,6 +71,7 @@ export interface LoginSnapshot {
   tried: LoginAttempt[]
   alsoAvailable: LoginSource[]
   auth: AuthState
+  target?: LoginTarget
 }
 
 const STEPS: Partial<Record<Phase, LoginSnapshot['step']>> = {
@@ -137,6 +141,11 @@ export class LoginFlow extends EventEmitter {
   private dismissDialog?: () => void
   /** Cookie 替换已经开始，中止不了：清分区时不能开登录窗，这期间的登录变化就是这次导入 */
   private swap?: Promise<void>
+  private target?: LoginTarget
+  private attemptTarget?: LoginTarget
+  private guard?: LoginGuard
+  private method?: LoginMethod
+  private attemptAuth: AuthState = { loggedIn: false }
 
   constructor(private deps: LoginDeps) {
     super()
@@ -144,7 +153,13 @@ export class LoginFlow extends EventEmitter {
   }
 
   private loggedIn(): boolean {
-    return this.deps.authState().loggedIn
+    return this.auth().loggedIn
+  }
+
+  private auth(): AuthState {
+    if (!this.target) return this.deps.authState()
+    if (!this.attemptAuth.loggedIn) return this.attemptAuth
+    return this.deps.accountAuth?.(this.attemptAuth.user.mid) ?? this.attemptAuth
   }
 
   /** 确认中的内存状态可能是过期的，要等 checkAuth 的结果 */
@@ -153,6 +168,8 @@ export class LoginFlow extends EventEmitter {
   }
 
   private loginChanged(): void {
+    // 界面切号或其他账号退出，不能打断指定账号的登录流程。
+    if (this.target) return
     // checkAuth 发现登录已失效：这正是流程要确认的事，流程接着往下走
     if (this.phase === 'checking' && !this.loggedIn()) return this.touch()
     // 导入成功时这里比 importBrowser 返回得早，来源要留着；其他情况下登录和这次导入无关
@@ -211,7 +228,8 @@ export class LoginFlow extends EventEmitter {
       source: this.source,
       tried: this.tried,
       alsoAvailable: this.alsoAvailable,
-      auth: this.deps.authState()
+      auth: this.auth(),
+      target: this.target
     }
   }
 
@@ -222,14 +240,25 @@ export class LoginFlow extends EventEmitter {
 
   /**
    * 发起登录，立即返回，全部在后台跑：确认登录状态也可能卡在网络上，wait_seconds 要管得住。
-   * 已登录就什么都不做，切换账号留给用户在应用里操作
+   * 默认模式下，当前账号有效时直接返回。
    */
-  start(method: LoginMethod, source?: string): void {
-    if (method === 'browser' && this.active) return
+  start(method: LoginMethod, source?: string, target?: LoginTarget): void {
+    const active = this.active
+    if (active && (target || this.target) && JSON.stringify(target) !== JSON.stringify(this.target)) {
+      throw new Error(t('accounts.loginBusy'))
+    }
+    if (active && (method === 'browser' || this.method === 'qr' || this.phase === 'qr_waiting')) return
     const gen = this.reset()
+    this.method = method
+    this.target = target
+    if (!active) {
+      this.attemptTarget = target ?? this.deps.currentTarget?.()
+      this.guard = this.deps.loginGuard?.()
+    }
+    this.attemptAuth = { loggedIn: false }
     this.enter('checking')
     void this.run(gen, method, source).catch((e) => {
-      if (gen === this.generation) this.fail('failed', messageOf(e))
+      if (gen === this.generation) this.fail(e instanceof LoginRevokedError ? 'revoked' : 'failed', messageOf(e))
     })
   }
 
@@ -238,15 +267,17 @@ export class LoginFlow extends EventEmitter {
     await this.swap
     if (gen !== this.generation) return
     let auth: AuthState
-    try {
-      // 刚启动时内存里的状态还没确认过，不能信
-      auth = await this.deps.checkAuth()
-    } catch (e) {
-      if (gen === this.generation) this.fail('network', messageOf(e))
-      return
+    if (!this.target) {
+      try {
+        // 刚启动时内存里的状态还没确认过，不能信
+        auth = await this.deps.checkAuth()
+      } catch (e) {
+        if (gen === this.generation) this.fail('network', messageOf(e))
+        return
+      }
+      if (gen !== this.generation) return
+      if (auth.loggedIn) return this.enter('idle')
     }
-    if (gen !== this.generation) return
-    if (auth.loggedIn) return this.enter('idle')
     if (method === 'qr') return this.startQr(gen)
     this.enter('importing')
     await this.runBrowser(gen, source)
@@ -254,14 +285,17 @@ export class LoginFlow extends EventEmitter {
 
   private startQr(gen: number): void {
     this.enter('qr_waiting')
-    this.deps.openQr().then(
+    this.deps.openQr(this.attemptTarget, this.guard).then(
       (s) => {
         if (gen !== this.generation) return
-        if (s.loggedIn) this.enter('idle')
+        if (s.loggedIn) {
+          this.attemptAuth = s
+          this.enter('idle')
+        }
         else this.fail('window_closed', t('mcpLogin.qrClosed'))
       },
       (e) => {
-        if (gen === this.generation) this.fail('failed', messageOf(e))
+        if (gen === this.generation) this.fail(e instanceof LoginRevokedError ? 'revoked' : 'failed', messageOf(e))
       }
     )
   }
@@ -269,8 +303,8 @@ export class LoginFlow extends EventEmitter {
   private async runBrowser(gen: number, source?: string): Promise<void> {
     // 用户正在登录窗里扫码，这时替换 Cookie 会打断登录
     if (this.deps.isQrOpen()) return this.startQr(gen)
+    if (source) return this.runChosen(gen, source)
     const profiles = rankProfiles(this.deps.listBrowsers())
-    if (source) return this.runChosen(gen, profiles, source)
     const ready = profiles.filter(readable)
     if (await this.importFirst(gen, ready)) return
     if (this.phase === 'failed') return
@@ -280,10 +314,16 @@ export class LoginFlow extends EventEmitter {
     this.failNothing(profiles)
   }
 
-  /** 用户点名了浏览器：只看它，缺权限时直接带用户去授权 */
-  private async runChosen(gen: number, profiles: BrowserProfile[], source: string): Promise<void> {
+  /** 用户指定了来源，只检查对应浏览器。 */
+  private async runChosen(gen: number, source: string): Promise<void> {
+    const key = source.split('::', 1)[0]
+    const profiles = rankProfiles(this.deps.listBrowsers(key))
     const matches = profiles.filter((p) => p.id === source || browserKey(p) === source)
-    if (!matches.length) return this.fail('not_found', t('mcpLogin.sourceNotFound', { source }))
+    if (!matches.length) {
+      const blocked = profiles.find((p) => p.id === `${key}::` && p.blocked)
+      if (blocked) return this.fail('blocked', t('mcpLogin.noPermission', { browser: blocked.browser }))
+      return this.fail('not_found', t('mcpLogin.sourceNotFound', { source }))
+    }
     const ready = matches.filter(readable)
     if (await this.importFirst(gen, ready) || this.phase === 'failed') return
     if (ready.length) return this.fail(this.reason!, this.message!)
@@ -294,10 +334,8 @@ export class LoginFlow extends EventEmitter {
       if (this.deps.canClose(browserKey(locked))) return this.closeThenImport(gen, locked)
       return this.fail('locked', t('mcpLogin.browserRunning', { browser: locked.browser }))
     }
-    if (matches.some((p) => p.blocked)) {
-      this.deps.openPermissionSettings?.()
-      return this.fail('blocked', t('mcpLogin.noPermission', { browser: matches[0].browser }))
-    }
+    const blocked = matches.find((p) => p.blocked)
+    if (blocked) return this.fail('blocked', t('mcpLogin.noPermission', { browser: blocked.browser }))
     this.fail('no_login', t('mcpLogin.noLoginIn', { browser: matches[0].browser }))
   }
 
@@ -314,11 +352,18 @@ export class LoginFlow extends EventEmitter {
         return true
       }
       try {
-        await this.deps.importBrowser(p.id, { shouldApply })
-        if (gen === this.generation) this.enter('idle')
+        const auth = await this.deps.importBrowser(p.id, { shouldApply }, this.attemptTarget, this.guard)
+        if (gen === this.generation) {
+          this.attemptAuth = auth
+          this.enter('idle')
+        }
         return true
       } catch (e) {
         if (gen !== this.generation) return true
+        if (e instanceof LoginRevokedError) {
+          this.fail('revoked', e.message)
+          return true
+        }
         if (e instanceof ImportError && e.code === 'cancelled' && this.deps.isQrOpen()) {
           this.source = undefined
           this.alsoAvailable = []
@@ -393,6 +438,7 @@ export class LoginFlow extends EventEmitter {
     if (choice === 'timeout') return this.fail('confirm_timeout', t('mcpLogin.confirmTimeout', { browser: p.browser }))
     if (choice === 'cancel') return this.fail('declined', t('mcpLogin.declined', { browser: p.browser }))
 
+    if (this.attemptTarget?.mode === 'reauth') this.guard?.(this.attemptTarget.mid)
     const key = browserKey(p)
     this.enter('closing')
     const closed = await this.deps.closeBrowser(
@@ -405,7 +451,7 @@ export class LoginFlow extends EventEmitter {
 
     // 关之前读不到，现在才知道里面有没有登录、最近用的是哪个配置档
     this.enter('importing')
-    const again = rankProfiles(this.deps.listBrowsers()).filter((x) => browserKey(x) === key)
+    const again = rankProfiles(this.deps.listBrowsers(key)).filter((x) => browserKey(x) === key)
     const ready = again.filter(readable)
     if (await this.importFirst(gen, ready) || this.phase === 'failed') return
     if (ready.length) return this.fail(this.reason!, this.message!)

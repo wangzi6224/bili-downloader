@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { MediaItem, ParseResult } from '@shared/types'
 import { ParseCache } from './parseCache'
+import { inAuthScope } from '../auth/scope'
 
 const item = (key: string): MediaItem => ({ key, kind: 'ugc', title: key, index: 1, cid: 1 })
 const result = (n: number): ParseResult => ({
@@ -15,6 +16,20 @@ const result = (n: number): ParseResult => ({
 })
 
 describe('ParseCache', () => {
+  it('同一个链接和视频键在两个账号中分别缓存', async () => {
+    const a = { partition: 'a', mid: 1 }
+    const b = { partition: 'b', mid: 2 }
+    const fetchAll = vi.fn().mockResolvedValueOnce({ result: result(1), complete: true })
+      .mockResolvedValueOnce({ result: result(2), complete: true })
+    const cache = new ParseCache(fetchAll)
+    const read = (scope: typeof a) => inAuthScope(scope, () => cache.get('watchlater', 10))
+    expect((await read(a)).items[0].key).toBe('a1')
+    inAuthScope(a, () => cache.setParts('bv', [item('partA')]))
+    expect((await read(b)).items[0].key).toBe('a2')
+    expect(inAuthScope(b, () => cache.partsOf('bv'))).toBeUndefined()
+    expect((await read(a)).items[0].key).toBe('a1')
+    expect(fetchAll).toHaveBeenCalledTimes(2)
+  })
   it('拍平各组条目；过期的条目在下次解析时清掉', async () => {
     let now = 0
     let n = 0

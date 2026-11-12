@@ -17,9 +17,10 @@ export default {
   pasteManually: 'Paste manually',
   appBoundBanner:
     '{browsers} protects its login data with app-bound encryption, so only the browser itself can read it and this app cannot import it. Sign in by scanning a QR code, or copy the cookies from the browser and paste them below.',
-  openSystemSettings: 'Open System Settings',
-  macBlocked:
-    'macOS does not allow this app to read data from {browsers}. To import from them, turn this app on in System Settings → Privacy & Security → Full Disk Access, then restart it. Or just sign in inside the app below.',
+  chooseBrowserFolder: 'Choose browser folder',
+  chooseBrowserFolderMessage: 'Select this browser data folder: {path}',
+  wrongBrowserFolder: 'Select a supported browser data folder, such as {path}.',
+  macBlocked: 'macOS blocked access to data from {browsers}. Select the browser data folder to grant access, or sign in inside the app.',
   blocked:
     "Can't read data from {browsers} (the current user is not allowed to read the browser's profile folder). You can sign in inside the app below.",
   locked: "{browsers} is running, so its login data can't be read. Quit the browser completely (including background processes), then click “Detect again”.",

@@ -36,11 +36,11 @@ export class FakeQueue extends EventEmitter {
 
   list = (): TaskInfo[] => this.tasks
 
-  /** 和 DownloadManager 一样：同 key 未完成的任务不重复添加 */
+  /** 和 DownloadManager 一样：同账号下同 key 未完成的任务不重复添加 */
   enqueue = vi.fn((req: EnqueueRequest): EnqueueResult => {
     const result: EnqueueResult = { created: [], skipped: [] }
     for (const item of req.items) {
-      const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
+      const dup = this.tasks.find((t) => t.item.key === item.key && t.accountMid === req.accountMid && t.status !== 'done')
       if (dup) {
         result.skipped.push({ key: item.key, taskId: dup.id })
         continue
@@ -51,6 +51,7 @@ export class FakeQueue extends EventEmitter {
         item,
         options: req.options,
         batchId: req.batchId,
+        accountMid: req.accountMid,
         dir: req.dir,
         status: req.paused ? 'paused' : 'queued'
       })

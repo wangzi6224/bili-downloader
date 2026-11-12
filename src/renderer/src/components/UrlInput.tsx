@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Clipboard, ClipboardPaste, Clock, Flame, Folder, Link2, ListPlus, Loader2, Star } from 'lucide-react'
+import { CircleX, Clipboard, ClipboardPaste, Clock, Flame, Folder, Link2, ListPlus, Loader2, ScanLine, Star } from 'lucide-react'
 import { extractInputs, rankLabel } from '@shared/parseUrl'
 import { useT } from '../i18n'
 import { api, parseBatch, parseLink, useStore } from '../store'
@@ -124,7 +124,7 @@ function BatchDialog({ onClose }: { onClose: () => void }) {
         </Button>
         <Button
           variant="primary"
-          icon={ArrowRight}
+          icon={ScanLine}
           disabled={!inputs.length}
           onClick={() => {
             onClose()
@@ -143,6 +143,7 @@ export function UrlInput() {
   const [text, setText] = useState('')
   const [clip, setClip] = useState<string[] | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const lastClip = useRef('')
   const parsing = useStore((s) => s.parsing)
   const progress = useStore((s) => s.progress)
@@ -150,6 +151,8 @@ export function UrlInput() {
   const notice = useStore((s) => s.notice)
   const set = useStore((s) => s.set)
   const clipboardWatch = useStore((s) => s.settings?.clipboardWatch)
+  const InputActionIcon = text ? CircleX : ClipboardPaste
+  const inputActionLabel = t(text ? 'input.clearLink' : 'input.pasteAndParse')
 
   const submit = (value: string): void => {
     if (!value.trim() || parsing) return
@@ -192,6 +195,7 @@ export function UrlInput() {
           <Link2 size={18} strokeWidth={STROKE} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-subtle" />
           <input
             autoFocus
+            ref={inputRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {
@@ -212,29 +216,32 @@ export function UrlInput() {
             placeholder={t('input.placeholder')}
             className="h-11 w-full rounded-xl border border-line-strong bg-field pr-11 pl-11 text-sm text-fg shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-subtle focus:border-bili focus:ring-4 focus:ring-bili/15"
           />
-          {!text && (
-            <button
-              type="button"
-              title={t('input.pasteAndParse')}
-              aria-label={t('input.pasteAndParse')}
-              onClick={async () => {
-                const clipText = (await api.readClipboard()).trim()
-                if (!clipText) return
-                lastClip.current = clipText
-                setText(clipText)
-                submit(clipText)
-              }}
-              className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-subtle hover:bg-hover hover:text-fg"
-            >
-              <ClipboardPaste size={16} strokeWidth={STROKE} />
-            </button>
-          )}
+          <button
+            type="button"
+            title={inputActionLabel}
+            aria-label={inputActionLabel}
+            onClick={async () => {
+              if (text) {
+                setText('')
+                inputRef.current?.focus()
+                return
+              }
+              const clipText = (await api.readClipboard()).trim()
+              if (!clipText) return
+              lastClip.current = clipText
+              setText(clipText)
+              submit(clipText)
+            }}
+            className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-subtle hover:bg-hover hover:text-fg"
+          >
+            <InputActionIcon size={16} strokeWidth={STROKE} />
+          </button>
         </div>
         <Button
           variant="primary"
           size="lg"
           className="h-11 min-w-[104px] rounded-xl px-5"
-          icon={parsing ? undefined : ArrowRight}
+          icon={parsing ? undefined : ScanLine}
           disabled={parsing || !text.trim()}
           onClick={() => submit(text)}
         >

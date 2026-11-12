@@ -6,6 +6,8 @@ import { normalizeOptions } from '@shared/options'
 import type { MediaItem } from '@shared/types'
 import { FakeQueue, makeTask, mediaItem } from '../../test/fakeQueue'
 import { BatchManager, type Batch, type NewBatch } from './batches'
+import { authScope, inAuthScope } from '../auth/scope'
+import { AuthExpiredError } from '../bili/http'
 
 vi.mock('electron', () => ({}))
 
@@ -73,6 +75,32 @@ afterEach(() => {
 })
 
 describe('提交', () => {
+  it('分别记录相同请求的账号，过期批次登录恢复后用原账号展开', async () => {
+    let expired = true
+    const m = new BatchManager(file, queue, async (items) => {
+      expect(authScope().mid).toBe(items[0].bvid === 'BV1' ? 1 : 2)
+      return items
+    }, () => [], 2, {
+      status: (mid) => mid === 1 && expired ? 'expired' : 'ready',
+      partition: (mid) => `account-${mid}`,
+      run: (mid, fn) => mid === 1 && expired ? Promise.reject(new AuthExpiredError())
+        : inAuthScope({ partition: `account-${mid}`, mid }, fn)
+    })
+    managers.push(m)
+    const a = m.submit(request([lazy('BV1')], { accountMid: 1, requestId: 'same' }))
+    const b = m.submit(request([lazy('BV2')], { accountMid: 2, requestId: 'same' }))
+    await settle()
+    expect(a).toMatchObject({ state: 'interrupted', waitingForAccount: true })
+    expect(b.state).toBe('ready')
+    expect(m.findDuplicate('same', 'fp', 2)).toBe(b)
+    expect(m.findDuplicate('same', 'fp', 1)).toBe(a)
+    expired = false
+    m.accountReady(1)
+    await settle()
+    expect(a.state).toBe('ready')
+    expect(queue.enqueue.mock.calls.map(([req]) => req.accountMid)).toEqual([2, 1])
+    expect(saved().map((batch) => batch.accountMid)).toEqual([1, 2])
+  })
   it('不用展开的直接加入队列，带上批次 id、目录和整批的命名方式', () => {
     const m = make()
     const b = m.submit(request([plain('BV1'), plain('BV2')], { requestId: 'r1' }))

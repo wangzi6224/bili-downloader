@@ -43,6 +43,7 @@ let container: HTMLDivElement
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.clearAllMocks()
+  useStore.setState({ sourceAccountMid: undefined })
   api.history.downloadedKeys.mockResolvedValue([first.key])
   api.streamInfo.mockResolvedValue({ qualities: [], audios: [], hasAudio: true })
   api.parseMore.mockReset().mockResolvedValue({ items: [nextPageItem], total: 6, hasMore: false })
@@ -123,6 +124,17 @@ function expectSelection(checked: string[], unchecked: string[], count = checked
 }
 
 describe('选择窗口', () => {
+  it('打开另一账号的订阅时，已下载标记和确认提交都只读该账号的历史', async () => {
+    useStore.setState({ sourceAccountMid: 8 })
+    api.history.downloadedKeys.mockImplementation(async (mid) => mid === 8 ? [] : [first.key])
+    await open(true)
+    expect(api.history.downloadedKeys).toHaveBeenCalledExactlyOnceWith(8)
+    await click(checkbox(first.title))
+    api.history.downloadedKeys.mockClear()
+    await clickButton('下载 1 项')
+    expect(api.history.downloadedKeys).toHaveBeenNthCalledWith(1, 8)
+    expect(api.download.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ items: [first] }), 8)
+  })
   it('点复选框和行文字都只切换一次，且勾选、分组和下载按钮同步', async () => {
     await open(true)
     expect((await click(checkbox(first.title))).defaultPrevented).toBe(false)

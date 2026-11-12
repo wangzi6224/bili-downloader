@@ -12,6 +12,8 @@ import type {
 } from '@shared/types'
 import { t } from '@shared/i18n'
 import type { EnqueueResult } from '../download/manager'
+import type { accounts as accountRegistry } from '../auth/accounts'
+import { AuthExpiredError } from '../bili/http'
 import { readJsonArray, writeJson } from '../store'
 import { countStatuses, describeError, joinHints, loginHint, mcpStatus, stopsBatch, summarizeTask, totalSpeed, type McpStatus } from './format'
 
@@ -34,6 +36,7 @@ export interface TaskQueue {
 
 export interface Batch {
   id: string
+  accountMid?: number
   requestId?: string
   /** 链接、选择、选项、目录相同的请求算出同样的指纹，用来识别重复提交 */
   fingerprint: string
@@ -64,12 +67,13 @@ export interface Batch {
   failed: { item: MediaItem; reason: string }[]
   /** 按批次暂停后，之后才加入队列的任务也保持暂停 */
   paused?: boolean
+  waitingForAccount?: boolean
   state: 'expanding' | 'ready' | 'interrupted'
 }
 
 export type NewBatch = Pick<
   Batch,
-  'requestId' | 'fingerprint' | 'url' | 'title' | 'cover' | 'kind' | 'meta' | 'options' | 'dir' | 'skipDownloaded'
+  'requestId' | 'fingerprint' | 'url' | 'title' | 'cover' | 'kind' | 'meta' | 'options' | 'dir' | 'skipDownloaded' | 'accountMid'
 > & {
   items: MediaItem[]
   skipped: { downloaded: number; unavailable: number }
@@ -116,8 +120,9 @@ export class BatchManager extends EventEmitter {
     private file: string,
     private queue: TaskQueue,
     private expand: (items: MediaItem[]) => Promise<MediaItem[]>,
-    private downloadedKeys: () => string[],
-    private chunk = CHUNK
+    private downloadedKeys: (mid?: number) => string[],
+    private chunk = CHUNK,
+    private accounts?: Pick<typeof accountRegistry, 'run' | 'status' | 'partition'>
   ) {
     super()
     // 上次退出时还没处理完的，等 agent 决定是否继续
@@ -130,6 +135,19 @@ export class BatchManager extends EventEmitter {
     return this.batches
   }
 
+  assignLegacy(mid: number): void {
+    for (const b of this.batches) {
+      if (b.accountMid === undefined && (b.pending.length || b.failed.length)) b.accountMid = mid
+    }
+    this.changed()
+  }
+
+  accountReady(mid: number): void {
+    for (const b of this.batches) {
+      if (b.accountMid === mid && b.waitingForAccount && b.pending.length) this.resume(b)
+    }
+  }
+
   find(id: string): Batch | undefined {
     return this.batches.find((b) => b.id === id)
   }
@@ -138,9 +156,9 @@ export class BatchManager extends EventEmitter {
    * 重复提交：同一个 request_id；或者指纹相同、而且原批次还没结束。
    * 已经结束的不算，这样过一阵再提交同一个合集可以下到新增的视频
    */
-  findDuplicate(requestId: string | undefined, fingerprint: string): Batch | undefined {
-    if (requestId) return this.batches.find((b) => b.requestId === requestId)
-    return this.batches.findLast((b) => b.fingerprint === fingerprint && !FINISHED.has(this.state(b)))
+  findDuplicate(requestId: string | undefined, fingerprint: string, accountMid?: number): Batch | undefined {
+    if (requestId) return this.batches.find((b) => b.accountMid === accountMid && b.requestId === requestId)
+    return this.batches.findLast((b) => b.accountMid === accountMid && b.fingerprint === fingerprint && !FINISHED.has(this.state(b)))
   }
 
   submit(n: NewBatch): Batch {
@@ -208,7 +226,7 @@ export class BatchManager extends EventEmitter {
 
   tasksOf(b: Batch): TaskInfo[] {
     const linked = new Set(b.linked)
-    return this.queue.list().filter((t) => t.batchId === b.id || linked.has(t.id))
+    return this.queue.list().filter((t) => t.batchId === b.id || (t.accountMid === b.accountMid && linked.has(t.id)))
   }
 
   state(b: Batch, counts: Record<McpStatus, number> = countStatuses(this.tasksOf(b))): BatchState {
@@ -247,6 +265,7 @@ export class BatchManager extends EventEmitter {
     const counts = countStatuses(tasks)
     return {
       batch_id: b.id,
+      account_mid: b.accountMid,
       title: b.title,
       // 一次提交多个视频的批次没有单一链接
       url: b.url || undefined,
@@ -274,11 +293,12 @@ export class BatchManager extends EventEmitter {
     const quality: Record<string, number> = {}
     for (const t of tasks) if (t.qualityLabel) quality[t.qualityLabel] = (quality[t.qualityLabel] ?? 0) + 1
     const failed = [
-      ...b.failed.map((f) => ({ item_id: f.item.key, title: f.item.title, status: 'not_added', reason: f.reason, retryable: true })),
+      ...b.failed.map((f) => ({ item_id: f.item.key, account_mid: b.accountMid, title: f.item.title, status: 'not_added', reason: f.reason, retryable: true })),
       ...tasks
         .filter((t) => ['failed', 'unsupported', 'retrying'].includes(mcpStatus(t)))
         .map((t) => ({
           task_id: t.id,
+          account_mid: t.accountMid,
           item_id: t.item.key,
           title: t.title,
           status: mcpStatus(t),
@@ -288,6 +308,7 @@ export class BatchManager extends EventEmitter {
     ]
     return {
       batch_id: b.id,
+      account_mid: b.accountMid,
       title: b.title,
       url: b.url || undefined,
       request_id: b.requestId,
@@ -345,6 +366,7 @@ export class BatchManager extends EventEmitter {
   private schedule(b: Batch): void {
     b.state = 'expanding'
     b.error = undefined
+    b.waitingForAccount = undefined
     this.chain = this.chain
       .then(() => this.process(b))
       .catch((e) => {
@@ -358,13 +380,19 @@ export class BatchManager extends EventEmitter {
     while (b.pending.length) {
       const gen = this.generation.get(b.id)
       const chunk = b.pending.slice(0, this.chunk)
+      const mid = b.accountMid
+      const partition = mid === undefined ? undefined : this.accounts?.partition(mid)
       let items: MediaItem[]
       try {
-        items = await this.expand(chunk)
+        items = await (this.accounts ? this.accounts.run(mid, () => this.expand(chunk)) : this.expand(chunk))
       } catch (e) {
+        if (gen !== this.generation.get(b.id)) continue
+        if (e instanceof AuthExpiredError && this.accounts && mid !== undefined
+          && this.accounts.partition(mid) !== partition && this.accounts.status(mid) === 'ready') continue
         if (stopsBatch(e) && gen === this.generation.get(b.id)) {
           // 风控或登录失效：接着请求只会继续失败，这一段留在 pending 里，等 agent 让它继续
           b.state = 'interrupted'
+          b.waitingForAccount = this.accounts && e instanceof AuthExpiredError ? true : undefined
           b.error = describeError(e).message
           this.changed()
           return
@@ -394,7 +422,7 @@ export class BatchManager extends EventEmitter {
     if (!b.multi && ok.length > 1) b.multi = true
     if (b.skipDownloaded) {
       // 展开后按每一P核对：多P视频只下过其中几P时，其余的照样下载
-      const done = new Set(this.downloadedKeys())
+      const done = new Set(this.downloadedKeys(b.accountMid))
       const before = ok.length
       ok = ok.filter((i) => !done.has(i.key))
       b.skipped.downloaded += before - ok.length
@@ -408,6 +436,7 @@ export class BatchManager extends EventEmitter {
       items: ok,
       options: b.options,
       batchId: b.id,
+      accountMid: b.accountMid,
       dir: b.dir,
       multi: b.multi,
       // 按批次暂停后加入的任务直接是暂停状态，不会先启动再被打断

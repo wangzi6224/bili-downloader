@@ -53,4 +53,13 @@ describe('buildEntries', () => {
     expect(shape(entries)).toEqual(['c', ['合集', 'b']])
     expect(entries[1].type === 'group' && entries[1].tasks.length).toBe(2)
   })
+
+  it('同名合集按发起账号分组', () => {
+    const tasks = [
+      task('a1', 'queued', '合集', { accountMid: 1 }),
+      task('b1', 'queued', '合集', { accountMid: 2 }),
+      task('a2', 'queued', '合集', { accountMid: 1 })
+    ]
+    expect(shape(buildEntries(tasks, tasks))).toEqual([['合集', 'a1', 'a2'], 'b1'])
+  })
 })

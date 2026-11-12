@@ -4,9 +4,9 @@ import type { Messages } from '../types'
 export default {
   startTitle: 'Se connecter à Bilibili',
   startDesc:
-    'À utiliser pour se connecter quand l’application ne l’est pas. Par défaut, importe la connexion depuis le navigateur de l’utilisateur : dans l’ordre Chrome, autres navigateurs basés sur Chrome, Opera, Firefox, Safari, en prenant d’abord ceux qui sont lisibles directement ; les cookies ne sont enregistrés que dans l’application et ne figurent pas dans le résultat. ' +
+    'Permet de se connecter à Bilibili. Par défaut, importe la connexion depuis le navigateur de l’utilisateur : dans l’ordre Chrome, autres navigateurs basés sur Chrome, Opera, Firefox, Safari, en prenant d’abord ceux qui sont lisibles directement ; les cookies ne sont enregistrés que dans l’application et ne figurent pas dans le résultat. ' +
     'Si l’import échoue, suivez le next renvoyé : avec next=try_qr, prévenez l’utilisateur puis utilisez method=qr pour afficher la fenêtre de QR code, et attendez la fin de la connexion avec get_login_status et wait_seconds. ' +
-    'Si l’application est déjà connectée, rien ne se passe ; pour changer de compte, l’utilisateur doit le faire dans l’application. S’il faut fermer le navigateur, l’application le demande elle-même à l’utilisateur dans une fenêtre ; aucun paramètre ici ne permet de le fermer directement.',
+    'Dans le mode par défaut, si le compte actif est déjà connecté, l’outil renvoie son état immédiatement. S’il faut fermer le navigateur, l’application le demande elle-même à l’utilisateur dans une fenêtre ; aucun paramètre ici ne permet de le fermer directement.',
   startMethod: 'browser importer depuis un navigateur (par défaut) ; qr afficher une fenêtre de connexion pour que l’utilisateur scanne un QR code',
   startSource:
     'Navigateur à utiliser, comme chrome, edge, opera, firefox, safari, ou un id de profil listé par get_login_status. Choisi automatiquement s’il n’est pas fourni',
@@ -25,8 +25,7 @@ export default {
     'Le navigateur est en cours d’exécution. Vous pouvez demander à l’utilisateur de le quitter complètement (y compris les processus en arrière-plan) puis réessayer, ou passer au QR code',
   hintAppBound:
     'Ce navigateur protège les informations de connexion par un chiffrement lié à l’application, elles sont illisibles ; passez au QR code',
-  hintBlocked:
-    'Pas l’autorisation de lire les données de ce navigateur. Sur macOS, il faut accorder à {appName} l’« Accès complet au disque » dans Réglages Système puis redémarrer l’application ; sur les autres systèmes, vérifiez les autorisations du dossier. Vous pouvez aussi passer au QR code',
+  hintBlocked: 'Sous macOS, choisissez le dossier du navigateur dans la fenêtre de connexion de {appName}. Sur les autres systèmes, vérifiez les permissions du dossier. Vous pouvez aussi vous connecter par code QR.',
   hintNoLogin:
     'Le navigateur n’est pas connecté à Bilibili. Si l’utilisateur vient de s’y connecter, attendez une trentaine de secondes avant de réessayer (le navigateur n’enregistre pas immédiatement), ou passez au QR code',
   hintExpired:

@@ -19,6 +19,7 @@ import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark
 import { removeQuietly, removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
 import { placeSidecars, prepareExtras } from './extras'
+import type { accounts as accountRegistry } from '../auth/accounts'
 import { fetchFile } from './fetchFile'
 import { uniquePath } from './filename'
 import { mux, type OutFormat } from './mux'
@@ -146,7 +147,8 @@ export class DownloadManager extends EventEmitter {
   constructor(
     private tmpRoot: string,
     private stateFile: string,
-    private settings: () => Settings
+    private settings: () => Settings,
+    private accounts?: Pick<typeof accountRegistry, 'run' | 'status' | 'partition'>
   ) {
     super()
     // 重启后不自动开跑，未完成的任务一律改为暂停，由用户点“全部继续”
@@ -160,7 +162,8 @@ export class DownloadManager extends EventEmitter {
           speed: 0,
           retryAt: undefined,
           processing: undefined,
-          status: RUNNING.has(t.status) || t.status === 'queued' || t.status === 'waitingAuth' ? 'paused' : t.status
+          status: RUNNING.has(t.status) || t.status === 'queued' || ((!this.accounts || t.accountMid === undefined) && t.status === 'waitingAuth')
+            ? 'paused' : t.status
         }
         // 手动去水印做到一半退出了：原视频没动过，删掉半成品
         if (t.processing?.manual) {
@@ -174,6 +177,29 @@ export class DownloadManager extends EventEmitter {
 
   list(): TaskInfo[] {
     return this.tasks
+  }
+
+  assignLegacy(mid: number): void {
+    for (const task of this.tasks) {
+      if (task.accountMid === undefined && task.status !== 'done') this.patch(task, { accountMid: mid })
+    }
+  }
+
+  accountChanged(mid: number, status: 'ready' | 'unchecked' | 'expired' | 'removed'): void {
+    for (const task of this.tasks) {
+      if (task.accountMid !== mid) continue
+      if (status === 'ready' && task.status === 'waitingAuth') {
+        this.patch(task, { status: 'queued' })
+      } else if (status === 'removed' || status === 'expired') {
+        const running = status === 'removed' && RUNNING.has(task.status)
+        if (running || task.status === 'queued' || task.retryAt) {
+          this.clearRetry(task)
+          this.patch(task, { status: 'waitingAuth', speed: 0 })
+          if (running) this.running.get(task.id)?.abort()
+        }
+      }
+    }
+    this.schedule()
   }
 
   /** 退出时会被打断的任务数：运行中、排队、等待登录（之后会变成暂停），以及正在手动去水印的 */
@@ -204,7 +230,7 @@ export class DownloadManager extends EventEmitter {
     const now = Math.floor(Date.now() / 1000)
     const result: EnqueueResult = { created: [], skipped: [] }
     for (const item of req.items) {
-      const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
+      const dup = this.tasks.find((t) => t.item.key === item.key && t.accountMid === req.accountMid && t.status !== 'done')
       if (dup) {
         result.skipped.push({ key: item.key, taskId: dup.id })
         continue
@@ -229,6 +255,7 @@ export class DownloadManager extends EventEmitter {
         title: item.title,
         groupTitle: req.title,
         item,
+        accountMid: req.accountMid,
         options: normalizeOptions(req.options),
         relBase: renderTemplate(template, nameValues),
         template,
@@ -392,7 +419,12 @@ export class DownloadManager extends EventEmitter {
       for (const t of this.tasks) {
         if (this.running.size >= limit) break
         // 暂停后立刻继续时，上一次 run 可能还卡在取流里没结束，等它结算后再启动
-        if (t.status === 'queued' && !this.running.has(t.id)) void this.run(t)
+        if (t.status !== 'queued' || this.running.has(t.id)) continue
+        if (this.accounts && (t.accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(t.accountMid)))) {
+          this.patch(t, { status: 'waitingAuth', speed: 0 })
+          continue
+        }
+        void this.run(t)
       }
     }
     this.emitActive()
@@ -580,9 +612,16 @@ export class DownloadManager extends EventEmitter {
     const check = (): void => {
       if (ac.signal.aborted) throw new AbortError()
     }
+    const mid = t.accountMid
+    let partition: string | undefined
+    const withAccount = <T>(fn: () => Promise<T>): Promise<T> => {
+      if (!this.accounts) return fn()
+      partition = mid === undefined ? undefined : this.accounts.partition(mid)
+      return this.accounts.run(mid, fn)
+    }
     try {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0, watermark: undefined })
-      const plan = await planStreams(t, this.settings().cdn)
+      const plan = await withAccount(() => planStreams(t, this.settings().cdn))
       check()
       this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel, videoQn: plan.video?.id })
       mkdirSync(tmp, { recursive: true })
@@ -624,7 +663,11 @@ export class DownloadManager extends EventEmitter {
 
       check()
       this.patch(t, { status: 'extras', speed: 0 })
-      const extras = await prepareExtras(t, tmp, this.settings())
+      const audioOnly = t.options.output === 'audio' || t.item.kind === 'audio'
+      const needsAuth = !audioOnly && (t.options.subtitle || t.options.embedSubtitle || t.options.chapters)
+      const extras = await (needsAuth
+        ? withAccount(() => prepareExtras(t, tmp, this.settings()))
+        : prepareExtras(t, tmp, this.settings()))
 
       // 去水印：在合并前单独处理视频流，处理好的文件也放在临时目录，暂停后继续可以直接用
       let video = plan.video ? join(tmp, 'video.m4s') : undefined
@@ -724,8 +767,10 @@ export class DownloadManager extends EventEmitter {
       if (ac.signal.aborted) {
         // 暂停/取消：状态已由调用方设置
       } else if (e instanceof AuthExpiredError) {
-        this.authBlocked = true
-        this.patch(t, { status: 'waitingAuth', speed: 0 })
+        if (!this.accounts) this.authBlocked = true
+        const refreshed = this.accounts && mid !== undefined
+          && this.accounts.partition(mid) !== partition && this.accounts.status(mid) === 'ready'
+        this.patch(t, { status: refreshed ? 'queued' : 'waitingAuth', speed: 0 })
       } else if (e instanceof UnsupportedError) {
         this.batch.failed++
         this.patch(t, { status: 'unsupported', error: message, speed: 0 })

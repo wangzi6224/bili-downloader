@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState, ParseResult, Settings, SourceDetails, SourceRef } from '@shared/types'
-import { api, openSource, parseBatch, parseLink, updateAuth, updateSettings, useStore } from './store'
+import { api, openSource, parseBatch, parseLink, reopenParseRecord, updateAccounts, updateAuth, updateSettings, useStore } from './store'
 
 // store 在导入时读取 window.api，只在加载模块期间模拟 window。
 const fakeApi = vi.hoisted(() => {
@@ -100,6 +100,61 @@ describe('打开来源', () => {
   })
   const subscription: SourceRef = { type: 'subscription', id: 'legacy' }
   const account: SourceRef = { type: 'account', mid: 7, target: { type: 'pgc', seasonId: 1 } }
+
+  it('切号再切回时丢弃第一次解析，新的解析绑定当前账号', async () => {
+    updateAccounts({ activeMid: 7, accounts: [], legacyCount: 0 })
+    const pending = deferred<ParseResult>()
+    fakeApi.parse.mockReturnValueOnce(pending.promise)
+    const oldRequest = parseLink('old')
+    updateAccounts({ activeMid: 8, accounts: [], legacyCount: 0 })
+    updateAccounts({ activeMid: 7, accounts: [], legacyCount: 0 })
+    fakeApi.parse.mockResolvedValueOnce(result({ title: '新解析' }))
+    await parseLink('new')
+    pending.resolve(result({ title: '旧解析' }))
+    await oldRequest
+    expect(useStore.getState()).toMatchObject({ parse: { title: '新解析' }, sourceAccountMid: 7, parsing: false })
+  })
+
+  it('历史详情绑定原账号，侧栏账号刷新不关闭详情，原账号退出才关闭', async () => {
+    const active = loggedIn(7)
+    const owner = loggedIn(8)
+    if (!active.loggedIn || !owner.loggedIn) throw new Error('测试需要两个登录账号')
+    const snapshot = {
+      activeMid: 7,
+      accounts: [{ ...active.user, status: 'ready' as const }, { ...owner.user, status: 'ready' as const }],
+      legacyCount: 0
+    }
+    useStore.setState({ view: 'history', auth: active, accounts: snapshot })
+    const details = result({ title: '账号 8 的稍后再看' })
+    fakeApi.parse.mockResolvedValue(details)
+    await reopenParseRecord({ input: 'watchlater', accountMid: 8 })
+    expect(fakeApi.parse).toHaveBeenCalledWith('watchlater', 8)
+    expect(useStore.getState()).toMatchObject({ view: 'downloads', parse: details, sourceAccountMid: 8, auth: active })
+    updateAuth(active)
+    expect(useStore.getState().parse).toBe(details)
+    updateAccounts({ ...snapshot, accounts: [snapshot.accounts[0], { ...owner.user, status: 'removed' }] })
+    expect(useStore.getState()).toMatchObject({ parse: null, sourceAccountMid: undefined })
+  })
+
+  it('旧历史没有账号时仍用侧栏当前账号', async () => {
+    updateAccounts({ activeMid: 7, accounts: [], legacyCount: 0 })
+    fakeApi.parse.mockResolvedValue(result())
+    await reopenParseRecord({ input: 'BV1' })
+    expect(fakeApi.parse).toHaveBeenCalledWith('BV1')
+    expect(useStore.getState().sourceAccountMid).toBe(7)
+  })
+
+  it('先发起的历史重开晚于新解析返回时，不会覆盖新结果和所属账号', async () => {
+    updateAccounts({ activeMid: 7, accounts: [], legacyCount: 0 })
+    const pending = deferred<ParseResult>()
+    fakeApi.parse.mockReturnValueOnce(pending.promise)
+    const opening = reopenParseRecord({ input: 'watchlater', accountMid: 8 })
+    fakeApi.parse.mockResolvedValueOnce(result({ title: '当前账号的新结果' }))
+    await parseLink('BV1')
+    pending.resolve(result({ title: '旧账号的历史结果' }))
+    await opening
+    expect(useStore.getState()).toMatchObject({ parse: { title: '当前账号的新结果' }, sourceAccountMid: 7, parsing: false })
+  })
 
   it('点击旧订阅后直接打开明细，单集也不默认勾选', async () => {
     useStore.setState({ view: 'subs' })

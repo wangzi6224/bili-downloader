@@ -6,6 +6,7 @@ import { checkedAgo, thumb } from '../format'
 import { useT } from '../i18n'
 import { api, openSource, useStore } from '../store'
 import { useLazyNextPage } from '../useLazyNextPage'
+import { AccountOrigin } from './AccountOrigin'
 import { Banner, Button, EmptyState, IconButton, Input, PageHeader, Segmented, Select, STROKE, Switch } from './ui'
 
 /** 检查间隔的选项。文案在调用时取，切换语言后跟着变 */
@@ -27,7 +28,7 @@ export function SubscriptionsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title={t('subs.title')} subtitle={tab === 'local' && t('subs.subtitle')} />
+      <PageHeader title={t('subs.title')} subtitle={tab === 'local' ? t('subs.subtitle') : auth?.loggedIn && auth.user.uname} />
       <div className="px-8 pb-4">
         <Segmented value={tab} onChange={setTab} options={[
           { value: 'local', label: t('subs.local') },
@@ -221,6 +222,7 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
                       : <ChevronRight size={13} className="shrink-0 text-subtle" />}
                   </button>
                   <div className="mt-0.5 truncate text-xs text-muted">
+                    <AccountOrigin mid={s.accountMid} />{' · '}
                     {checkedAgo(s.lastCheck, Date.now())}
                     {s.lastNew ? ` · ${t('subs.lastNew', { count: s.lastNew })}` : ''}
                     {s.lastError && <span className="text-red-600 dark:text-red-400"> · {s.lastError}</span>}

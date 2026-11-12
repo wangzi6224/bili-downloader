@@ -50,6 +50,7 @@ import {
   type Tab
 } from '../taskStatus'
 import { Logo } from './Logo'
+import { AccountOrigin } from './AccountOrigin'
 import { WatermarkDialog } from './WatermarkDialog'
 import {
   Badge,
@@ -172,6 +173,7 @@ function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; n
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={task.relBase}>
           {task.qualityLabel && <Badge>{task.qualityLabel}</Badge>}
           {task.watermark?.applied && <Badge>{t('tasks.watermarked')}</Badge>}
+          <AccountOrigin mid={task.accountMid} />
           {!nested && task.groupTitle !== task.title && <span className="truncate">{task.groupTitle}</span>}
         </div>
         {(active || task.status === 'paused' || retrying || manual) && (task.total > 0 || manual) && (
@@ -308,6 +310,7 @@ function GroupRow({
             {failedCount > 0
               ? t('tasks.groupStatsFailed', { count: tasks.length, done: done.length, failed: failedCount })
               : t('tasks.groupStats', { count: tasks.length, done: done.length })}
+            {' · '}<AccountOrigin mid={first.accountMid} />
           </div>
           {status !== 'done' && <Progress value={pct} muted={status !== 'downloading'} className="mt-2" />}
         </div>

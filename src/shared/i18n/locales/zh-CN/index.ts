@@ -1,5 +1,6 @@
 // 简体中文是基准语言：新增文案先加在这里，再补其他语言（缺了 TypeScript 会报错）
 import common from './common'
+import accounts from './accounts'
 import login from './login'
 import settings from './settings'
 import advanced from './advanced'
@@ -31,6 +32,7 @@ import bili from './bili'
 import download from './download'
 import wm from './wm'
 import mcp from './mcp'
+import mcpAccounts from './mcpAccounts'
 import mcpTools from './mcpTools'
 import mcpLookup from './mcpLookup'
 import mcpLogin from './mcpLogin'
@@ -39,6 +41,7 @@ import mcpWm from './mcpWm'
 
 export default {
   common,
+  accounts,
   login,
   settings,
   advanced,
@@ -70,6 +73,7 @@ export default {
   download,
   wm,
   mcp,
+  mcpAccounts,
   mcpTools,
   mcpLookup,
   mcpLogin,

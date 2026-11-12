@@ -20,6 +20,7 @@ export default {
   parseCount: { one: 'Parse {count} link', other: 'Parse {count} links' },
   placeholder: 'Paste a link to a video, collection, anime, course, favorites folder or uploader',
   pasteAndParse: 'Paste from clipboard and parse',
+  clearLink: 'Clear link',
   parsing: 'Parsing',
   parse: 'Parse',
   batchButton: 'Batch parse: paste multiple lines of links at once',

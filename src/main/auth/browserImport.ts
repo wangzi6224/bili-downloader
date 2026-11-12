@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto'
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { t } from '@shared/i18n'
 import type { AuthState, BrowserProfile } from '@shared/types'
@@ -85,6 +85,15 @@ const SAFARI_FILES: string[] = IS_MAC
     ]
   : []
 
+/** Native folder selection may grant access to the chosen browser data directory on macOS. */
+export const macBrowserFolders = IS_MAC
+  ? [
+      ...CHROMIUM.map(({ key, root }) => ({ key, path: root })),
+      ...FIREFOX_ROOTS.map((path) => ({ key: 'firefox', path })),
+      ...SAFARI_FILES.map((file) => ({ key: 'safari', path: dirname(file) }))
+    ]
+  : []
+
 // ---------- Chromium 解密（导出供单元测试） ----------
 
 /** 加密密钥由密码经 PBKDF2 得到：macOS 迭代 1003 次，Linux 1 次 */
@@ -146,7 +155,11 @@ function withDbCopy<T>(file: string, fn: (db: DatabaseSync) => T): T {
     const copy = join(dir, 'db.sqlite')
     copyFileSync(file, copy)
     for (const suffix of ['-wal', '-journal']) {
-      if (existsSync(file + suffix)) copyFileSync(file + suffix, copy + suffix)
+      try {
+        copyFileSync(file + suffix, copy + suffix)
+      } catch (e) {
+        if (!isMissing(e)) throw e
+      }
     }
     const db = new DatabaseSync(copy)
     try {
@@ -168,6 +181,7 @@ interface Found {
 }
 
 const isPermissionError = (e: unknown): boolean => ['EPERM', 'EACCES'].includes((e as { code?: string }).code ?? '')
+const isMissing = (e: unknown): boolean => ['ENOENT', 'ENOTDIR'].includes((e as { code?: string }).code ?? '')
 /** Windows 上 Chrome 系浏览器开着时独占 Cookie 数据库，连复制都会报 EBUSY */
 const isLockedError = (e: unknown): boolean => (e as { code?: string }).code === 'EBUSY'
 
@@ -180,16 +194,6 @@ function blockedEntry(key: string, browser: string): Found {
   }
 }
 
-function chromiumProfiles(b: ChromiumBrowser): Found[] {
-  if (!existsSync(b.root)) return []
-  try {
-    return readChromiumProfiles(b, b.root)
-  } catch (e) {
-    if (isPermissionError(e)) return [blockedEntry(b.key, b.name)]
-    throw e
-  }
-}
-
 interface LocalState {
   profile?: { info_cache?: Record<string, { name?: string }>; last_used?: string }
   os_crypt?: { app_bound_encrypted_key?: string }
@@ -197,24 +201,30 @@ interface LocalState {
 
 function readLocalState(root: string): LocalState {
   try {
-    return JSON.parse(readFileSync(join(root, 'Local State'), 'utf8')) as LocalState
+    return (JSON.parse(readFileSync(join(root, 'Local State'), 'utf8')) as LocalState | null) ?? {}
   } catch {
     // 没有 Local State 就用目录名
     return {}
   }
 }
 
-function readChromiumProfiles(b: ChromiumBrowser, root: string): Found[] {
+function chromiumProfiles(b: ChromiumBrowser): Found[] {
+  const { root } = b
+  let dirs: string[]
+  try {
+    dirs = readdirSync(root).filter((dir) => dir === 'Default' || dir.startsWith('Profile '))
+  } catch (e) {
+    return isPermissionError(e) ? [blockedEntry(b.key, b.name)] : []
+  }
   const state = readLocalState(root)
   const names = state.profile?.info_cache ?? {}
-  const dirs = readdirSync(root).filter((dir) => dir === 'Default' || dir.startsWith('Profile '))
   const out: Found[] = []
   for (const dir of b.flat ? [...dirs, ''] : dirs) {
-    const cookieFile = [join(root, dir, 'Cookies'), join(root, dir, 'Network/Cookies')].find(existsSync)
-    if (!cookieFile) continue
     const name = dir || 'Default'
     // 升级后根目录可能还留着旧文件，Default 里的才是在用的
     if (out.some((f) => f.profile.id === `${b.key}::${name}`)) continue
+    const cookieFile = [join(root, dir, 'Network/Cookies'), join(root, dir, 'Cookies')].find(cookieFileExists)
+    if (!cookieFile) continue
     out.push({
       browser: b,
       cookieFile,
@@ -232,17 +242,24 @@ function readChromiumProfiles(b: ChromiumBrowser, root: string): Found[] {
   return out
 }
 
+function cookieFileExists(file: string): boolean {
+  try {
+    return statSync(file).isFile()
+  } catch (e) {
+    // 保留受权限保护的配置档，让后续读取显示授权提示。
+    return isPermissionError(e)
+  }
+}
+
 function firefoxProfiles(root: string): Found[] {
-  if (!existsSync(root)) return []
   let dirs: string[]
   try {
     dirs = readdirSync(root)
   } catch (e) {
-    if (isPermissionError(e)) return [blockedEntry('firefox', 'Firefox')]
-    throw e
+    return isPermissionError(e) ? [blockedEntry('firefox', 'Firefox')] : []
   }
   return dirs
-    .filter((dir) => existsSync(join(root, dir, 'cookies.sqlite')))
+    .filter((dir) => cookieFileExists(join(root, dir, 'cookies.sqlite')))
     .map((dir) => ({
       browser: 'firefox' as const,
       cookieFile: join(root, dir, 'cookies.sqlite'),
@@ -255,27 +272,44 @@ function firefoxProfiles(root: string): Found[] {
     }))
 }
 
-/** 系统的隐私保护拦下时 existsSync 只会返回 false，看着就像没装 Safari，要看具体的错误码 */
 function safariProfiles(): Found[] {
   for (const file of SAFARI_FILES) {
     try {
-      statSync(file)
-      return [
-        {
-          browser: 'safari',
-          cookieFile: file,
-          profile: { id: 'safari::Default', browser: 'Safari', profile: 'Default', hasBiliLogin: false }
-        }
-      ]
+      if (!statSync(file).isFile()) return []
     } catch (e) {
-      if (isPermissionError(e)) return [blockedEntry('safari', 'Safari')]
+      // 当前文件缺失时才查旧路径，旧文件可能存着另一个账号。
+      if (isMissing(e)) continue
+      return isPermissionError(e) ? [{ ...blockedEntry('safari', 'Safari'), cookieFile: file }] : []
     }
+    return [{
+      browser: 'safari',
+      cookieFile: file,
+      profile: { id: 'safari::Default', browser: 'Safari', profile: 'Default', hasBiliLogin: false }
+    }]
   }
   return []
 }
 
-function findAll(): Found[] {
-  return [...CHROMIUM.flatMap(chromiumProfiles), ...FIREFOX_ROOTS.flatMap(firefoxProfiles), ...safariProfiles()]
+export function preferredMacBrowserFolder(key: string) {
+  const safari = key === 'safari' ? safariProfiles()[0] : undefined
+  return safari ? { key, path: dirname(safari.cookieFile) } : macBrowserFolders.find((folder) => folder.key === key)
+}
+
+function findProfiles(browserKey?: string): Found[] {
+  const chromium = browserKey === undefined ? CHROMIUM : CHROMIUM.filter((browser) => browser.key === browserKey)
+  return [
+    ...chromium.flatMap(chromiumProfiles),
+    ...(browserKey === undefined || browserKey === 'firefox' ? FIREFOX_ROOTS.flatMap(firefoxProfiles) : []),
+    ...(browserKey === undefined || browserKey === 'safari' ? safariProfiles() : [])
+  ]
+}
+
+function findProfile(id: string): Found | undefined {
+  if (typeof id !== 'string' || !id.includes('::')) return undefined
+  const key = id.split('::', 1)[0]
+  const profiles = findProfiles(key)
+  // 已列出的配置档可能随整个目录失去访问权限。
+  return profiles.find((f) => f.profile.id === id) ?? profiles.find((f) => f.profile.id === `${key}::` && f.profile.blocked)
 }
 
 interface LoginProbe {
@@ -306,8 +340,8 @@ function probeLogin(f: Found): LoginProbe {
   })
 }
 
-export function listBrowserProfiles(): BrowserProfile[] {
-  return findAll().map((f) => {
+export function listBrowserProfiles(browserKey?: string): BrowserProfile[] {
+  return findProfiles(browserKey).map((f) => {
     if (f.profile.blocked) return f.profile
     try {
       const probe = probeLogin(f)
@@ -472,7 +506,7 @@ async function readCookies(f: Found): Promise<PlainCookie[]> {
 
 /** 配置档的 Cookie 文件是否还被浏览器锁着；关闭浏览器时用它判断是否真的关干净了 */
 export function isProfileLocked(id: string): boolean {
-  const f = findAll().find((x) => x.profile.id === id)
+  const f = findProfile(id)
   if (!f || f.profile.blocked) return false
   try {
     withDbCopy(f.cookieFile, () => undefined)
@@ -484,9 +518,9 @@ export function isProfileLocked(id: string): boolean {
 
 /** shouldApply：替换登录前最后再确认一次，读浏览器要等钥匙串授权，等待期间用户可能已经用别的方式登录了 */
 export async function importFromBrowser(id: string, opts: { shouldApply?: () => boolean } = {}): Promise<AuthState> {
-  const f = findAll().find((x) => x.profile.id === id)
+  const f = findProfile(id)
   if (!f) throw new ImportError('not_found', t('authErr.profileNotFound'))
-  if (f.profile.blocked) throw new ImportError('blocked', t('authErr.profileNotFound'))
+  if (f.profile.blocked) throw new ImportError('blocked', t('authErr.noPermission', { browser: f.profile.browser }))
   let cookies: PlainCookie[]
   try {
     cookies = await readCookies(f)

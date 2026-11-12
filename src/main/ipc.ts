@@ -4,6 +4,7 @@ import type {
   AccountSourceCategory,
   CloseAction,
   EnqueueRequest,
+  LoginTarget,
   MediaItem,
   NewSubscription,
   PagedSource,
@@ -16,13 +17,16 @@ import type {
   WatermarkRegion
 } from '@shared/types'
 import { checkAuth, ensureLoggedIn, getAuthState, logout, requireLogin } from './auth/authGuard'
+import type { accounts } from './auth/accounts'
+import { activeRevision, activeScope, authScope, inAuthScope, isRetired, type AuthScope } from './auth/scope'
 import { importFromBrowser, listBrowserProfiles } from './auth/browserImport'
+import { chooseBrowserFolder } from './auth/browserFolder'
 import { importCookieText } from './auth/cookieImport'
-import { FULL_DISK_ACCESS_URL } from './auth/importError'
 import { openLoginWindow } from './auth/loginWindow'
 import { biliSession } from './auth/session'
 import { accountSourceInput, listAccountSources } from './bili/accountSources'
 import { audioStreamInfo } from './bili/audio'
+import { AuthExpiredError, LoginRequiredError } from './bili/http'
 import { expandLazy, loadPage, myFavFolders } from './bili/lists'
 import { getPlayInfo, streamInfoFromPlay } from './bili/playurl'
 import { resolveBatch, resolveInput } from './bili/resolve'
@@ -52,8 +56,6 @@ import { parseInput } from '@shared/parseUrl'
 import { getSettings, updateSettings } from './settings'
 import { getMainWindow, hideMainWindow, send } from './windows'
 
-const progress = (done: number, total: number, title?: string): void => send('parse:progress', { done, total, title })
-
 function requireAccount(mid: number): void {
   const state = getAuthState()
   if (!state.loggedIn || state.user.mid !== mid) throw new Error(t('subs.accountChanged'))
@@ -70,7 +72,7 @@ function subscriptionAccount(sub: Subscription): number | undefined {
 }
 
 const FAKE_SESSDATA = 'expired-for-testing'
-let stashedSessdata: Electron.Cookie | undefined
+let stashedSessdata: { scope: AuthScope; cookie: Electron.Cookie } | undefined
 
 async function setSessdata(value: string, expirationDate?: number): Promise<void> {
   await biliSession().cookies.set({
@@ -87,32 +89,42 @@ async function setSessdata(value: string, expirationDate?: number): Promise<void
 
 /** 开发调试：把 SESSDATA 换成无效值，模拟服务端判定登录过期；真实值先暂存起来 */
 export async function simulateExpiry(): Promise<void> {
-  const [real] = await biliSession().cookies.get({ domain: 'bilibili.com', name: 'SESSDATA' })
-  if (real && real.value !== FAKE_SESSDATA) stashedSessdata = real
-  await setSessdata(FAKE_SESSDATA, real?.expirationDate)
-  await checkAuth()
-  requireLogin()
+  const scope = authScope()
+  await inAuthScope(scope, async () => {
+    const [real] = await biliSession().cookies.get({ domain: 'bilibili.com', name: 'SESSDATA' })
+    if (real && real.value !== FAKE_SESSDATA) stashedSessdata = { scope, cookie: real }
+    await setSessdata(FAKE_SESSDATA, real?.expirationDate)
+    await checkAuth()
+    requireLogin()
+  })
 }
 
 /** 开发调试：恢复模拟过期前的真实 SESSDATA */
 export async function restoreSimulatedExpiry(): Promise<void> {
   if (!stashedSessdata) return
-  await setSessdata(stashedSessdata.value, stashedSessdata.expirationDate)
+  const { scope, cookie } = stashedSessdata
   stashedSessdata = undefined
-  await checkAuth()
+  if (isRetired(scope.partition)) return
+  await inAuthScope(scope, async () => {
+    await setSessdata(cookie.value, cookie.expirationDate)
+    await checkAuth()
+  })
 }
 
 /** 界面和 MCP 共用的解析入口：先确认已登录，解析后写入解析记录 */
 export async function parseAndRecord(input: string): Promise<ParseResult> {
   await ensureLoggedIn()
+  const auth = getAuthState()
   const result = { ...(await resolveInput(input)), input: input.trim() }
+  if (isRetired(authScope().partition)) throw new AuthExpiredError()
   recordParse({
     input: input.trim(),
     title: result.title,
     kind: result.kind,
     cover: result.cover,
     count: result.groups.reduce((n, g) => n + g.items.length, 0),
-    at: Date.now()
+    at: Date.now(),
+    accountMid: auth.loggedIn ? auth.user.mid : undefined
   })
   return result
 }
@@ -123,7 +135,7 @@ type Result = { ok: true; data: unknown } | { ok: false; error: string }
 function handle(channel: string, fn: (...args: never[]) => unknown): void {
   ipcMain.handle(channel, async (_e, ...args): Promise<Result> => {
     try {
-      return { ok: true, data: await fn(...(args as never[])) }
+      return { ok: true, data: await inAuthScope(activeScope(), () => fn(...(args as never[]))) }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -136,38 +148,73 @@ export interface IpcDeps {
   mcp: McpServer
   enqueue: (req: EnqueueRequest, beforeQueue?: () => void) => Promise<string | undefined>
   updater: Updater
+  accounts?: typeof accounts
 }
 
-export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): void {
+export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: IpcDeps): void {
   const getSubscription = (id: string): Subscription => {
     const sub = subs.list().find((item) => item.id === id)
     if (!sub) throw new Error(t('subs.sourceUnavailable'))
     return sub
   }
+  const verifyView = (): (() => void) => {
+    const revision = activeRevision()
+    return () => {
+      if (revision !== activeRevision() || isRetired(authScope().partition)) throw new Error(t('subs.accountChanged'))
+    }
+  }
+  const forAccount = <T>(mid: number | undefined, fn: () => Promise<T>): Promise<T> =>
+    accounts && mid !== undefined ? accounts.run(mid, fn, mid !== activeScope().mid) : fn()
   handle('auth:check', async () => checkAuth().catch(() => getAuthState()))
-  handle('auth:login', () => openLoginWindow())
+  handle('auth:accounts', () => accounts?.snapshot())
+  handle('auth:switchAccount', (mid: number) => accounts?.select(mid))
+  handle('auth:removeAccount', (mid: number) => accounts?.remove(mid))
+  handle('auth:assignLegacy', (mid: number) => accounts?.assignLegacy(mid))
+  handle('auth:login', (target?: LoginTarget) => accounts ? accounts.login(openLoginWindow, target) : openLoginWindow())
   handle('auth:listBrowsers', () => listBrowserProfiles())
-  handle('auth:import', (id: string) => importFromBrowser(id))
-  handle('auth:importCookie', (text: string) => importCookieText(text))
-  handle('auth:logout', logout)
+  handle('auth:chooseBrowserFolder', (id: string) => chooseBrowserFolder(id, getMainWindow()))
+  handle('auth:import', (id: string, target?: LoginTarget) =>
+    accounts ? accounts.login(() => importFromBrowser(id), target) : importFromBrowser(id))
+  handle('auth:importCookie', (text: string, target?: LoginTarget) =>
+    accounts ? accounts.login(() => importCookieText(text), target) : importCookieText(text))
+  handle('auth:logout', () => accounts ? accounts.logout() : logout())
   handle('auth:simulateExpiry', simulateExpiry)
 
-  handle('parse', parseAndRecord)
-  handle('parseMore', async (source: PagedSource, page: number) => {
+  handle('parse', async (input: string, mid?: number) => {
+    if (mid === undefined) return parseAndRecord(input)
+    const revision = activeRevision()
+    const verify = verifyView()
+    try {
+      if (!accounts) requireAccount(mid)
+      const result = await (accounts ? accounts.run(mid, () => parseAndRecord(input)) : parseAndRecord(input))
+      verify()
+      return result
+    } catch (e) {
+      if ((e instanceof AuthExpiredError || e instanceof LoginRequiredError) && revision === activeRevision()
+        && accounts?.snapshot().accounts.some((account) => account.mid === mid)) {
+        send('auth:required', { mode: 'reauth', mid, activate: false })
+      }
+      throw e
+    }
+  })
+  handle('parseMore', (source: PagedSource, page: number, mid?: number) => forAccount(mid, async () => {
     await ensureLoggedIn()
     return loadPage(source, page)
-  })
+  }))
   handle('parseBatch', async (inputs: string[]) => {
+    const revision = activeRevision()
     await ensureLoggedIn()
-    return resolveBatch(inputs, progress)
+    return resolveBatch(inputs, (done, total, title) => {
+      if (revision === activeRevision()) send('parse:progress', { done, total, title })
+    }, parseAndRecord)
   })
-  handle('streamInfo', async (item: MediaItem) => {
+  handle('streamInfo', (item: MediaItem, mid?: number) => forAccount(mid, async () => {
     if (item.kind === 'audio') return audioStreamInfo()
     // 列表里的视频还没有 cid，先查一次详情（只取第一个分P）
     const probe = item.lazy ? (await expandLazy([item]))[0] : item
     if (probe.unavailable) throw new Error(probe.unavailable)
     return streamInfoFromPlay(await getPlayInfo(probe, 127))
-  })
+  }))
   handle('myFavFolders', async () => {
     const s = await checkAuth().catch(() => getAuthState())
     if (!s.loggedIn) throw new Error(t('authErr.loginRequired'))
@@ -175,16 +222,25 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   })
 
   handle('sources:listAccount', async (mid: number, category: AccountSourceCategory, page: number) => {
+    const verify = verifyView()
     await ensureLoggedIn()
     requireAccount(mid)
     const result = await listAccountSources(mid, category, page)
+    verify()
     requireAccount(mid)
     return result
   })
   handle('sources:open', async (source: SourceRef): Promise<SourceDetails> => {
-    await ensureLoggedIn()
+    const verify = verifyView()
     if (source.type === 'subscription') {
       const sub = getSubscription(source.id)
+      if (accounts && sub.accountMid !== undefined) {
+        const accountMid = sub.accountMid
+        const result = await forAccount(accountMid, () => resolveInput(sub.input))
+        verify()
+        return { result, accountMid }
+      }
+      await ensureLoggedIn()
       const accountMid = subscriptionAccount(sub)
       if (accountMid !== undefined) requireAccount(accountMid)
       const result = await resolveInput(sub.input)
@@ -192,14 +248,22 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
       return { result, accountMid }
     }
     if (source.type === 'account') {
+      await ensureLoggedIn()
       requireAccount(source.mid)
       const result = await resolveInput(accountSourceInput(source.target))
+      verify()
       requireAccount(source.mid)
       return { result, accountMid: source.mid }
     }
     throw new Error(t('subs.sourceUnavailable'))
   })
   handle('sources:prepareItems', async (items: MediaItem[], accountMid?: number) => {
+    const verify = verifyView()
+    if (accounts) {
+      const prepared = await forAccount(accountMid, () => prepareEnqueueItems(items))
+      verify()
+      return { items: prepared.items, note: prepared.note }
+    }
     await ensureLoggedIn()
     if (accountMid !== undefined) requireAccount(accountMid)
     const prepared = await prepareEnqueueItems(items)
@@ -207,8 +271,27 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
     return { items: prepared.items, note: prepared.note }
   })
   handle('sources:subscribeDownload', async (source: SourceRef) => {
-    await ensureLoggedIn()
     const subscription = source.type === 'subscription' ? getSubscription(source.id) : undefined
+    if (accounts) {
+      const verify = verifyView()
+      if (source.type === 'account') requireAccount(source.mid)
+      const run = async () => {
+        await ensureLoggedIn()
+        const accountMid = currentAccount()
+        const input = source.type === 'account' ? accountSourceInput(source.target) : subscription?.input
+        if (!input) throw new Error(t('subs.sourceUnavailable'))
+        const settings = getSettings()
+        return subs.downloadSource({
+          input, subscription, accountMid, defaults: normalizeOptions(settings.defaults, settings.defaultQn),
+          verifyAccount: () => {
+            verify()
+            requireAccount(accountMid)
+          }
+        })
+      }
+      return forAccount(subscription?.accountMid, run)
+    }
+    await ensureLoggedIn()
     const boundMid = subscription ? subscriptionAccount(subscription) : undefined
     const mid = source.type === 'account' ? source.mid : boundMid
     const verifyAccount = (): void => {
@@ -224,13 +307,25 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
     })
   })
 
-  handle('history:downloadedKeys', () => downloadedKeys())
+  handle('history:downloadedKeys', (mid?: number) => mid === undefined ? downloadedKeys() : downloadedKeys(mid))
   handle('history:clearDownloads', () => clearDownloads())
   handle('history:parses', () => parseRecords())
-  handle('history:removeParse', (input: string) => removeParse(input))
+  handle('history:removeParse', (input: string, accountMid?: number | null) =>
+    accountMid === undefined ? removeParse(input) : removeParse(input, accountMid))
   handle('history:clearParses', () => clearParses())
 
   handle('dl:enqueue', (req: EnqueueRequest, accountMid?: number) => {
+    if (accounts) {
+      const verify = verifyView()
+      return forAccount(accountMid, async () => {
+        await ensureLoggedIn()
+        const mid = currentAccount()
+        return enqueue({ ...req, accountMid: mid }, () => {
+          verify()
+          requireAccount(mid)
+        })
+      })
+    }
     if (accountMid === undefined) return enqueue(req)
     requireAccount(accountMid)
     return enqueue(req, () => requireAccount(accountMid))
@@ -294,7 +389,13 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   })
 
   handle('subs:list', () => subs.list())
-  handle('subs:add', async (req: NewSubscription) => {
+  handle('subs:add', async (req: NewSubscription, accountMid?: number) => {
+    if (accounts) return forAccount(accountMid, async () => {
+      const verify = verifyView()
+      await ensureLoggedIn()
+      verify()
+      return subs.add(req, currentAccount())
+    })
     if (parseInput(req.input)?.type !== 'watchlater') return subs.add(req)
     await ensureLoggedIn()
     return subs.add(req, currentAccount())
@@ -341,5 +442,4 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater }: IpcDeps): 
   handle('clipboard:read', () => clipboard.readText())
   handle('clipboard:write', (text: string) => clipboard.writeText(text))
   handle('shell:showInFolder', (path: string) => shell.showItemInFolder(path))
-  handle('shell:openFullDiskAccess', () => shell.openExternal(FULL_DISK_ACCESS_URL))
 }

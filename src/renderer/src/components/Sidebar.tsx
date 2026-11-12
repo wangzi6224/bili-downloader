@@ -1,4 +1,5 @@
 import {
+  ChevronUp,
   CircleAlert,
   CircleArrowUp,
   Download,
@@ -6,7 +7,6 @@ import {
   KeyRound,
   Loader2,
   LogIn,
-  LogOut,
   RotateCw,
   Rss,
   Settings,
@@ -15,11 +15,12 @@ import {
 import { t } from '@shared/i18n'
 import { thumb } from '../format'
 import { useT } from '../i18n'
-import { api, useStore, type View } from '../store'
+import { openLogin, useStore, type View } from '../store'
 import { updateEntry, type UpdateIcon } from '../viewLogic'
 import { Logo } from './Logo'
+import { QuickAccounts, useAccountActions } from './AccountControls'
 import { ACTIVE } from './TaskList'
-import { Badge, IconButton, STROKE } from './ui'
+import { Badge, Dropdown, STROKE } from './ui'
 
 // 文案在渲染时取，切换语言后跟着变
 const nav = (): { view: View; label: string; icon: LucideIcon }[] => [
@@ -76,10 +77,22 @@ function UpdateEntry() {
   )
 }
 
+function AccountChevron({ open }: { open: boolean }) {
+  return (
+    <ChevronUp
+      aria-hidden="true"
+      size={16}
+      strokeWidth={STROKE}
+      className={`shrink-0 text-muted transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+    />
+  )
+}
+
 function Account() {
   const t = useT()
   const auth = useStore((s) => s.auth)
-  const set = useStore((s) => s.set)
+  const hasAccounts = useStore((s) => s.accounts?.accounts.some((account) => account.status !== 'removed'))
+  const actions = useAccountActions()
 
   if (auth === null) {
     return (
@@ -90,11 +103,12 @@ function Account() {
     )
   }
 
-  if (!auth.loggedIn) {
-    return (
+  const card = (onClick: () => void, open?: boolean) => {
+    if (!auth.loggedIn) return (
       <button
         type="button"
-        onClick={() => set({ loginOpen: true })}
+        onClick={onClick}
+        aria-expanded={open}
         className="flex w-full items-center gap-2.5 rounded-xl border border-line-strong bg-elevated/70 px-2.5 py-2 text-left shadow-xs hover:bg-elevated"
       >
         <div
@@ -106,37 +120,41 @@ function Account() {
           <div className="text-[13px] font-medium">{auth.expired ? t('sidebar.loginExpired') : t('sidebar.login')}</div>
           <div className="truncate text-[11px] text-muted">{auth.expired ? t('sidebar.reloginHint') : t('sidebar.loginHint')}</div>
         </div>
+        {open !== undefined && <AccountChevron open={open} />}
+      </button>
+    )
+
+    return (
+      <button
+        type="button"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover focus-visible:bg-hover aria-expanded:bg-hover"
+        aria-expanded={open}
+        aria-label={`${t('accounts.manage')} · ${auth.user.uname}`}
+        title={t('accounts.manage')}
+        onClick={onClick}
+      >
+        <img src={thumb(auth.user.face, 96)} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full ring-1 ring-black/5" alt="" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium" title={auth.user.uname}>{auth.user.uname}</span>
+          {auth.user.vipActive ? (
+            <Badge tone="brand" className="mt-0.5">{auth.user.vipLabel}</Badge>
+          ) : (
+            <span className="block text-[11px] text-muted">{t('sidebar.normalUser')}</span>
+          )}
+        </span>
+        <AccountChevron open={open === true} />
       </button>
     )
   }
 
-  const face = thumb(auth.user.face, 96)
+  if (!auth.loggedIn && !hasAccounts) return card(() => openLogin())
   return (
-    <div className="flex items-center gap-2.5 px-2 py-1.5">
-      <img src={face} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full ring-1 ring-black/5" alt="" />
-      <div className="min-w-0 flex-1">
-        {/* 名字太长时截成省略号，悬停看全名 */}
-        <div className="truncate text-[13px] font-medium" title={auth.user.uname}>
-          {auth.user.uname}
-        </div>
-        {auth.user.vipActive ? (
-          <Badge tone="brand" className="mt-0.5">
-            {auth.user.vipLabel}
-          </Badge>
-        ) : (
-          <div className="text-[11px] text-muted">{t('sidebar.normalUser')}</div>
-        )}
-      </div>
-      <IconButton
-        icon={LogOut}
-        label={t('sidebar.logout')}
-        size="sm"
-        variant="danger"
-        onClick={async () => {
-          if (confirm(t('sidebar.logoutConfirm'))) set({ auth: await api.auth.logout() })
-        }}
-      />
-    </div>
+    <>
+      <Dropdown side="top" align="start" button={({ open, toggle }) => card(toggle, open)}>
+        {(close) => <QuickAccounts close={close} actions={actions} />}
+      </Dropdown>
+      {actions.error && <p role="alert" className="px-2 text-xs text-red-600 dark:text-red-400">{actions.error}</p>}
+    </>
   )
 }
 

@@ -6,7 +6,8 @@ import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
 import { joinList, t, translate, type Key } from '@shared/i18n'
 import { normalizeOptions } from '@shared/options'
-import type { AuthState, MediaItem, ParseResult, Settings, TaskInfo } from '@shared/types'
+import type { AuthState, HistoryEntry, MediaItem, ParseRecord, ParseResult, Settings, TaskInfo } from '@shared/types'
+import { AuthExpiredError } from '../bili/http'
 import { lazyVideo } from '../bili/lists'
 import type { BiliLookup } from '../bili/lookup'
 import { toDiskError } from '../download/errors'
@@ -26,6 +27,10 @@ import {
 } from './args'
 import { BatchManager, type Batch, type ReportPart, type TaskQueue } from './batches'
 import {
+  accountDefinitions, accountFilter, accountMid as requestedMid, accountOut, compareQuality, findAccount,
+  historyPage, matchesAccount, usesBiliAccount, withAccountInput, type AccountRegistry, type QualityProbe
+} from './accountTools'
+import {
   ACTIVE,
   batchNotFound,
   countStatuses,
@@ -43,6 +48,7 @@ import {
   type TaskSummary
 } from './format'
 import type { LoginFlow } from './loginFlow'
+import { activeScope, authScope, inAuthScope, isRetired } from '../auth/scope'
 import { loginDefinitions, LoginTools } from './loginTools'
 import { lookupDefinitions, LookupTools } from './lookupTools'
 import { ParseCache } from './parseCache'
@@ -56,10 +62,14 @@ export interface McpDeps {
   queue: TaskQueue
   /** 批次记录保存在这个文件里 */
   batchFile: string
-  downloadedKeys: () => string[]
+  downloadedKeys: (mid?: number) => string[]
+  downloadRecords: () => HistoryEntry[]
+  parseRecords: () => ParseRecord[]
+  probeQuality: QualityProbe
   settings: () => Settings
   updateSettings: (patch: Partial<Settings>) => Settings
   authState: () => Promise<AuthState>
+  accounts?: AccountRegistry
   /** 搜索、视频详情、评论这些检索接口 */
   lookup: BiliLookup
   login: LoginFlow
@@ -116,6 +126,7 @@ const ELIGIBLE: Record<Action, McpStatus[]> = {
 const TASK_FIELDS = [
   'id',
   'batch_id',
+  'account_mid',
   'item_id',
   'title',
   'group',
@@ -319,15 +330,27 @@ const result = (data: Record<string, unknown>): ToolResult => ({
   structuredContent: data
 })
 
-const failure = (e: unknown): ToolResult => {
+const failure = (e: unknown, mid?: number): ToolResult => {
   const error = describeError(e)
-  return { content: [{ type: 'text', text: JSON.stringify({ error }) }], structuredContent: { error }, isError: true }
+  if (mid !== undefined && error.code === 'NOT_LOGGED_IN') error.hint = t('mcpAccounts.relogin', { mid })
+  const data = { error, account_mid: mid }
+  return { ...result(data), isError: true }
 }
 
 /** 状态筛选：active 展开成还没结束的几种，all 或不传表示不筛选 */
 function statusSet(list: readonly string[] | undefined): Set<McpStatus> | undefined {
   if (!list || list.includes('all')) return undefined
   return new Set(list.flatMap((s) => (s === 'active' ? ACTIVE : [s as McpStatus])))
+}
+
+function countByAccount(tasks: TaskInfo[]): Map<number | undefined, TaskInfo[]> {
+  const groups = new Map<number | undefined, TaskInfo[]>()
+  for (const task of tasks) {
+    const group = groups.get(task.accountMid)
+    if (group) group.push(task)
+    else groups.set(task.accountMid, [task])
+  }
+  return groups
 }
 
 /** 下载目录所在磁盘的剩余空间；目录还没创建时看最近一级存在的上级目录 */
@@ -376,58 +399,97 @@ export class McpTools implements ToolSet {
     private deps: McpDeps,
     now?: () => number
   ) {
-    this.batches = new BatchManager(deps.batchFile, deps.queue, deps.expandLazy, deps.downloadedKeys)
+    this.batches = new BatchManager(deps.batchFile, deps.queue, deps.expandLazy, deps.downloadedKeys, undefined, deps.accounts)
     this.cache = new ParseCache(deps.parseAll, now)
     this.lookup = new LookupTools(deps.lookup, deps.authState, { now })
-    this.login = new LoginTools(deps.login, () => this.batches.list().filter((b) => this.batches.state(b) === 'interrupted').map((b) => b.id))
+    this.login = new LoginTools(deps.login, (mid) => this.batches.list()
+      .filter((b) => b.accountMid === mid && this.batches.state(b) === 'interrupted').map((b) => b.id), deps.accounts)
   }
 
   definitions(): ToolDefinition[] {
-    return [...definitions(), ...loginDefinitions(), ...lookupDefinitions()]
+    return [...definitions(), ...loginDefinitions(), ...lookupDefinitions(), ...accountDefinitions()].map(withAccountInput)
   }
 
   async call(name: string, args: Args): Promise<ToolResult> {
+    let mid: number | undefined
     try {
-      if (this.lookup.handles(name)) return result(await this.lookup.call(name, args))
       if (this.login.handles(name)) return result(await this.login.call(name, args))
-      switch (name) {
-        case 'get_status':
-          return result(await this.getStatus())
-        case 'parse_link':
-          return result(await this.parseLink(args))
-        case 'download_batch':
-          return result(await this.downloadBatch(args))
-        case 'get_batch_status':
-          return result(await this.batchStatus(args))
-        case 'list_batches':
-          return result(this.listBatches(args))
-        case 'list_tasks':
-          return result(this.listTasks(args))
-        case 'control_tasks':
-          return result(this.controlTasks(args))
-        case 'remove_watermark':
-          return result(await this.removeWatermark(args))
-        case 'get_settings':
-          return result(this.settingsOut(this.deps.settings()))
-        case 'update_settings':
-          return result(this.updateSettings(args))
-        default:
-          throw new ToolError('NOT_FOUND', t('mcpTools.noSuchTool', { name }), t('mcpTools.noSuchToolHint'))
+      if (usesBiliAccount(name)) {
+        mid = requestedMid(args)
+        if (mid !== undefined) {
+          findAccount(this.deps.accounts, mid)
+          return result(await this.deps.accounts!.run(mid, () => this.callInAccount(name, args)))
+        }
+        mid = activeScope().mid
       }
+      return result(await inAuthScope({ ...activeScope(), background: true }, () => this.callInAccount(name, args)))
     } catch (e) {
-      return failure(e)
+      return failure(e, mid)
     }
   }
 
-  private async getStatus() {
+  private async callInAccount(name: string, args: Args): Promise<Record<string, unknown>> {
+    if (this.lookup.handles(name)) return { ...await this.lookup.call(name, args), account_mid: this.accountMid() }
+    switch (name) {
+      case 'get_status': return this.getStatus(requestedMid(args))
+      case 'parse_link': return this.parseLink(args)
+      case 'download_batch': return this.downloadBatch(args)
+      case 'get_batch_status': return this.batchStatus(args)
+      case 'list_batches': return this.listBatches(args)
+      case 'list_tasks': return this.listTasks(args)
+      case 'control_tasks': return this.controlTasks(args)
+      case 'remove_watermark': return this.removeWatermark(args)
+      case 'get_settings':
+      case 'update_settings':
+        if (args.account_mid !== undefined) throw invalid(t('mcpAccounts.sharedSettings'))
+        return name === 'get_settings' ? this.settingsOut(this.deps.settings()) : this.updateSettings(args)
+      case 'list_accounts': return this.listAccounts()
+      case 'switch_account':
+      case 'logout_account': return this.changeAccount(name, requestedMid(args, true)!)
+      case 'list_download_history': return historyPage(args, this.deps.downloadRecords(), this.deps.accounts)
+      case 'list_parse_history': return historyPage(args, this.deps.parseRecords(), this.deps.accounts)
+      case 'get_download_quality':
+        return compareQuality(this.deps.accounts, this.deps.probeQuality, requireString(args, 'url'), optionalString(args, 'item_id'), requestedMid(args))
+      default:
+        throw new ToolError('NOT_FOUND', t('mcpTools.noSuchTool', { name }), t('mcpTools.noSuchToolHint'))
+    }
+  }
+
+  private listAccounts() {
+    const state = this.deps.accounts?.snapshot()
+    return { active_account_mid: state?.activeMid ?? null, accounts: (state?.accounts ?? []).map(accountOut) }
+  }
+
+  private async changeAccount(name: 'switch_account' | 'logout_account', mid: number) {
+    const account = findAccount(this.deps.accounts, mid)
+    const registry = this.deps.accounts!
+    try {
+      if (name === 'switch_account') await registry.select(mid)
+      else await registry.remove(mid)
+    } catch (e) {
+      const error = describeError(e)
+      if (error.code === 'NOT_LOGGED_IN') throw new ToolError(error.code, error.message, t('mcpAccounts.relogin', { mid }))
+      throw e
+    }
+    return { account_mid: mid, name: account.uname, status: registry.status(mid), active_account_mid: registry.snapshot().activeMid ?? null }
+  }
+
+  private accountMid(): number | undefined {
+    const scope = authScope()
+    return scope.mid ?? this.deps.accounts?.midForPartition(scope.partition)
+  }
+
+  private async getStatus(mid?: number) {
+    const registry = this.deps.accounts
+    const target = mid === undefined ? undefined : findAccount(registry, mid)
     const s = this.deps.settings()
-    const tasks = this.deps.queue.list()
+    const tasks = this.deps.queue.list().filter((task) => matchesAccount(task.accountMid, mid))
     const counts = countStatuses(tasks)
     const free = await freeSpace(s.downloadDir)
     const hints: string[] = []
     let login: Record<string, unknown>
     try {
-      const auth = await this.deps.authState()
+      const auth = target ? await registry!.run(target.mid, this.deps.authState) : await this.deps.authState()
       if (auth.loggedIn) {
         login = { logged_in: true, user: auth.user.uname, vip: auth.user.vipActive, vip_label: auth.user.vipLabel || undefined }
         if (!auth.user.vipActive) hints.push(t('mcpTools.notVip'))
@@ -436,16 +498,27 @@ export class McpTools implements ToolSet {
         hints.push(t('mcpTools.appNotLoggedIn', { loginHint: loginHint() }))
       }
     } catch (e) {
-      login = { logged_in: null, error: describeError(e).message }
-      hints.push(t('mcpTools.loginUnknown'))
+      const error = describeError(e)
+      if (target && error.code === 'NOT_LOGGED_IN') {
+        login = { logged_in: false, user: target.uname, status: registry!.status(target.mid) }
+        hints.push(t('mcpAccounts.relogin', { mid: target.mid }))
+      } else {
+        login = { logged_in: null, error: error.message }
+        hints.push(t('mcpTools.loginUnknown'))
+      }
     }
     if (counts.waiting_auth) hints.push(t('mcpTools.waitingAuth', { count: counts.waiting_auth, loginHint: loginHint() }))
     if (counts.paused) hints.push(t('mcpTools.paused', { count: counts.paused }))
     if (counts.failed) hints.push(t('mcpTools.failed', { count: counts.failed }))
     if (free !== undefined && free < LOW_SPACE) hints.push(t('mcpTools.lowSpace'))
     return {
+      account_mid: mid ?? this.accountMid(),
+      active_account_mid: registry?.snapshot().activeMid ?? null,
       login,
       queue: { total: tasks.length, ...counts, speed_bps: totalSpeed(tasks) },
+      queue_by_account: registry ? Array.from(countByAccount(tasks), ([account_mid, group]) => ({
+        account_mid: account_mid ?? null, total: group.length, ...countStatuses(group)
+      })) : undefined,
       download_dir: s.downloadDir,
       free_space_bytes: free,
       settings: { concurrency: s.concurrency, threads: s.threads, speed_limit_kbps: s.speedLimit, default_qn: s.defaultQn },
@@ -462,9 +535,9 @@ export class McpTools implements ToolSet {
     const limit = optionalInt(args, 'limit', 1, expand ? MAX_EXPAND : 500, 100)
     const p = await this.cache.get(url, maxItems, optionalBool(args, 'refresh', false))
     const window = p.items.slice(offset, offset + limit)
-    if (expand) await this.expandParts(window)
+    if (expand) await this.cache.expandParts(window, this.deps.expandLazy)
     const r = p.result
-    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys())
+    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys(this.accountMid()))
     const isQueued = this.queuedMatcher()
     // 番剧有正片、花絮等多个分组时，告诉 agent 每条属于哪组
     const groupOf = new Map(r.groups.length > 1 ? r.groups.flatMap((g) => g.items.map((i) => [i.key, g.title] as const)) : [])
@@ -475,6 +548,7 @@ export class McpTools implements ToolSet {
     if (next !== null) hints.push(t('mcpTools.moreItems', { next }))
     if (p.items.some((i) => i.lazy)) hints.push(t('mcpTools.lazyItems'))
     return {
+      account_mid: this.accountMid(),
       title: r.title,
       kind: r.kind,
       owner: r.owner ?? r.meta?.owner,
@@ -515,17 +589,8 @@ export class McpTools implements ToolSet {
 
   /** 队列里还没完成的条目 */
   private queuedMatcher(): (i: MediaItem) => boolean {
-    return downloadedMatcher(this.deps.queue.list().flatMap((t) => (t.status === 'done' ? [] : [t.item.key])))
-  }
-
-  private async expandParts(items: MediaItem[]): Promise<void> {
-    const todo = items.filter((i) => i.lazy && !i.unavailable && !this.cache.partsOf(i.key))
-    if (!todo.length) return
-    const out = await this.deps.expandLazy(todo)
-    for (const v of todo) {
-      const parts = out.filter((p) => p.bvid === v.bvid && !p.unavailable)
-      if (parts.length) this.cache.setParts(v.key, parts)
-    }
+    const mid = this.accountMid()
+    return downloadedMatcher(this.deps.queue.list().filter((task) => task.accountMid === mid && task.status !== 'done').map((task) => task.item.key))
   }
 
   /** url 和 videos 两种提交方式共用的参数 */
@@ -593,9 +658,11 @@ export class McpTools implements ToolSet {
 
     const rejectedOut = rejected.length ? rejected : undefined
     // 查重和提交之间不能有 await：并行的相同请求才不会都建出批次
-    const dup = this.batches.findDuplicate(requestId, fingerprint)
+    const accountMid = this.accountMid()
+    const dup = this.batches.findDuplicate(requestId, fingerprint, accountMid)
     if (dup) return { ...this.deduplicated(dup), rejected: rejectedOut }
     const b = this.batches.submit({
+      accountMid,
       requestId,
       fingerprint,
       url: '',
@@ -630,18 +697,15 @@ export class McpTools implements ToolSet {
       .update(JSON.stringify([url, ids ? [...ids].sort() : all, options, subdir, skipDownloaded]))
       .digest('hex')
 
-    const dup = this.batches.findDuplicate(requestId, fingerprint)
+    const dup = this.batches.findDuplicate(requestId, fingerprint, this.accountMid())
     if (dup) return this.deduplicated(dup)
 
     const p = await this.cache.get(url, maxItems)
-    // 等解析的时候可能有相同的请求先提交了
-    const earlier = this.batches.findDuplicate(requestId, fingerprint)
-    if (earlier) return this.deduplicated(earlier)
     const r = p.result
     let chosen: MediaItem[]
     let unknown: string[] = []
     if (ids) {
-      ;({ chosen, unknown } = this.pick(p.items, ids))
+      ;({ chosen, unknown } = await this.pick(p.items, ids))
       if (!chosen.length) throw invalid(t('mcpTools.idsNone', { examples: joinList(unknown.slice(0, 3)) }))
     } else if (all) {
       chosen = p.items
@@ -652,6 +716,11 @@ export class McpTools implements ToolSet {
       const def = new Set(r.defaultSelected)
       chosen = def.size ? p.items.filter((i) => def.has(i.key)) : p.items
     }
+    // 解析或展开期间可能已经退出账号，或有相同的请求先完成了入队。
+    if (isRetired(authScope().partition)) throw new AuthExpiredError()
+    const accountMid = this.accountMid()
+    const earlier = this.batches.findDuplicate(requestId, fingerprint, accountMid)
+    if (earlier) return this.deduplicated(earlier)
     const unavailable = chosen.filter((i) => i.unavailable).length
     // 展开过分P的列表视频直接用缓存的分P，不用再查；同时选了视频和它的某一P时只算一次
     const unique = new Map<string, MediaItem>()
@@ -660,7 +729,7 @@ export class McpTools implements ToolSet {
     }
     chosen = [...unique.values()]
     // 列表视频要展开后才能按每一P核对，交给批次处理
-    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys())
+    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys(accountMid))
     const fresh = skipDownloaded ? chosen.filter((i) => i.lazy || !isDownloaded(i)) : chosen
     const downloaded = chosen.length - fresh.length
     const notes: string[] = []
@@ -672,6 +741,7 @@ export class McpTools implements ToolSet {
     if (!fresh.length) {
       return {
         batch_id: null,
+        account_mid: accountMid,
         title: r.title,
         selected: 0,
         skipped: { downloaded, unavailable },
@@ -680,6 +750,7 @@ export class McpTools implements ToolSet {
       }
     }
     const b = this.batches.submit({
+      accountMid,
       requestId,
       fingerprint,
       url,
@@ -703,14 +774,27 @@ export class McpTools implements ToolSet {
     }
   }
 
-  /** 按 id 选条目；分P的 id 要 parse_link 的 expand_parts 展开过才认识 */
-  private pick(items: MediaItem[], ids: string[]): { chosen: MediaItem[]; unknown: string[] } {
+  /** 只展开实际出现在来源里的父视频，分 P ID 可以直接用于提交。 */
+  private async pick(items: MediaItem[], ids: string[]): Promise<{ chosen: MediaItem[]; unknown: string[] }> {
     const byKey = new Map(items.map((i) => [i.key, i]))
-    for (const i of items) if (i.lazy) for (const part of this.cache.partsOf(i.key) ?? []) byKey.set(part.key, part)
+    const requested = new Set(ids)
+    const parents = new Map<string, MediaItem>()
+    const uncached = new Set<MediaItem>()
+    for (const id of requested) {
+      if (byKey.has(id)) continue
+      const parentKey = /^(ugc:[^:]+):[1-9]\d*$/.exec(id)?.[1]
+      const parent = parentKey ? byKey.get(parentKey) : undefined
+      if (!parent?.lazy || parent.unavailable) continue
+      parents.set(id, parent)
+      if (!this.cache.partsOf(parent.key)) uncached.add(parent)
+    }
+    if (uncached.size > MAX_EXPAND) throw invalid(t('mcpAccounts.partSelectionLimit', { max: MAX_EXPAND }))
+    await this.cache.expandParts([...uncached], this.deps.expandLazy)
     const chosen: MediaItem[] = []
     const unknown: string[] = []
-    for (const id of new Set(ids)) {
-      const it = byKey.get(id)
+    for (const id of requested) {
+      const parent = parents.get(id)
+      const it = byKey.get(id) ?? (parent && this.cache.partsOf(parent.key)?.find((part) => part.key === id))
       if (it) chosen.push(it)
       else unknown.push(id)
     }
@@ -720,6 +804,7 @@ export class McpTools implements ToolSet {
   private submitted(b: Batch) {
     return {
       batch_id: b.id,
+      account_mid: b.accountMid,
       title: b.title,
       state: this.batches.state(b),
       selected: b.selected,
@@ -731,7 +816,7 @@ export class McpTools implements ToolSet {
   private findBatch(args: Args): Batch {
     const id = requireString(args, 'batch_id')
     const b = this.batches.find(id)
-    if (!b) throw batchNotFound(id)
+    if (!b || !matchesAccount(b.accountMid, accountFilter(args))) throw batchNotFound(id)
     return b
   }
 
@@ -745,7 +830,8 @@ export class McpTools implements ToolSet {
 
   private listBatches(args: Args) {
     const limit = optionalInt(args, 'limit', 1, 50, 20)
-    const list = this.batches.list()
+    const filter = accountFilter(args)
+    const list = this.batches.list().filter((b) => matchesAccount(b.accountMid, filter))
     return { total: list.length, batches: list.slice(-limit).reverse().map((b) => this.batches.brief(b)) }
   }
 
@@ -756,11 +842,13 @@ export class McpTools implements ToolSet {
     const offset = optionalInt(args, 'offset', 0, Number.MAX_SAFE_INTEGER, 0)
     const limit = optionalInt(args, 'limit', 1, 500, 50)
     const fields = optionalEnums(args, 'fields', TASK_FIELDS)
+    const filter = accountFilter(args)
     const inBatch = this.batchTaskIds(batchId)
     const tasks = this.deps.queue
       .list()
       .filter(
         (t) =>
+          matchesAccount(t.accountMid, filter) &&
           (!inBatch || inBatch.has(t.id)) &&
           (!want || want.has(mcpStatus(t))) &&
           (!query || t.title.toLowerCase().includes(query) || t.groupTitle.toLowerCase().includes(query))
@@ -782,13 +870,13 @@ export class McpTools implements ToolSet {
     const taskIds = optionalStrings(args, 'task_ids')
     const batchId = optionalString(args, 'batch_id')
     const statuses = optionalEnums(args, 'status', STATUS_FILTER)
-    if (!taskIds && !batchId && !statuses) throw invalid(t('mcpTools.controlScope'))
-    const batch = batchId ? this.batches.find(batchId) : undefined
-    if (batchId && !batch) throw batchNotFound(batchId)
+    const filter = accountFilter(args)
+    if (!taskIds && !batchId && !statuses && filter === undefined) throw invalid(t('mcpTools.controlScope'))
+    const batch = batchId ? this.findBatch(args) : undefined
     const want = statusSet(statuses)
     const idSet = taskIds && new Set(taskIds)
     const inBatch = this.batchTaskIds(batchId)
-    const all = this.deps.queue.list()
+    const all = this.deps.queue.list().filter((task) => matchesAccount(task.accountMid, filter))
     const matched = all.filter(
       (t) => (!idSet || idSet.has(t.id)) && (!inBatch || inBatch.has(t.id)) && (!want || want.has(mcpStatus(t)))
     )
@@ -844,6 +932,8 @@ export class McpTools implements ToolSet {
     }
     return {
       action,
+      account_mid: filter,
+      affected_by_account: Array.from(countByAccount(eligible), ([mid, group]) => ({ account_mid: mid ?? null, count: group.length })),
       matched: matched.length,
       affected: ids.length,
       skipped: skipped.length ? skipped.slice(0, 50) : undefined,
@@ -856,14 +946,19 @@ export class McpTools implements ToolSet {
     if (args.task_ids !== undefined && args.task_ids !== null && args.batch_id !== undefined && args.batch_id !== null) {
       throw invalid(t('mcpTools.taskIdsAndBatch'))
     }
+    const filter = accountFilter(args)
+    const queue = this.deps.queue
     const ids = removeTargets(args, (id) => {
       const b = this.batches.find(id)
-      if (b) return this.batches.tasksOf(b)
+      if (b) return matchesAccount(b.accountMid, filter) ? this.batches.tasksOf(b) : undefined
       // 批次记录已经清理掉时，按任务上记的批次 id 找
-      const tasks = this.deps.queue.list().filter((t) => t.batchId === id)
+      const tasks = queue.list().filter((t) => t.batchId === id && matchesAccount(t.accountMid, filter))
       return tasks.length ? tasks : undefined
     })
-    return removeWatermark(args, ids, this.deps.queue, this.deps.watermark)
+    return removeWatermark(args, ids, {
+      list: () => queue.list().filter((task) => matchesAccount(task.accountMid, filter)),
+      startWatermark: (id, region, method) => queue.startWatermark(id, region, method)
+    }, this.deps.watermark)
   }
 
   /** 批次里的任务（包括算进这个批次的、别处已在下载的同一条目）；没指定批次时不筛选 */

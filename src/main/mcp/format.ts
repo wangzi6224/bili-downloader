@@ -77,6 +77,7 @@ export function summarizeTask(t: TaskInfo) {
   return {
     id: t.id,
     batch_id: t.batchId,
+    account_mid: t.accountMid,
     item_id: t.item.key,
     title: t.title,
     group: t.groupTitle,

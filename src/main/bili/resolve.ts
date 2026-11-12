@@ -56,7 +56,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  */
 export async function resolveBatch(
   inputs: string[],
-  onProgress?: (done: number, total: number, title?: string) => void
+  onProgress?: (done: number, total: number, title?: string) => void,
+  resolve: (input: string) => Promise<ParseResult> = resolveInput
 ): Promise<ParseResult> {
   const groups: MediaGroup[] = []
   const defaultSelected: string[] = []
@@ -64,7 +65,7 @@ export async function resolveBatch(
   const seen = new Set<string>()
   for (const [i, input] of inputs.entries()) {
     try {
-      const r = await resolveInput(input)
+      const r = await resolve(input)
       const items = r.groups.flatMap((g) => g.items).filter((it) => !seen.has(it.key))
       items.forEach((it) => seen.add(it.key))
       groups.push({

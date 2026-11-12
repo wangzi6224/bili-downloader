@@ -106,6 +106,9 @@ describe('preload', () => {
     { channel: 'subs:update', call: () => api.subs.update('s1', { enabled: false }), args: ['s1', { enabled: false }] },
     { channel: 'app:close', call: () => api.app.close('quit', false), args: ['quit', false] },
     { channel: 'parseMore', call: () => api.parseMore(SOURCE, 2), args: [SOURCE, 2] },
+    { channel: 'auth:chooseBrowserFolder', call: () => api.auth.chooseBrowserFolder('chrome::'), args: ['chrome::'] },
+    { channel: 'parse', call: () => api.parse('watchlater', 8), args: ['watchlater', 8] },
+    { channel: 'history:downloadedKeys', call: () => api.history.downloadedKeys(8), args: [8] },
     {
       channel: 'wm:frame',
       call: () => api.watermark.frame('t1', 3.5, { x: 1, y: 2, w: 30, h: 10 }),
@@ -152,13 +155,14 @@ describe('preload', () => {
     registerIpc({ manager: {}, subs: {}, mcp: {}, updater: {}, enqueue: vi.fn() } as unknown as IpcDeps)
 
     expect([...invoked].sort()).toEqual([...h.registered].sort())
-    expect(invoked.size).toBe(74)
+    expect(invoked.size).toBe(78)
     // 每个 api 函数各用一个频道，主进程也没有重复注册
     expect(invokers).toBe(invoked.size)
     expect(new Set(h.registered).size).toBe(h.registered.length)
     expect([...events].sort()).toEqual([
       'app:closeRequested',
       'app:openSettings',
+      'auth:accountsChanged',
       'auth:changed',
       'auth:required',
       'dl:update',
