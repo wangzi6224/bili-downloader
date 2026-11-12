@@ -16,4 +16,7 @@ export default {
   assignLegacy: "이전 작업, 구독, 일괄 작업 {count}건을 {name}에 할당할까요?",
   origin: "시작한 계정: {name}",
   originUnknown: "시작한 계정 알 수 없음",
+  subPausedExpired: "일시 중지됨: 이 계정으로 다시 로그인하면 확인을 계속합니다",
+  subPausedRemoved: "일시 중지됨: 이 계정은 로그아웃되었습니다",
+  subPausedNoAccount: "일시 중지됨: 계정에 할당하면 확인을 계속합니다",
 }

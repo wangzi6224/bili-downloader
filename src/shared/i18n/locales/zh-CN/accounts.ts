@@ -16,4 +16,7 @@ export default {
   assignLegacy: "将 {count} 条旧任务、订阅和批次分配给「{name}」？",
   origin: "发起账号：{name}",
   originUnknown: "发起账号未知",
+  subPausedExpired: "已暂停：账号登录已失效，重新登录后继续检查",
+  subPausedRemoved: "已暂停：发起账号已退出",
+  subPausedNoAccount: "已暂停：分配给账号后继续检查",
 }

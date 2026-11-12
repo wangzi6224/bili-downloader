@@ -16,4 +16,7 @@ export default {
   assignLegacy: "以前のタスク、購読、バッチ {count} 件を「{name}」に割り当てますか？",
   origin: "開始したアカウント：{name}",
   originUnknown: "開始したアカウントは不明",
+  subPausedExpired: "一時停止中：アカウントに再ログインすると確認を再開します",
+  subPausedRemoved: "一時停止中：このアカウントはログアウトされました",
+  subPausedNoAccount: "一時停止中：アカウントに割り当てると確認を再開します",
 }

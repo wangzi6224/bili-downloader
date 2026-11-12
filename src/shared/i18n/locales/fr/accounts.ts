@@ -16,4 +16,7 @@ export default {
   assignLegacy: "Attribuer {count} anciennes tâches, abonnements et lots à {name} ?",
   origin: "Lancé par {name}",
   originUnknown: "Compte d’origine inconnu",
+  subPausedExpired: "En pause : reconnectez-vous à ce compte pour reprendre les vérifications",
+  subPausedRemoved: "En pause : ce compte a été déconnecté",
+  subPausedNoAccount: "En pause : attribuez-le à un compte pour reprendre les vérifications",
 }

@@ -89,13 +89,17 @@ describe('downloadedMatcher', () => {
 })
 
 describe('来源详情的下载状态', () => {
-  it('按单集或分 P 的 key 匹配，尚未展开的视频只显示已有分 P 记录', () => {
-    const status = downloadStatusMatcher(['pgc:42', 'ugc:BV1:100', 'ugc:BV2', 'pgc:BV3:100'])
+  it('按单集或分 P 的 key 匹配，尚未展开的视频按分 P 数判断', () => {
+    const status = downloadStatusMatcher(['pgc:42', 'ugc:BV1:100', 'ugc:BV2', 'pgc:BV3:100', 'ugc:BV4:1', 'ugc:BV4:2'])
     expect(status(item('pgc:42', { kind: 'pgc' }))).toBe('downloaded')
     expect(status(item('pgc:43', { kind: 'pgc' }))).toBe('missing')
     expect(status(item('ugc:BV1:100'))).toBe('downloaded')
     expect(status(item('ugc:BV1:101'))).toBe('missing')
-    expect(status(item('ugc:BV1', { bvid: 'BV1', lazy: true }))).toBe('parts')
+    // 列表给了分 P 数：没下全算部分下载，下全了算已下载
+    expect(status(item('ugc:BV1', { bvid: 'BV1', lazy: true, pages: 3 }))).toBe('parts')
+    expect(status(item('ugc:BV4', { bvid: 'BV4', lazy: true, pages: 2 }))).toBe('downloaded')
+    // 合集、系列不给分 P 数：下载过就算已下载
+    expect(status(item('ugc:BV1', { bvid: 'BV1', lazy: true }))).toBe('downloaded')
     expect(status(item('ugc:BV2', { bvid: 'BV2', lazy: true }))).toBe('missing')
     expect(status(item('ugc:BV3', { bvid: 'BV3', lazy: true }))).toBe('missing')
     expect(status(item('ugc:unknown', { lazy: true }))).toBe('missing')

@@ -91,20 +91,24 @@ describe('一键订阅并下载', () => {
   const request = { input, defaults: OPTIONS, verifyAccount }
 
   it('加载后续分页并只加入缺失分 P，用所有原始条目建立订阅基线', async () => {
-    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1' })
+    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1', pages: 2 })
+    // 合集、系列不给分 P 数：下载过就不再逐个查分 P
+    const collected = item('ugc:BV4', { lazy: true, bvid: 'BV4' })
     const existing = item('ugc:BV2:20')
     const unavailable = item('ugc:BV3', { unavailable: '失效' })
     const first = result([existing])
-    const all = result([existing, lazy, unavailable])
+    const all = result([existing, lazy, collected, unavailable])
     h.resolveInput.mockResolvedValue(first)
     h.loadAllPages.mockResolvedValue({ result: all, complete: true })
-    h.downloadedKeys.mockReturnValue([existing.key, 'ugc:BV1:10'])
+    h.downloadedKeys.mockReturnValue([existing.key, 'ugc:BV1:10', 'ugc:BV4:40'])
     h.prepare.mockResolvedValueOnce({ items: [item('ugc:BV1:10'), item('ugc:BV1:11')], failed: [] })
     expect(await m.downloadSource(request)).toMatchObject({ subscribed: true, count: 1 })
     expect(h.loadAllPages).toHaveBeenCalledWith(first, { beforePage: verifyAccount })
     expect(h.prepare).toHaveBeenCalledWith([lazy])
     expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [item('ugc:BV1:11')], options: OPTIONS }))
-    expect(saved()[0]).toMatchObject({ enabled: true, intervalMin: 360, seen: [existing.key, lazy.key, unavailable.key], lastNew: 1 })
+    expect(saved()[0]).toMatchObject({
+      enabled: true, intervalMin: 360, seen: [existing.key, lazy.key, collected.key, unavailable.key], lastNew: 1
+    })
   })
 
   it('复用从单集链接添加的订阅及其选项和暂停状态', async () => {
@@ -144,7 +148,7 @@ describe('一键订阅并下载', () => {
   })
 
   it('展开失败的条目不记为已见，重启后即使移出首页也能补下缺失分 P', async () => {
-    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1' })
+    const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1', pages: 2 })
     const nextPart = item('ugc:BV1:11')
     const other = item('known')
     h.resolveInput.mockResolvedValueOnce(result([other, lazy]))
@@ -242,7 +246,7 @@ it('同一个稍后再看地址按所属账号检查，A 过期时 B 照常入�
 
 it('定时检查与一键补下载都只使用订阅账号的历史，并在展开后按分 P 去重', async () => {
   const first = item('ugc:BV1:1')
-  const lazy = item('ugc:BV2', { lazy: true, bvid: 'BV2' })
+  const lazy = item('ugc:BV2', { lazy: true, bvid: 'BV2', pages: 2 })
   const partA = item('ugc:BV2:10')
   const partB = item('ugc:BV2:11')
   let accountBHistory: string[] = []
@@ -285,6 +289,8 @@ describe('add', () => {
   it('同一个来源不能订阅两次', async () => {
     await m.add(newSub())
     await expect(m.add(newSub())).rejects.toThrow('已经订阅过这个来源')
+    // 同一个收藏夹的另一种链接写法也算重复
+    await expect(m.add(newSub({ input: 'https://www.bilibili.com/medialist/detail/ml2' }))).rejects.toThrow('已经订阅过这个来源')
   })
 
   it('正序的合集、系列添加时马上检查一次，把最后一页记为已见', async () => {

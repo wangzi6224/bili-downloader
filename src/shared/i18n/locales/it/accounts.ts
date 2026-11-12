@@ -16,4 +16,7 @@ export default {
   assignLegacy: "Assegnare {count} attività, iscrizioni e batch precedenti a {name}?",
   origin: "Avviato da {name}",
   originUnknown: "Account di origine sconosciuto",
+  subPausedExpired: "In pausa: accedi di nuovo a questo account per continuare i controlli",
+  subPausedRemoved: "In pausa: l’account è stato disconnesso",
+  subPausedNoAccount: "In pausa: assegnalo a un account per continuare i controlli",
 }

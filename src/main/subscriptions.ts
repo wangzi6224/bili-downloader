@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { downloadedMatcher } from '@shared/downloaded'
+import { downloadedMatcher, downloadStatusMatcher } from '@shared/downloaded'
 import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
 import type { DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, SourceDownloadResult, Subscription } from '@shared/types'
@@ -91,7 +91,9 @@ export class SubscriptionManager extends EventEmitter {
   }
 
   async add(req: NewSubscription, accountMid?: number): Promise<Subscription[]> {
-    if (this.subs.some((s) => s.input === req.input && (s.accountMid === accountMid || (!this.accounts && s.accountMid === undefined)))) {
+    // 同一来源的不同写法（例如收藏夹的 ml123 和 favlist?fid=123）也算重复
+    const key = sourceKey(req.input)
+    if (this.subs.some((s) => sourceKey(s.input) === key && (s.accountMid === accountMid || (!this.accounts && s.accountMid === undefined)))) {
       throw new Error(t('subsErr.duplicate'))
     }
     if (this.downloading.has(this.workKey(req.input, accountMid))) throw new Error(t('subs.quickBusy'))
@@ -206,8 +208,9 @@ export class SubscriptionManager extends EventEmitter {
       if (current && !this.subs.includes(current)) throw new Error(t('subs.sourceUnavailable'))
       const options = current?.options ?? defaults
       const bindingLegacy = current !== undefined && current.accountMid === undefined && accountMid !== undefined
-      const history = new Set(downloadedKeys(accountMid))
-      const candidates = raw.filter((item) => !item.unavailable && !history.has(item.key))
+      // 还没展开分P的视频先按 BV 号排除已下完的，免得每个都去查一次分P
+      const status = downloadStatusMatcher(downloadedKeys(accountMid))
+      const candidates = raw.filter((item) => !item.unavailable && status(item) !== 'downloaded')
       const { count, pending, note } = await this.prepareAndEnqueue(
         result, candidates, result.kind === 'audio' ? { ...options, output: 'audio' } : options,
         () => {

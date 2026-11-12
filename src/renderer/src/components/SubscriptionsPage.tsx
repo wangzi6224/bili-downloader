@@ -5,6 +5,7 @@ import { t, type Key } from '@shared/i18n'
 import { checkedAgo, thumb } from '../format'
 import { useT } from '../i18n'
 import { api, openSource, useStore } from '../store'
+import { pausedReason } from '../subscriptionStatus'
 import { useLazyNextPage } from '../useLazyNextPage'
 import { AccountOrigin } from './AccountOrigin'
 import { Banner, Button, EmptyState, IconButton, Input, PageHeader, Segmented, Select, STROKE, Switch } from './ui'
@@ -157,6 +158,7 @@ function SourceSearch({ value, onChange }: { value: string; onChange: (value: st
 }
 
 function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
+  const accounts = useStore((s) => s.accounts)
   const t = useT()
   const [subs, setSubs] = useState<Subscription[] | null>(null)
   const [checking, setChecking] = useState<string | null>(null)
@@ -226,6 +228,9 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
                     {checkedAgo(s.lastCheck, Date.now())}
                     {s.lastNew ? ` · ${t('subs.lastNew', { count: s.lastNew })}` : ''}
                     {s.lastError && <span className="text-red-600 dark:text-red-400"> · {s.lastError}</span>}
+                    {s.enabled && pausedReason(accounts, s.accountMid) && (
+                      <span className="text-amber-600 dark:text-amber-400"> · {t(pausedReason(accounts, s.accountMid)!)}</span>
+                    )}
                   </div>
                 </div>
                 <Select

@@ -16,4 +16,7 @@ export default {
   assignLegacy: "Assign {count} older tasks, subscriptions, and batches to {name}?",
   origin: "Started by {name}",
   originUnknown: "Originating account unknown",
+  subPausedExpired: "Paused: sign in to this account again to keep checking",
+  subPausedRemoved: "Paused: this account was signed out",
+  subPausedNoAccount: "Paused: assign it to an account to keep checking",
 }

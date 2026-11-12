@@ -11,16 +11,26 @@ export function downloadedMatcher(keys: Iterable<string>): (i: MediaItem) => boo
   return (i) => set.has(i.key) || Boolean(i.lazy && i.bvid && bvids.has(i.bvid))
 }
 
+/**
+ * 来源明细里的下载状态。还没展开分P的视频按 BV 号数下载过的分P：
+ * 列表给了分P数（收藏夹、稍后再看）就和它比，少了算部分下载；
+ * 合集、系列的列表不给分P数，下载过就算已下载，和订阅检查的判断一致。
+ */
 export function downloadStatusMatcher(keys: Iterable<string>): (item: MediaItem) => 'downloaded' | 'parts' | 'missing' {
   const exact = new Set(keys)
-  const withParts = new Set<string>()
+  const parts = new Map<string, Set<string>>()
   for (const key of exact) {
     const [kind, bvid, cid] = key.split(':')
-    if (kind === 'ugc' && cid) withParts.add(bvid)
+    if (kind !== 'ugc' || !cid) continue
+    const cids = parts.get(bvid) ?? new Set<string>()
+    cids.add(cid)
+    parts.set(bvid, cids)
   }
   return (item) => {
     if (item.kind === 'ugc' && item.lazy) {
-      return item.bvid && withParts.has(item.bvid) ? 'parts' : 'missing'
+      const got = item.bvid ? parts.get(item.bvid)?.size ?? 0 : 0
+      if (!got) return 'missing'
+      return item.pages && got < item.pages ? 'parts' : 'downloaded'
     }
     return exact.has(item.key) ? 'downloaded' : 'missing'
   }

@@ -16,4 +16,7 @@ export default {
   assignLegacy: "{count} पुराने कार्य, सदस्यताएँ और बैच {name} को असाइन करें?",
   origin: "{name} ने शुरू किया",
   originUnknown: "शुरू करने वाला खाता अज्ञात है",
+  subPausedExpired: "रोका गया: जाँच जारी रखने के लिए इस खाते में फिर से साइन इन करें",
+  subPausedRemoved: "रोका गया: इस खाते से साइन आउट किया गया",
+  subPausedNoAccount: "रोका गया: जाँच जारी रखने के लिए इसे किसी खाते को सौंपें",
 }
