@@ -100,6 +100,7 @@ describe('preload', () => {
     expect(h.invoke.mock.calls).toEqual([['parse', 'abc']])
   })
 
+  const SUB_SOURCE = { type: 'subscription', id: 's1' } as const
   const SOURCE: PagedSource = { type: 'fav', mediaId: 1 }
   it.each([
     { channel: 'dl:remove', call: () => api.download.remove(['a', 'b'], true), args: [['a', 'b'], true] },
@@ -109,6 +110,12 @@ describe('preload', () => {
     { channel: 'auth:chooseBrowserFolder', call: () => api.auth.chooseBrowserFolder('chrome::'), args: ['chrome::'] },
     { channel: 'parse', call: () => api.parse('watchlater', 8), args: ['watchlater', 8] },
     { channel: 'history:downloadedKeys', call: () => api.history.downloadedKeys(), args: [] },
+    { channel: 'sources:subscribeDownload', call: () => api.sources.subscribeDownload(SUB_SOURCE), args: [SUB_SOURCE] },
+    {
+      channel: 'sources:subscribeDownload',
+      call: () => api.sources.subscribeDownload(SUB_SOURCE, 'future'),
+      args: [SUB_SOURCE, 'future']
+    },
     {
       channel: 'wm:frame',
       call: () => api.watermark.frame('t1', 3.5, { x: 1, y: 2, w: 30, h: 10 }),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Clock, Download, Folder, Loader2, LogIn, RefreshCw, Rss, Search, Trash2, Tv } from 'lucide-react'
-import type { AccountSource, AccountSourceCategory, SourceRef, Subscription } from '@shared/types'
+import type { AccountSource, AccountSourceCategory, SourceDownloadChoice, SourceDownloadPlan, SourceRef, Subscription } from '@shared/types'
 import { t, type Key } from '@shared/i18n'
 import { checkedAgo, thumb } from '../format'
 import { useT } from '../i18n'
@@ -8,7 +8,7 @@ import { api, openSource, useStore } from '../store'
 import { pausedReason } from '../subscriptionStatus'
 import { useLazyNextPage } from '../useLazyNextPage'
 import { AccountOrigin } from './AccountOrigin'
-import { Banner, Button, EmptyState, IconButton, Input, PageHeader, Segmented, Select, STROKE, Switch } from './ui'
+import { Banner, Button, EmptyState, IconButton, Input, Modal, ModalFooter, ModalHeader, PageHeader, Segmented, Select, STROKE, Switch } from './ui'
 
 /** 检查间隔的选项。文案在调用时取，切换语言后跟着变 */
 export const intervals = (): { min: number; label: string }[] => [
@@ -46,6 +46,7 @@ export function SubscriptionsPage() {
           <Banner tone={quick.feedback.tone} onClose={quick.dismiss}>{quick.feedback.message}</Banner>
         </div>
       )}
+      <QuickConfirm quick={quick} />
       {tab === 'local' ? (
         <LocalSubscriptions quick={quick} />
       ) : auth?.loggedIn ? (
@@ -72,19 +73,32 @@ function useQuickDownload() {
   const t = useT()
   const [pending, setPending] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'info' | 'warn' | 'error'; message: string } | null>(null)
-  const run = async (source: SourceRef, title: string): Promise<void> => {
+  const [ask, setAsk] = useState<{ source: SourceRef; title: string; plan: SourceDownloadPlan } | null>(null)
+  const run = async (source: SourceRef, title: string, choice?: SourceDownloadChoice): Promise<void> => {
     if (pending !== null) return
+    setAsk(null)
     setPending(title)
     setFeedback(null)
     try {
-      const result = await api.sources.subscribeDownload(source)
+      const result = await (choice ? api.sources.subscribeDownload(source, choice) : api.sources.subscribeDownload(source))
+      // 内容多或有要跳过的：主进程什么都没做，先问用户
+      if (result.confirm) {
+        setAsk({ source, title: result.title || title, plan: result.confirm })
+        return
+      }
       const status = result.count
         ? t('subs.quickQueued', { count: result.count })
         : t('subs.quickUpToDate')
+      const { vip = 0, extras = 0 } = result.skipped ?? {}
       setFeedback({
         tone: result.note ? 'warn' : 'info',
-        message: [result.subscribed ? t('subs.quickSubscribed', { title: result.title }) : '', status, result.note]
-          .filter(Boolean).join(t('input.separator'))
+        message: [
+          result.subscribed ? t('subs.quickSubscribed', { title: result.title }) : '',
+          status,
+          vip ? t('subs.quickSkippedVip', { count: vip }) : '',
+          extras ? t('subs.quickSkippedExtras', { count: extras }) : '',
+          result.note
+        ].filter(Boolean).join(t('input.separator'))
       })
     } catch (e) {
       setFeedback({ tone: 'error', message: (e as Error).message })
@@ -92,7 +106,37 @@ function useQuickDownload() {
       setPending(null)
     }
   }
-  return { pending, feedback, run, dismiss: () => setFeedback(null) }
+  return { pending, feedback, ask, run, cancelAsk: () => setAsk(null), dismiss: () => setFeedback(null) }
+}
+
+/** 一键下载前的确认：要下多少、跳过哪些，可以改成只订阅以后的新内容 */
+function QuickConfirm({ quick }: { quick: QuickDownload }) {
+  const t = useT()
+  const { ask } = quick
+  if (!ask) return null
+  const { plan } = ask
+  return (
+    <Modal onClose={quick.cancelAsk} className="max-w-md">
+      <ModalHeader icon={Download} title={t('subs.quickConfirmTitle', { title: ask.title })} onClose={quick.cancelAsk} />
+      <div className="flex flex-col gap-1.5 px-6 pt-3 text-[13px] leading-relaxed text-muted">
+        <p>{plan.count ? t('subs.quickConfirmCount', { count: plan.count }) : t('subs.quickConfirmNone')}</p>
+        {!!plan.vip && <p>{t('subs.quickConfirmVip', { count: plan.vip })}</p>}
+        {!!plan.extras && <p>{t('subs.quickConfirmExtras', { count: plan.extras })}</p>}
+        {plan.subscribe && !!plan.count && <p>{t('subs.quickConfirmSubscribe')}</p>}
+      </div>
+      <ModalFooter>
+        <Button variant="ghost" onClick={quick.cancelAsk}>{t('dialogs.cancel')}</Button>
+        {plan.subscribe && (
+          <Button onClick={() => void quick.run(ask.source, ask.title, 'future')}>{t('subs.quickFutureOnly')}</Button>
+        )}
+        {!!plan.count && (
+          <Button variant="primary" onClick={() => void quick.run(ask.source, ask.title, 'all')}>
+            {t('subs.quickConfirmDownload', { count: plan.count })}
+          </Button>
+        )}
+      </ModalFooter>
+    </Modal>
+  )
 }
 
 type QuickDownload = ReturnType<typeof useQuickDownload>

@@ -52,5 +52,15 @@ export default {
   checking: 'Проверка…',
   checkNow: 'Проверить сейчас',
   unsubscribe: 'Отписаться',
-  unsubscribeConfirm: 'Отписаться от «{title}»?'
+  unsubscribeConfirm: 'Отписаться от «{title}»?',
+  quickConfirmTitle: 'Скачать «{title}»?',
+  quickConfirmCount: 'Будет скачано недостающих элементов: {count}.',
+  quickConfirmNone: 'Сейчас этот аккаунт ничего не может отсюда скачать.',
+  quickConfirmVip: 'Элементов только для Premium: {count}. С этим аккаунтом они будут пропущены.',
+  quickConfirmExtras: 'Трейлеры и дополнительные материалы (не основные серии) скачаны не будут: {count}.',
+  quickConfirmSubscribe: 'Вы также подпишетесь на этот источник, и новое будет скачиваться автоматически.',
+  quickConfirmDownload: 'Скачать: {count}',
+  quickFutureOnly: 'Только новое с этого момента',
+  quickSkippedVip: 'Пропущено элементов только для Premium: {count}',
+  quickSkippedExtras: 'Не скачано трейлеров и доп. материалов: {count}'
 } satisfies Messages['subs']

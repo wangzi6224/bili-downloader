@@ -90,6 +90,50 @@ describe('一键订阅并下载', () => {
   const verifyAccount = vi.fn()
   const request = { input, defaults: OPTIONS, verifyAccount }
 
+  it('超过 30 项先确认，什么都不做；确认后复用已加载的列表', async () => {
+    const items = Array.from({ length: 31 }, (_, i) => item(`ugc:BV${i}:1`))
+    h.resolveInput.mockResolvedValue(result(items))
+    expect(await m.downloadSource(request)).toEqual({
+      title: '收藏夹标题', subscribed: false, count: 0, confirm: { count: 31, vip: 0, extras: 0, subscribe: true }
+    })
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(m.list()).toEqual([])
+    expect(await m.downloadSource({ ...request, choice: 'all' })).toMatchObject({ subscribed: true, count: 31 })
+    expect(h.resolveInput).toHaveBeenCalledOnce()
+    expect(h.loadAllPages).toHaveBeenCalledOnce()
+  })
+
+  it('新订阅番剧时说明会跳过的会员集和花絮，只订阅以后的新内容时不入队', async () => {
+    const free = item('pgc:1', { kind: 'pgc' })
+    const vip = item('pgc:2', { kind: 'pgc', needVip: true })
+    const pv = item('pgc:3', { kind: 'pgc' })
+    h.resolveInput.mockResolvedValue({
+      ...result([]), kind: 'pgc',
+      groups: [{ id: 'main', title: '正片', items: [free, vip] }, { id: 'sec-1', title: 'PV', items: [pv] }]
+    })
+    expect(await m.downloadSource(request)).toMatchObject({ confirm: { count: 1, vip: 1, extras: 1, subscribe: true } })
+    expect(await m.downloadSource({ ...request, choice: 'future' })).toEqual({ title: '收藏夹标题', subscribed: true, count: 0 })
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(saved()[0].seen).toEqual([free.key, vip.key, pv.key])
+  })
+
+  it('已有订阅补缺失时不再询问，跳过会员集和花絮并说明；大会员账号照常下载会员集', async () => {
+    const free = item('pgc:1', { kind: 'pgc' })
+    const vip = item('pgc:2', { kind: 'pgc', needVip: true })
+    const pv = item('pgc:3', { kind: 'pgc' })
+    h.resolveInput.mockResolvedValue({
+      ...result([]), kind: 'pgc',
+      groups: [{ id: 'main', title: '正片', items: [free, vip] }, { id: 'sec-1', title: 'PV', items: [pv] }]
+    })
+    const subscription = sub({ id: 's', input })
+    m.replaceAll([subscription])
+    expect(await m.downloadSource({ ...request, subscription })).toMatchObject({ count: 1, skipped: { vip: 1, extras: 1 } })
+    expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ items: [free] }))
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 1, uname: '', face: '', vipActive: true, vipLabel: '' } })
+    expect(await m.downloadSource({ ...request, subscription })).toMatchObject({ count: 2, skipped: { vip: 0, extras: 1 } })
+    expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ items: [free, vip] }))
+  })
+
   it('加载后续分页并只加入缺失分 P，用所有原始条目建立订阅基线', async () => {
     const lazy = item('ugc:BV1', { lazy: true, bvid: 'BV1', pages: 2 })
     // 合集、系列不给分 P 数：下载过就不再逐个查分 P

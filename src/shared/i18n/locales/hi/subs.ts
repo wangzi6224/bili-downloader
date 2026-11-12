@@ -45,5 +45,15 @@ export default {
   checking: 'जाँच हो रही है…',
   checkNow: 'अभी जाँचें',
   unsubscribe: 'सब्सक्रिप्शन रद्द करें',
-  unsubscribeConfirm: '“{title}” का सब्सक्रिप्शन रद्द करें?'
+  unsubscribeConfirm: '“{title}” का सब्सक्रिप्शन रद्द करें?',
+  quickConfirmTitle: '“{title}” डाउनलोड करें?',
+  quickConfirmCount: 'छूटे हुए {count} आइटम डाउनलोड किए जाएँगे।',
+  quickConfirmNone: 'इस खाते से अभी यहाँ कुछ भी डाउनलोड नहीं किया जा सकता।',
+  quickConfirmVip: '{count} आइटम के लिए Premium ज़रूरी है, इस खाते से उन्हें छोड़ दिया जाएगा।',
+  quickConfirmExtras: 'ट्रेलर, एक्स्ट्रा जैसे {count} आइटम (मुख्य एपिसोड नहीं) डाउनलोड नहीं होंगे।',
+  quickConfirmSubscribe: 'यह स्रोत सब्सक्राइब भी हो जाएगा, आगे के नए आइटम अपने आप डाउनलोड होंगे।',
+  quickConfirmDownload: '{count} आइटम डाउनलोड करें',
+  quickFutureOnly: 'सिर्फ़ आगे के नए आइटम',
+  quickSkippedVip: 'Premium वाले {count} आइटम छोड़े गए',
+  quickSkippedExtras: 'ट्रेलर, एक्स्ट्रा जैसे {count} आइटम डाउनलोड नहीं किए गए'
 } satisfies Messages['subs']

@@ -46,5 +46,15 @@ export default {
   checking: '確認中…',
   checkNow: '今すぐ確認',
   unsubscribe: '購読を解除',
-  unsubscribeConfirm: '「{title}」の購読を解除しますか？'
+  unsubscribeConfirm: '「{title}」の購読を解除しますか？',
+  quickConfirmTitle: '「{title}」をダウンロードしますか？',
+  quickConfirmCount: '足りない {count} 件をダウンロードします。',
+  quickConfirmNone: '現在このアカウントでダウンロードできるものはありません。',
+  quickConfirmVip: '{count} 件はプレミアム会員限定のため、このアカウントではスキップします。',
+  quickConfirmExtras: '予告・特典映像など本編以外の {count} 件はダウンロードしません。',
+  quickConfirmSubscribe: 'このソースも購読し、今後の新着は自動でダウンロードします。',
+  quickConfirmDownload: '{count} 件をダウンロード',
+  quickFutureOnly: '今後の新着だけを購読',
+  quickSkippedVip: 'プレミアム会員限定の {count} 件をスキップしました',
+  quickSkippedExtras: '本編以外の {count} 件はダウンロードしませんでした'
 } satisfies Messages['subs']

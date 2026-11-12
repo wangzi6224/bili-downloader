@@ -47,5 +47,15 @@ export default {
   checking: 'Checking…',
   checkNow: 'Check now',
   unsubscribe: 'Unsubscribe',
-  unsubscribeConfirm: 'Unsubscribe from “{title}”?'
+  unsubscribeConfirm: 'Unsubscribe from “{title}”?',
+  quickConfirmTitle: 'Download “{title}”?',
+  quickConfirmCount: { one: '{count} missing item will be downloaded.', other: '{count} missing items will be downloaded.' },
+  quickConfirmNone: 'There’s nothing here this account can download right now.',
+  quickConfirmVip: { one: '{count} item requires Premium and will be skipped for this account.', other: '{count} items require Premium and will be skipped for this account.' },
+  quickConfirmExtras: { one: '{count} trailer or extra (not a main episode) won’t be downloaded.', other: '{count} trailers and extras (not main episodes) won’t be downloaded.' },
+  quickConfirmSubscribe: 'This also subscribes to the source, so new items will download automatically.',
+  quickConfirmDownload: { one: 'Download {count} item', other: 'Download {count} items' },
+  quickFutureOnly: 'Only new items from now on',
+  quickSkippedVip: { one: 'Skipped {count} Premium-only item', other: 'Skipped {count} Premium-only items' },
+  quickSkippedExtras: { one: 'Didn’t download {count} trailer or extra', other: 'Didn’t download {count} trailers or extras' }
 } satisfies Messages['subs']

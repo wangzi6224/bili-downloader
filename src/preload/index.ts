@@ -50,7 +50,9 @@ const api: BiliApi = {
     prepareItems: (items, accountMid) => accountMid === undefined
       ? invoke('sources:prepareItems', items)
       : invoke('sources:prepareItems', items, accountMid),
-    subscribeDownload: (source) => invoke('sources:subscribeDownload', source)
+    subscribeDownload: (source, choice) => choice === undefined
+      ? invoke('sources:subscribeDownload', source)
+      : invoke('sources:subscribeDownload', source, choice)
   },
   download: {
     enqueue: (req, accountMid) => accountMid === undefined ? invoke('dl:enqueue', req) : invoke('dl:enqueue', req, accountMid),

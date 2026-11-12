@@ -51,5 +51,15 @@ export default {
   checking: 'Vérification…',
   checkNow: 'Vérifier maintenant',
   unsubscribe: 'Se désabonner',
-  unsubscribeConfirm: 'Se désabonner de « {title} » ?'
+  unsubscribeConfirm: 'Se désabonner de « {title} » ?',
+  quickConfirmTitle: 'Télécharger « {title} » ?',
+  quickConfirmCount: { one: '{count} élément manquant sera téléchargé.', other: '{count} éléments manquants seront téléchargés.' },
+  quickConfirmNone: 'Ce compte ne peut rien télécharger ici pour le moment.',
+  quickConfirmVip: { one: '{count} élément nécessite Premium et sera ignoré avec ce compte.', other: '{count} éléments nécessitent Premium et seront ignorés avec ce compte.' },
+  quickConfirmExtras: { one: '{count} bande-annonce ou bonus (hors épisodes principaux) ne sera pas téléchargé.', other: '{count} bandes-annonces et bonus (hors épisodes principaux) ne seront pas téléchargés.' },
+  quickConfirmSubscribe: 'Vous serez aussi abonné à cette source : les nouveautés seront téléchargées automatiquement.',
+  quickConfirmDownload: { one: 'Télécharger {count} élément', other: 'Télécharger {count} éléments' },
+  quickFutureOnly: 'Seulement les nouveautés à venir',
+  quickSkippedVip: { one: '{count} élément Premium ignoré', other: '{count} éléments Premium ignorés' },
+  quickSkippedExtras: { one: '{count} bande-annonce ou bonus non téléchargé', other: '{count} bandes-annonces ou bonus non téléchargés' }
 } satisfies Messages['subs']

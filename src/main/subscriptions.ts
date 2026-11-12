@@ -5,7 +5,9 @@ import { app } from 'electron'
 import { downloadedMatcher, downloadStatusMatcher } from '@shared/downloaded'
 import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
-import type { DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, SourceDownloadResult, Subscription } from '@shared/types'
+import type {
+  DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, SourceDownloadChoice, SourceDownloadResult, Subscription
+} from '@shared/types'
 import { getAuthState } from './auth/authGuard'
 import type { accounts as accountRegistry } from './auth/accounts'
 import { authScope, isRetired } from './auth/scope'
@@ -30,18 +32,46 @@ interface SourceDownload {
   accountMid?: number
   defaults: DownloadOptions
   verifyAccount: () => void
+  /** 用户对确认的回答；没有时内容多或有要跳过的就先返回 confirm */
+  choice?: SourceDownloadChoice
 }
+
+/** 一键下载超过这么多项先问用户，免得一点就把上千条的收藏夹全加进队列 */
+const CONFIRM_ABOVE = 30
+/** 问用户期间留着已加载的列表，确认后不必重新翻页 */
+const LOADED_TTL = 10 * 60_000
 
 /**
  * 订阅：应用运行期间按间隔检查来源，把新出现的条目加入下载队列。
  * 事件：update(list)、found({ title, count })
  */
+/**
+ * 把缺失的条目分开：番剧只下正片，预告、花絮等不下；
+ * 当前账号不是大会员时，会员专享的下了也会失败，跳过。
+ */
+function splitMissing(result: ParseResult, missing: MediaItem[]): { wanted: MediaItem[]; vip: MediaItem[]; extras: MediaItem[] } {
+  const main = result.kind === 'pgc' ? result.groups.find((group) => group.id === 'main') : undefined
+  const mainKeys = main?.items.length ? new Set(main.items.map((item) => item.key)) : undefined
+  const auth = getAuthState()
+  const isVip = auth.loggedIn && auth.user.vipActive
+  const wanted: MediaItem[] = []
+  const vip: MediaItem[] = []
+  const extras: MediaItem[] = []
+  for (const item of missing) {
+    if (mainKeys && !mainKeys.has(item.key)) extras.push(item)
+    else if (item.needVip && !isVip) vip.push(item)
+    else wanted.push(item)
+  }
+  return { wanted, vip, extras }
+}
+
 export class SubscriptionManager extends EventEmitter {
   private subs: Subscription[]
   private timer?: NodeJS.Timeout
   private busy = false
   private checking = new Set<string>()
   private downloading = new Set<string>()
+  private loaded = new Map<string, { at: number; first: ParseResult; result: ParseResult }>()
 
   constructor(private enqueue: (req: EnqueueRequest) => number, private accounts?: Pick<typeof accountRegistry, 'run' | 'status'>) {
     super()
@@ -172,7 +202,7 @@ export class SubscriptionManager extends EventEmitter {
     sub.pending = pending.length ? pending : undefined
   }
 
-  async downloadSource({ input, subscription, accountMid, defaults, verifyAccount }: SourceDownload): Promise<SourceDownloadResult> {
+  async downloadSource({ input, subscription, accountMid, defaults, verifyAccount, choice }: SourceDownload): Promise<SourceDownloadResult> {
     const key = this.workKey(input, accountMid)
     const find = (): Subscription | undefined => {
       const matches = this.subs.filter((s) => sourceKey(s.input) === sourceKey(input))
@@ -182,8 +212,11 @@ export class SubscriptionManager extends EventEmitter {
     if (this.downloading.has(key) || (existing && this.checking.has(existing.id))) throw new Error(t('subs.quickBusy'))
     this.downloading.add(key)
     let episodeKey: string | undefined
+    const cached = this.loaded.get(key)
+    this.loaded.delete(key)
+    const reuse = choice && cached && Date.now() - cached.at < LOADED_TTL ? cached : undefined
     try {
-      const first = await resolveInput(input)
+      const first = reuse?.first ?? await resolveInput(input)
       verifyAccount()
       // 旧订阅可能是从单集链接创建的，但解析结果仍包含整部番剧。
       if (!existing && first.kind === 'pgc') {
@@ -200,7 +233,8 @@ export class SubscriptionManager extends EventEmitter {
           episodeKey = alias
         }
       }
-      const { result, complete, error } = await loadAllPages(first, { beforePage: verifyAccount })
+      const { result, complete, error } = reuse ? { result: reuse.result, complete: true, error: undefined }
+        : await loadAllPages(first, { beforePage: verifyAccount })
       if (!complete) throw new Error(error ?? t('subs.sourceIncomplete'))
       verifyAccount()
       const raw = result.groups.flatMap((group) => group.items)
@@ -210,7 +244,17 @@ export class SubscriptionManager extends EventEmitter {
       const bindingLegacy = current !== undefined && current.accountMid === undefined && accountMid !== undefined
       // 还没展开分P的视频先按 BV 号排除已下完的，免得每个都去查一次分P
       const status = downloadStatusMatcher(downloadedKeys())
-      const candidates = raw.filter((item) => !item.unavailable && status(item) !== 'downloaded')
+      const missing = raw.filter((item) => !item.unavailable && status(item) !== 'downloaded')
+      const { wanted, vip, extras } = splitMissing(result, missing)
+      const skipped = vip.length || extras.length ? { vip: vip.length, extras: extras.length } : undefined
+      if (!choice && (wanted.length > CONFIRM_ABOVE || (!current && skipped))) {
+        this.loaded.set(key, { at: Date.now(), first, result })
+        return {
+          title: result.title, subscribed: false, count: 0,
+          confirm: { count: wanted.length, vip: vip.length, extras: extras.length, subscribe: !current }
+        }
+      }
+      const candidates = choice === 'future' ? [] : wanted
       const { count, pending, note } = await this.prepareAndEnqueue(
         result, candidates, result.kind === 'audio' ? { ...options, output: 'audio' } : options,
         () => {
@@ -236,7 +280,7 @@ export class SubscriptionManager extends EventEmitter {
       sub.lastError = note
       if (!current) this.subs.push(sub)
       this.save()
-      return { title: result.title, subscribed: !current, count, note }
+      return { title: result.title, subscribed: !current, count, note, ...(choice !== 'future' && skipped ? { skipped } : {}) }
     } finally {
       this.downloading.delete(key)
       if (episodeKey) this.downloading.delete(episodeKey)

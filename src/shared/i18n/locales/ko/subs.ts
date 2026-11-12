@@ -45,5 +45,15 @@ export default {
   checking: '확인 중…',
   checkNow: '지금 확인',
   unsubscribe: '구독 취소',
-  unsubscribeConfirm: '‘{title}’ 구독을 취소할까요?'
+  unsubscribeConfirm: '‘{title}’ 구독을 취소할까요?',
+  quickConfirmTitle: '‘{title}’을(를) 다운로드할까요?',
+  quickConfirmCount: '빠진 항목 {count}개를 다운로드합니다.',
+  quickConfirmNone: '지금 이 계정으로 다운로드할 수 있는 항목이 없습니다.',
+  quickConfirmVip: '{count}개는 프리미엄 전용이라 이 계정으로는 건너뜁니다.',
+  quickConfirmExtras: '예고편, 부가 영상 등 본편이 아닌 {count}개는 다운로드하지 않습니다.',
+  quickConfirmSubscribe: '이 소스도 구독하며, 앞으로 새 항목은 자동으로 다운로드합니다.',
+  quickConfirmDownload: '{count}개 다운로드',
+  quickFutureOnly: '앞으로의 새 항목만 구독',
+  quickSkippedVip: '프리미엄 전용 {count}개를 건너뜀',
+  quickSkippedExtras: '본편이 아닌 {count}개는 다운로드하지 않음'
 } satisfies Messages['subs']

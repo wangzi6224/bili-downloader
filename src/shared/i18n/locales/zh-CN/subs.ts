@@ -43,5 +43,15 @@ export default {
   checking: '检查中…',
   checkNow: '立即检查',
   unsubscribe: '取消订阅',
-  unsubscribeConfirm: '取消订阅“{title}”？'
+  unsubscribeConfirm: '取消订阅“{title}”？',
+  quickConfirmTitle: '下载「{title}」？',
+  quickConfirmCount: '将下载 {count} 项缺失的内容。',
+  quickConfirmNone: '这里暂时没有当前账号能下载的内容。',
+  quickConfirmVip: '{count} 项是大会员专享，当前账号下载不了，会跳过。',
+  quickConfirmExtras: '{count} 项预告、花絮等非正片内容不会下载。',
+  quickConfirmSubscribe: '同时会订阅这个来源，以后有新内容会自动下载。',
+  quickConfirmDownload: '下载 {count} 项',
+  quickFutureOnly: '只订阅以后的新内容',
+  quickSkippedVip: '跳过 {count} 项大会员专享内容',
+  quickSkippedExtras: '未下载 {count} 项预告、花絮等非正片内容'
 }

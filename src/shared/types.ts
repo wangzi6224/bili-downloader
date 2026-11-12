@@ -455,11 +455,29 @@ export interface AccountSourcePage {
   hasMore: boolean
 }
 
+/** 一键订阅并下载要用户确认时的情况：要下多少、跳过多少 */
+export interface SourceDownloadPlan {
+  count: number
+  /** 大会员专享，当前账号下载不了，会跳过 */
+  vip: number
+  /** 番剧的预告、花絮等非正片内容，不下载 */
+  extras: number
+  /** 确认后会新建订阅 */
+  subscribe: boolean
+}
+
+/** all：下载缺失内容并订阅；future：只订阅以后的新内容 */
+export type SourceDownloadChoice = 'all' | 'future'
+
 export interface SourceDownloadResult {
   title: string
   subscribed: boolean
   count: number
   note?: string
+  /** 跳过的会员专享和非正片内容 */
+  skipped?: { vip: number; extras: number }
+  /** 有值时什么都没做，等用户确认后带上选择再调用一次 */
+  confirm?: SourceDownloadPlan
 }
 
 export interface Settings {
@@ -589,7 +607,7 @@ export interface BiliApi {
     listAccount(mid: number, category: AccountSourceCategory, page: number): Promise<AccountSourcePage>
     open(source: SourceRef): Promise<SourceDetails>
     prepareItems(items: MediaItem[], accountMid?: number): Promise<{ items: MediaItem[]; note?: string }>
-    subscribeDownload(source: SourceRef): Promise<SourceDownloadResult>
+    subscribeDownload(source: SourceRef, choice?: SourceDownloadChoice): Promise<SourceDownloadResult>
   }
   download: {
     /** 返回无法加入队列的提示（例如列表里有失效视频） */

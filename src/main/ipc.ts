@@ -8,6 +8,7 @@ import type {
   MediaItem,
   NewSubscription,
   PagedSource,
+  SourceDownloadChoice,
   ParseResult,
   Settings,
   SourceDetails,
@@ -270,7 +271,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: 
     if (accountMid !== undefined) requireAccount(accountMid)
     return { items: prepared.items, note: prepared.note }
   })
-  handle('sources:subscribeDownload', async (source: SourceRef) => {
+  handle('sources:subscribeDownload', async (source: SourceRef, choice?: SourceDownloadChoice) => {
     const subscription = source.type === 'subscription' ? getSubscription(source.id) : undefined
     if (accounts) {
       const verify = verifyView()
@@ -282,7 +283,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: 
         if (!input) throw new Error(t('subs.sourceUnavailable'))
         const settings = getSettings()
         return subs.downloadSource({
-          input, subscription, accountMid, defaults: normalizeOptions(settings.defaults, settings.defaultQn),
+          input, subscription, accountMid, defaults: normalizeOptions(settings.defaults, settings.defaultQn), choice,
           verifyAccount: () => {
             verify()
             requireAccount(accountMid)
@@ -302,7 +303,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: 
     if (!input) throw new Error(t('subs.sourceUnavailable'))
     const settings = getSettings()
     return subs.downloadSource({
-      input, subscription, defaults: normalizeOptions(settings.defaults, settings.defaultQn), verifyAccount,
+      input, subscription, defaults: normalizeOptions(settings.defaults, settings.defaultQn), verifyAccount, choice,
       accountMid: source.type === 'account' && source.target.type === 'watchlater' ? mid : boundMid
     })
   })

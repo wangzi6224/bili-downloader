@@ -50,5 +50,15 @@ export default {
   checking: 'Controllo…',
   checkNow: 'Controlla ora',
   unsubscribe: 'Annulla iscrizione',
-  unsubscribeConfirm: 'Annullare l’iscrizione a “{title}”?'
+  unsubscribeConfirm: 'Annullare l’iscrizione a “{title}”?',
+  quickConfirmTitle: 'Scaricare “{title}”?',
+  quickConfirmCount: { one: 'Verrà scaricato {count} elemento mancante.', other: 'Verranno scaricati {count} elementi mancanti.' },
+  quickConfirmNone: 'Al momento questo account non può scaricare nulla da qui.',
+  quickConfirmVip: { one: '{count} elemento richiede Premium e verrà saltato con questo account.', other: '{count} elementi richiedono Premium e verranno saltati con questo account.' },
+  quickConfirmExtras: { one: '{count} trailer o extra (non episodio principale) non verrà scaricato.', other: '{count} trailer ed extra (non episodi principali) non verranno scaricati.' },
+  quickConfirmSubscribe: 'Ti iscriverai anche a questa fonte: i nuovi elementi verranno scaricati automaticamente.',
+  quickConfirmDownload: { one: 'Scarica {count} elemento', other: 'Scarica {count} elementi' },
+  quickFutureOnly: 'Solo i nuovi elementi da ora in poi',
+  quickSkippedVip: { one: 'Saltato {count} elemento Premium', other: 'Saltati {count} elementi Premium' },
+  quickSkippedExtras: { one: 'Non scaricato {count} trailer o extra', other: 'Non scaricati {count} trailer o extra' }
 } satisfies Messages['subs']
