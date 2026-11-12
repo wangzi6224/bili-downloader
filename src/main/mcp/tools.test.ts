@@ -295,11 +295,12 @@ describe('多账号 MCP', () => {
     }
   )
 
-  it('搜索、解析和下载使用调用指定的账号，同一视频能分别入队且旧的跨账号链接无法暂停对方', async () => {
+  it('搜索、解析和下载使用调用指定的账号，各自的任务分开管理且旧的跨账号链接无法暂停对方', async () => {
     const scopes: number[] = []
     deps.parseAll.mockImplementation(async () => {
       scopes.push(authScope().mid!)
-      return { result: result([plain(1)]), complete: true }
+      // 两个账号解析出不同的视频；同一个视频不分账号只下一份
+      return { result: result([plain(authScope().mid!)]), complete: true }
     })
     deps.searchUsers.mockImplementation(async () => {
       expect(authScope().mid).toBe(2)

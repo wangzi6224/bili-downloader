@@ -150,7 +150,7 @@ export class SubscriptionManager extends EventEmitter {
     const unique = new Map(candidates.map((item) => [item.key, item]))
     const { items, failed, note } = await prepareEnqueueItems([...unique.values()])
     beforeQueue()
-    const history = new Set(downloadedKeys(accountMid))
+    const history = new Set(downloadedKeys())
     const missing = items.filter((item) => !history.has(item.key))
     const count = missing.length ? this.enqueue({
       title: result.title,
@@ -209,7 +209,7 @@ export class SubscriptionManager extends EventEmitter {
       const options = current?.options ?? defaults
       const bindingLegacy = current !== undefined && current.accountMid === undefined && accountMid !== undefined
       // 还没展开分P的视频先按 BV 号排除已下完的，免得每个都去查一次分P
-      const status = downloadStatusMatcher(downloadedKeys(accountMid))
+      const status = downloadStatusMatcher(downloadedKeys())
       const candidates = raw.filter((item) => !item.unavailable && status(item) !== 'downloaded')
       const { count, pending, note } = await this.prepareAndEnqueue(
         result, candidates, result.kind === 'audio' ? { ...options, output: 'audio' } : options,
@@ -284,7 +284,7 @@ export class SubscriptionManager extends EventEmitter {
       if (!matchesAccount() || !this.subs.includes(sub)) return this.subs
       const seen = new Set(sub.seen)
       const wasSeen = (item: MediaItem): boolean => seen.has(item.key)
-      const isDownloaded = downloadedMatcher(downloadedKeys(accountMid))
+      const isDownloaded = downloadedMatcher(downloadedKeys())
       const known = (i: MediaItem): boolean => wasSeen(i) || isDownloaded(i)
       // 正序的合集、系列只看第一页会漏掉排在最后的新内容
       const ascending = Boolean(r.paging && isAscending(r.paging.source))

@@ -62,7 +62,7 @@ export interface McpDeps {
   queue: TaskQueue
   /** 批次记录保存在这个文件里 */
   batchFile: string
-  downloadedKeys: (mid?: number) => string[]
+  downloadedKeys: () => string[]
   downloadRecords: () => HistoryEntry[]
   parseRecords: () => ParseRecord[]
   probeQuality: QualityProbe
@@ -537,7 +537,7 @@ export class McpTools implements ToolSet {
     const window = p.items.slice(offset, offset + limit)
     if (expand) await this.cache.expandParts(window, this.deps.expandLazy)
     const r = p.result
-    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys(this.accountMid()))
+    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys())
     const isQueued = this.queuedMatcher()
     // 番剧有正片、花絮等多个分组时，告诉 agent 每条属于哪组
     const groupOf = new Map(r.groups.length > 1 ? r.groups.flatMap((g) => g.items.map((i) => [i.key, g.title] as const)) : [])
@@ -587,10 +587,9 @@ export class McpTools implements ToolSet {
     }
   }
 
-  /** 队列里还没完成的条目 */
+  /** 队列里还没完成的条目，不分账号：别的账号已经在下的，提交后也会跳过 */
   private queuedMatcher(): (i: MediaItem) => boolean {
-    const mid = this.accountMid()
-    return downloadedMatcher(this.deps.queue.list().filter((task) => task.accountMid === mid && task.status !== 'done').map((task) => task.item.key))
+    return downloadedMatcher(this.deps.queue.list().filter((task) => task.status !== 'done').map((task) => task.item.key))
   }
 
   /** url 和 videos 两种提交方式共用的参数 */
@@ -729,7 +728,7 @@ export class McpTools implements ToolSet {
     }
     chosen = [...unique.values()]
     // 列表视频要展开后才能按每一P核对，交给批次处理
-    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys(accountMid))
+    const isDownloaded = downloadedMatcher(this.deps.downloadedKeys())
     const fresh = skipDownloaded ? chosen.filter((i) => i.lazy || !isDownloaded(i)) : chosen
     const downloaded = chosen.length - fresh.length
     const notes: string[] = []

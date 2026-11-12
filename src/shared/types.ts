@@ -635,7 +635,7 @@ export interface BiliApi {
   }
   history: {
     /** 已下载过的条目 key */
-    downloadedKeys(accountMid?: number): Promise<string[]>
+    downloadedKeys(): Promise<string[]>
     onDownloadsChanged(cb: () => void): () => void
     clearDownloads(): Promise<void>
     parses(): Promise<ParseRecord[]>

@@ -178,14 +178,17 @@ it('通过 MCP HTTP 验证双账号登录、画质、任务归属、历史和退
     const a = await ok('download_batch', { url, all: true, request_id: 'same' })
     const b = await ok('download_batch', { url, all: true, request_id: 'same', qn: 120, account_mid: 2 })
     expect(a.batch_id).not.toBe(b.batch_id)
-    expect(queue.list().map((task) => [task.accountMid, task.item.key, task.options.qn])).toEqual([[1, item.key, 80], [2, item.key, 120]])
+    // 同一个视频不分账号只下一份：另一个账号再提交时跳过已在队列里的任务
+    expect(queue.list().map((task) => [task.accountMid, task.item.key, task.options.qn])).toEqual([[1, item.key, 80]])
+    expect(await ok('get_batch_status', { batch_id: b.batch_id, account_mid: 2 })).toMatchObject({ account_mid: 2 })
     expect(await ok('control_tasks', { action: 'pause', account_mid: 1 })).toMatchObject({ affected: 1 })
-    expect(queue.list().map((task) => task.status)).toEqual(['paused', 'queued'])
+    expect(queue.list().map((task) => task.status)).toEqual(['paused'])
     for (const task of queue.list()) history.recordDownload({
       key: task.item.key, title: task.title, groupTitle: task.groupTitle, path: join(directory, task.id),
       at: Date.now(), accountMid: task.accountMid
     })
-    expect(await ok('list_download_history', { account_mid: 2 })).toMatchObject({ total: 1, records: [{ account_mid: 2 }] })
+    expect(await ok('list_download_history', { account_mid: 1 })).toMatchObject({ total: 1, records: [{ account_mid: 1 }] })
+    expect(await ok('list_download_history', { account_mid: 2 })).toMatchObject({ total: 0 })
     expect(await ok('list_parse_history', { account_mid: 1 })).toMatchObject({ total: 1, records: [{ account_mid: 1 }] })
 
     expect(await ok('switch_account', { account_mid: 2 })).toMatchObject({ active_account_mid: 2 })

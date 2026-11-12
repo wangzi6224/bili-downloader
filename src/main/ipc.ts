@@ -307,7 +307,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: 
     })
   })
 
-  handle('history:downloadedKeys', (mid?: number) => mid === undefined ? downloadedKeys() : downloadedKeys(mid))
+  handle('history:downloadedKeys', () => downloadedKeys())
   handle('history:clearDownloads', () => clearDownloads())
   handle('history:parses', () => parseRecords())
   handle('history:removeParse', (input: string, accountMid?: number | null) =>

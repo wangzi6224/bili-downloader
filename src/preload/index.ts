@@ -83,7 +83,7 @@ const api: BiliApi = {
     speed: () => invoke('wm:speed')
   },
   history: {
-    downloadedKeys: (mid) => mid === undefined ? invoke('history:downloadedKeys') : invoke('history:downloadedKeys', mid),
+    downloadedKeys: () => invoke('history:downloadedKeys'),
     onDownloadsChanged: on('history:downloadsChanged'),
     clearDownloads: () => invoke('history:clearDownloads'),
     parses: () => invoke('history:parses'),

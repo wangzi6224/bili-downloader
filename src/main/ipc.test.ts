@@ -311,15 +311,15 @@ describe('多账号 IPC', () => {
     expect(h.removeParse).toHaveBeenCalledWith('BV1', a.mid)
   })
 
-  it('重开其他账号的稍后再看记录只读取原账号，并按原账号查询下载历史', async () => {
+  it('重开其他账号的稍后再看记录只读取原账号，下载历史不分账号', async () => {
     h.resolveInput.mockImplementation(async () => ({
       title: `账号 ${scope.authScope().mid} 的稍后再看`, kind: 'ugc', cover: '', groups: [], defaultSelected: []
     }))
     expect(await data('parse', 'watchlater', b.mid)).toMatchObject({ title: '账号 8 的稍后再看' })
     expect(h.recordParse).toHaveBeenCalledWith(expect.objectContaining({ input: 'watchlater', accountMid: b.mid }))
     expect(scope.activeScope().mid).toBe(a.mid)
-    await data('history:downloadedKeys', b.mid)
-    expect(h.downloadedKeys).toHaveBeenCalledWith(b.mid)
+    await data('history:downloadedKeys')
+    expect(h.downloadedKeys).toHaveBeenCalledWith()
   })
 
   it('原账号失效时请求该账号重登，不使用侧栏账号解析', async () => {

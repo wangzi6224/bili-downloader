@@ -230,7 +230,8 @@ export class DownloadManager extends EventEmitter {
     const now = Math.floor(Date.now() / 1000)
     const result: EnqueueResult = { created: [], skipped: [] }
     for (const item of req.items) {
-      const dup = this.tasks.find((t) => t.item.key === item.key && t.accountMid === req.accountMid && t.status !== 'done')
+      // 不分账号：别的账号正在下的同一个视频，下完就是同一份文件
+      const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
       if (dup) {
         result.skipped.push({ key: item.key, taskId: dup.id })
         continue

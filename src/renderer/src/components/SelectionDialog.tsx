@@ -129,7 +129,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
     let request = 0
     const refresh = (): void => {
       const id = ++request
-      api.history.downloadedKeys(accountMid).then((keys) => {
+      api.history.downloadedKeys().then((keys) => {
         if (id !== request) return
         setDownloaded(keys)
         setHistoryError(false)
@@ -145,7 +145,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
       request++
       off()
     }
-  }, [accountMid, historyAttempt])
+  }, [historyAttempt])
 
   const statusFor = useMemo(() => downloadStatusMatcher(downloaded ?? []), [downloaded])
   const isDownloaded = useMemo(
@@ -310,7 +310,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
         setFeedback({ tone: 'error', message: prepared.note ?? t('subs.noDownloadableSelection') })
         return
       }
-      const keys = new Set(await api.history.downloadedKeys(accountMid))
+      const keys = new Set(await api.history.downloadedKeys())
       if (useStore.getState().parse !== result) return
       const exact = (item: MediaItem): boolean => keys.has(item.key)
       const decision = resolveDuplicates(prepared.items, exact, settings.duplicateAction)
@@ -331,7 +331,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
       const { items, note } = dupPrompt.prepared
       setSubmitting(true)
       try {
-        const keys = skip ? new Set(await api.history.downloadedKeys(accountMid)) : null
+        const keys = skip ? new Set(await api.history.downloadedKeys()) : null
         if (useStore.getState().parse !== result) return
         setDupPrompt(null)
         await enqueue(keys ? items.filter((item) => !keys.has(item.key)) : items, note)

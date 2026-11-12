@@ -40,7 +40,7 @@ export class FakeQueue extends EventEmitter {
   enqueue = vi.fn((req: EnqueueRequest): EnqueueResult => {
     const result: EnqueueResult = { created: [], skipped: [] }
     for (const item of req.items) {
-      const dup = this.tasks.find((t) => t.item.key === item.key && t.accountMid === req.accountMid && t.status !== 'done')
+      const dup = this.tasks.find((t) => t.item.key === item.key && t.status !== 'done')
       if (dup) {
         result.skipped.push({ key: item.key, taskId: dup.id })
         continue

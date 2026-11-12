@@ -244,13 +244,13 @@ it('同一个稍后再看地址按所属账号检查，A 过期时 B 照常入�
   expect(m.list().map((s) => s.seen)).toEqual([['ugc:BV1:1'], ['ugc:BV2:1']])
 })
 
-it('定时检查与一键补下载都只使用订阅账号的历史，并在展开后按分 P 去重', async () => {
+it('定时检查与一键补下载用订阅账号下载，按不分账号的历史在展开后按分 P 去重', async () => {
   const first = item('ugc:BV1:1')
   const lazy = item('ugc:BV2', { lazy: true, bvid: 'BV2', pages: 2 })
   const partA = item('ugc:BV2:10')
   const partB = item('ugc:BV2:11')
-  let accountBHistory: string[] = []
-  h.downloadedKeys.mockImplementation((mid) => mid === 2 ? accountBHistory : [first.key, partA.key, partB.key])
+  let history: string[] = []
+  h.downloadedKeys.mockImplementation(() => history)
   h.auth.mockImplementation(() => ({ loggedIn: true, user: { mid: authScope().mid } }))
   h.resolveInput.mockResolvedValue(result([first, lazy]))
   h.prepare.mockImplementation(async (items: MediaItem[]) => ({
@@ -267,10 +267,12 @@ it('定时检查与一键补下载都只使用订阅账号的历史，并在展�
   expect(m.list()[0].seen).toEqual([first.key, lazy.key])
 
   enqueue.mockClear()
-  accountBHistory = [partA.key]
+  // 其他账号下过的分 P 也算已下载
+  history = [partA.key]
   expect(await m.downloadSource({ input: subscription.input, subscription, accountMid: 2, defaults: OPTIONS, verifyAccount: () => {} }))
     .toMatchObject({ count: 2, subscribed: false })
   expect(enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ accountMid: 2, items: [first, partB] }))
+  expect(h.downloadedKeys).toHaveBeenCalledWith()
 })
 
 describe('add', () => {

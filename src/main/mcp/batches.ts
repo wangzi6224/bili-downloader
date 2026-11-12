@@ -120,7 +120,7 @@ export class BatchManager extends EventEmitter {
     private file: string,
     private queue: TaskQueue,
     private expand: (items: MediaItem[]) => Promise<MediaItem[]>,
-    private downloadedKeys: (mid?: number) => string[],
+    private downloadedKeys: () => string[],
     private chunk = CHUNK,
     private accounts?: Pick<typeof accountRegistry, 'run' | 'status' | 'partition'>
   ) {
@@ -422,7 +422,7 @@ export class BatchManager extends EventEmitter {
     if (!b.multi && ok.length > 1) b.multi = true
     if (b.skipDownloaded) {
       // 展开后按每一P核对：多P视频只下过其中几P时，其余的照样下载
-      const done = new Set(this.downloadedKeys(b.accountMid))
+      const done = new Set(this.downloadedKeys())
       const before = ok.length
       ok = ok.filter((i) => !done.has(i.key))
       b.skipped.downloaded += before - ok.length

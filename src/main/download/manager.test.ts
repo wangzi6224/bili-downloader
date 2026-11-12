@@ -210,7 +210,7 @@ describe('构造时恢复', () => {
   })
 })
 
-it('同一视频可由两个账号分别下载，切号后原任务继续取字幕，过期和重登只影响原账号', async () => {
+it('同一视频不分账号只下一份，切号后原任务继续取字幕，过期和重登只影响原账号', async () => {
   const original = activeScope()
   const a = { mid: 1, partition: 'a' }
   const b = { mid: 2, partition: 'b' }
@@ -241,7 +241,11 @@ it('同一视频可由两个账号分别下载，切号后原任务继续取字�
     expect(manager.enqueue(req([item(1)], { accountMid: 1, options }))).toMatchObject({
       created: [], skipped: [{ taskId: first.created[0].id }]
     })
-    manager.enqueue(req([item(1)], { accountMid: 2, options }))
+    // 别的账号正在下同一个视频：跳过，指向已有的任务
+    expect(manager.enqueue(req([item(1)], { accountMid: 2, options }))).toMatchObject({
+      created: [], skipped: [{ taskId: first.created[0].id }]
+    })
+    manager.enqueue(req([item(2)], { accountMid: 2, options }))
     await settle()
     expect(statuses(manager)).toEqual(['fetching', 'done'])
     status.set(1, 'expired')

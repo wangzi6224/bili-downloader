@@ -108,7 +108,7 @@ describe('preload', () => {
     { channel: 'parseMore', call: () => api.parseMore(SOURCE, 2), args: [SOURCE, 2] },
     { channel: 'auth:chooseBrowserFolder', call: () => api.auth.chooseBrowserFolder('chrome::'), args: ['chrome::'] },
     { channel: 'parse', call: () => api.parse('watchlater', 8), args: ['watchlater', 8] },
-    { channel: 'history:downloadedKeys', call: () => api.history.downloadedKeys(8), args: [8] },
+    { channel: 'history:downloadedKeys', call: () => api.history.downloadedKeys(), args: [] },
     {
       channel: 'wm:frame',
       call: () => api.watermark.frame('t1', 3.5, { x: 1, y: 2, w: 30, h: 10 }),

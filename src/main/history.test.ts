@@ -68,10 +68,18 @@ describe('下载历史', () => {
     history.recordDownload(b)
     expect(history.downloadRecords()).toEqual([a, b])
     expect(history.downloadedKeys()).toEqual(['a'])
-    expect(history.downloadedKeys(2)).toEqual(['a'])
     history.removeDownloads([b])
     expect(history.downloadRecords()).toEqual([a])
-    expect(history.downloadedKeys(2)).toEqual([])
+    expect(history.downloadedKeys()).toEqual(['a'])
+    history.removeDownloads([a])
+    expect(history.downloadedKeys()).toEqual([])
+  })
+
+  it('是否下载过不分账号，升级前没记账号的记录也算', () => {
+    history.recordDownload(entry('old'))
+    history.recordDownload({ ...entry('mine'), accountMid: 1 })
+    history.recordDownload({ ...entry('other'), accountMid: 2 })
+    expect(history.downloadedKeys()).toEqual(['old', 'mine', 'other'])
   })
 
   it('文件内容不是数组时当作空，不会崩溃（回归）', () => {

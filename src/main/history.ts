@@ -33,7 +33,7 @@ function saveDownloads(): void {
   for (const listener of downloadListeners) listener()
 }
 
-/** 每份文件保留发起账号，条目 key 仍可用于判断是否下载过。 */
+/** 每份文件保留发起账号，只用来显示；是否下载过按条目 key 判断，不分账号。 */
 export function recordDownload(entry: HistoryEntry): void {
   const map = loadDownloads()
   map.set(downloadId(entry), entry)
@@ -42,8 +42,9 @@ export function recordDownload(entry: HistoryEntry): void {
 
 export const downloadRecords = (): HistoryEntry[] => [...loadDownloads().values()]
 
-export function downloadedKeys(mid?: number): string[] {
-  return [...new Set(downloadRecords().filter((e) => mid === undefined || e.accountMid === mid).map((e) => e.key))]
+/** 下载过的条目 key。不分账号：同一个视频哪个账号下的都是同一份文件，不必再下一遍 */
+export function downloadedKeys(): string[] {
+  return [...new Set(downloadRecords().map((e) => e.key))]
 }
 
 /** 文件被删掉了，之后再选中不算“已下载” */

@@ -124,15 +124,15 @@ function expectSelection(checked: string[], unchecked: string[], count = checked
 }
 
 describe('选择窗口', () => {
-  it('打开另一账号的订阅时，已下载标记和确认提交都只读该账号的历史', async () => {
+  it('打开另一账号的订阅时，下载记录不分账号，提交时仍用该账号下载', async () => {
     useStore.setState({ sourceAccountMid: 8 })
-    api.history.downloadedKeys.mockImplementation(async (mid) => mid === 8 ? [] : [first.key])
+    api.history.downloadedKeys.mockResolvedValue([])
     await open(true)
-    expect(api.history.downloadedKeys).toHaveBeenCalledExactlyOnceWith(8)
+    expect(api.history.downloadedKeys).toHaveBeenCalledExactlyOnceWith()
     await click(checkbox(first.title))
     api.history.downloadedKeys.mockClear()
     await clickButton('下载 1 项')
-    expect(api.history.downloadedKeys).toHaveBeenNthCalledWith(1, 8)
+    expect(api.history.downloadedKeys).toHaveBeenNthCalledWith(1)
     expect(api.download.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ items: [first] }), 8)
   })
   it('点复选框和行文字都只切换一次，且勾选、分组和下载按钮同步', async () => {
