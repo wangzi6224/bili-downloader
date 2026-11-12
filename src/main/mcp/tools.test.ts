@@ -350,6 +350,22 @@ describe('多账号 MCP', () => {
     expect(await data('parse_link', { url: 'x' })).toMatchObject({ account_mid: 2 })
   })
 
+  it('退出账号交给应用问用户本人，拒绝时不退出，已退出的账号不再询问', async () => {
+    const logoutAccount = vi.fn(async (_mid: number) => false)
+    tools = makeTools({ accounts: registry, logoutAccount })
+    expect(await error('logout_account', { account_mid: 2 })).toMatchObject({ code: 'FAILED', hint: expect.any(String) })
+    expect(logoutAccount).toHaveBeenCalledWith(2)
+    expect(registry.status(2)).toBe('ready')
+    logoutAccount.mockImplementation(async (mid: number) => {
+      await registry.remove(mid)
+      return true
+    })
+    expect(await data('logout_account', { account_mid: 2 })).toMatchObject({ account_mid: 2, status: 'removed' })
+    logoutAccount.mockClear()
+    await data('logout_account', { account_mid: 4 })
+    expect(logoutAccount).not.toHaveBeenCalled()
+  })
+
   it('查询指定账号时跟踪它的重新登录，并区分未验证、退出和仍在登录的账号', async () => {
     state.accounts.push(profile(5, 'unchecked'))
     const snapshot = {

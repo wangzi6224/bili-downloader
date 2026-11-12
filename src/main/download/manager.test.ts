@@ -268,6 +268,31 @@ it('同一视频不分账号只下一份，切号后原任务继续取字幕，�
   }
 })
 
+it('退出账号时把没下完的任务转给另一个账号，等待登录的接着排队，已完成的保留原账号', async () => {
+  const status = new Map<number, 'ready' | 'removed'>([[1, 'removed'], [2, 'ready']])
+  const accounts = {
+    run: <T>(mid: number | undefined, fn: () => Promise<T>) =>
+      status.get(mid!) === 'ready' ? inAuthScope({ partition: `p${mid}`, mid }, fn) : Promise.reject(new AuthExpiredError()),
+    partition: (mid: number) => `p${mid}`,
+    status: (mid: number) => status.get(mid) ?? 'removed' as const
+  }
+  const manager = new DownloadManager(join(root, 'tmp'), stateFile(), () => settings, accounts)
+  manager.enqueue(req([item(1)], { accountMid: 1 }))
+  manager.enqueue(req([item(2)], { accountMid: 2 }))
+  await settle()
+  const [waiting, done] = manager.list()
+  expect([waiting.status, done.status]).toEqual(['waitingAuth', 'done'])
+  manager.enqueue(req([item(3)], { accountMid: 1 }))
+  expect(manager.accountTasks(1)).toEqual([waiting.id, manager.list()[2].id])
+  expect(manager.accountTasks(2)).toEqual([])
+  // 已完成的任务不转，记录仍是原账号发起的
+  done.accountMid = 1
+  manager.transferAccount(1, 2)
+  await settle()
+  expect(manager.list().map((task) => [task.accountMid, task.status])).toEqual([[2, 'done'], [1, 'done'], [2, 'done']])
+  expect(manager.accountTasks(1)).toEqual([])
+})
+
 describe('enqueue', () => {
   it('同 key 未完成的任务去重，已完成的可以再加', async () => {
     const m = make()

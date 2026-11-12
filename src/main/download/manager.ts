@@ -185,6 +185,20 @@ export class DownloadManager extends EventEmitter {
     }
   }
 
+  /** 这个账号名下还没下完的任务 */
+  accountTasks(mid: number): string[] {
+    return this.tasks.filter((t) => t.accountMid === mid && t.status !== 'done').map((t) => t.id)
+  }
+
+  /** 退出账号时把还没下完的任务转给另一个账号，等待登录的接着排队 */
+  transferAccount(from: number, to: number): void {
+    for (const task of this.tasks) {
+      if (task.accountMid !== from || task.status === 'done') continue
+      this.patch(task, task.status === 'waitingAuth' ? { accountMid: to, status: 'queued' } : { accountMid: to })
+    }
+    this.schedule()
+  }
+
   accountChanged(mid: number, status: 'ready' | 'unchecked' | 'expired' | 'removed'): void {
     for (const task of this.tasks) {
       if (task.accountMid !== mid) continue

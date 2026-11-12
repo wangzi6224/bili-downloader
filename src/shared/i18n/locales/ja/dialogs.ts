@@ -5,6 +5,7 @@ export default {
   cancel: 'キャンセル',
   logoutMessage: 'ログアウトしますか？',
   logoutDetail: 'ログアウトすると、再度インポートまたはログインが必要です。',
+  mcpLogoutMessage: 'AI アシスタントが「{name}」からのログアウトを求めています。ログアウトしますか？',
   logoutConfirm: 'ログアウト',
   upToDate: '最新バージョンです',
   currentVersion: '現在のバージョン {version}',

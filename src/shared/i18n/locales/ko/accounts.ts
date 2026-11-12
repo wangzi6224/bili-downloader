@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "일시 중지됨: 이 계정으로 다시 로그인하면 확인을 계속합니다",
   subPausedRemoved: "일시 중지됨: 이 계정은 로그아웃되었습니다",
   subPausedNoAccount: "일시 중지됨: 계정에 할당하면 확인을 계속합니다",
+  handoverTasks: "완료되지 않은 다운로드: {count}개",
+  handoverSubs: "구독: {count}개",
+  handoverPersonal: "그중 ‘나중에 보기’ 구독 {count}개는 이 계정 전용이라 옮기지 않습니다.",
+  handoverAsk: "로그아웃 후 이 항목들을 어떻게 할까요?",
+  handoverTransfer: "{name}(으)로 옮기기",
+  handoverKeep: "남겨 두고 다시 로그인하면 계속",
+  handoverDelete: "함께 삭제",
 }

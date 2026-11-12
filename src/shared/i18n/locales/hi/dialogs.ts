@@ -5,6 +5,7 @@ export default {
   cancel: 'रद्द करें',
   logoutMessage: 'क्या आप लॉग आउट करना चाहते हैं?',
   logoutDetail: 'लॉग आउट के बाद फिर से इम्पोर्ट या लॉग इन करना होगा।',
+  mcpLogoutMessage: 'आपका AI सहायक {name} से लॉग आउट करना चाहता है। लॉग आउट करें?',
   logoutConfirm: 'लॉग आउट',
   upToDate: 'नवीनतम वर्ज़न है',
   currentVersion: 'मौजूदा वर्ज़न {version}',

@@ -5,6 +5,7 @@ export default {
   cancel: 'Annuler',
   logoutMessage: 'Voulez-vous vraiment vous déconnecter ?',
   logoutDetail: 'Après la déconnexion, il faudra réimporter ou vous reconnecter.',
+  mcpLogoutMessage: 'Votre assistant IA demande la déconnexion de {name}. Se déconnecter ?',
   logoutConfirm: 'Se déconnecter',
   upToDate: 'Vous avez la dernière version',
   currentVersion: 'Version actuelle : {version}',

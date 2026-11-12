@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "In pausa: accedi di nuovo a questo account per continuare i controlli",
   subPausedRemoved: "In pausa: l’account è stato disconnesso",
   subPausedNoAccount: "In pausa: assegnalo a un account per continuare i controlli",
+  handoverTasks: { one: "{count} download non completato", other: "{count} download non completati" },
+  handoverSubs: { one: "{count} iscrizione", other: "{count} iscrizioni" },
+  handoverPersonal: { one: "{count} iscrizione a “Guarda più tardi” appartiene solo a questo account e non verrà spostata.", other: "{count} iscrizioni a “Guarda più tardi” appartengono solo a questo account e non verranno spostate." },
+  handoverAsk: "Cosa fare con questi elementi dopo l’uscita?",
+  handoverTransfer: "Sposta a {name}",
+  handoverKeep: "Tienili finché non accedo di nuovo",
+  handoverDelete: "Eliminali",
 }

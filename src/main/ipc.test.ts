@@ -303,6 +303,15 @@ describe('多账号 IPC', () => {
     expect(accounts.logout).toHaveBeenCalledOnce()
   })
 
+  it('有统一退出流程时移除账号交给它（由主进程弹窗确认），返回是否已退出', async () => {
+    const endAccount = vi.fn(async (mid: number) => mid === 8)
+    mod.registerIpc({ ...deps, accounts: accounts as unknown as IpcDeps['accounts'], endAccount })
+    expect(await data('auth:removeAccount', 8)).toBe(true)
+    expect(await data('auth:removeAccount', 9)).toBe(false)
+    expect(endAccount.mock.calls).toEqual([[8], [9]])
+    expect(accounts.remove).not.toHaveBeenCalled()
+  })
+
   it('解析记录写入发起账号，删除记录时向历史模块传递账号', async () => {
     h.resolveInput.mockResolvedValue({ title: '视频', kind: 'ugc', cover: '', groups: [], defaultSelected: [] })
     await data('parse', 'BV1')

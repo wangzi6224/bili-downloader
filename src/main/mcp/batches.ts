@@ -142,6 +142,27 @@ export class BatchManager extends EventEmitter {
     this.changed()
   }
 
+  /** 还没结束的批次：有没处理的条目，或者有没下完的任务 */
+  private unfinished(b: Batch): boolean {
+    return b.pending.length > 0 || this.tasksOf(b).some((task) => task.status !== 'done')
+  }
+
+  /** 退出账号时把没结束的批次转给另一个账号；任务要先转过去，批次和任务的账号才对得上 */
+  transferAccount(from: number, to: number): void {
+    for (const b of this.batches) {
+      if (b.accountMid === from && this.unfinished(b)) b.accountMid = to
+    }
+    this.changed()
+    this.accountReady(to)
+  }
+
+  /** 退出账号时一起删除：没处理的条目不再加入 */
+  cancelAccount(mid: number): void {
+    for (const b of this.batches) {
+      if (b.accountMid === mid && b.pending.length) this.cancelPending(b)
+    }
+  }
+
   accountReady(mid: number): void {
     for (const b of this.batches) {
       if (b.accountMid === mid && b.waitingForAccount && b.pending.length) this.resume(b)

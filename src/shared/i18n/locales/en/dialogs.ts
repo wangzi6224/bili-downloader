@@ -5,6 +5,7 @@ export default {
   cancel: 'Cancel',
   logoutMessage: 'Are you sure you want to sign out?',
   logoutDetail: 'You’ll need to import your login or sign in again afterward.',
+  mcpLogoutMessage: 'Your AI assistant wants to sign out of {name}. Sign out?',
   logoutConfirm: 'Sign out',
   upToDate: 'You’re up to date',
   currentVersion: 'Current version: {version}',

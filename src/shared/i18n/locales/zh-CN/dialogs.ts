@@ -3,6 +3,7 @@ export default {
   cancel: '取消',
   logoutMessage: '确定要退出登录吗？',
   logoutDetail: '退出后需要重新导入或登录。',
+  mcpLogoutMessage: 'AI 助手请求退出「{name}」的登录，要退出吗？',
   logoutConfirm: '退出登录',
   upToDate: '已是最新版本',
   currentVersion: '当前版本 {version}',

@@ -580,7 +580,8 @@ export interface BiliApi {
     check(): Promise<AuthState>
     accounts(): Promise<AccountState>
     switchAccount(mid: number): Promise<AccountState>
-    removeAccount(mid: number): Promise<void>
+    /** 主进程会先弹窗确认；返回 false 表示用户取消 */
+    removeAccount(mid: number): Promise<boolean | void>
     assignLegacy(mid: number): Promise<void>
     onAccountsChanged(cb: (state: AccountState) => void): () => void
     openLoginWindow(target?: LoginTarget): Promise<AuthState>

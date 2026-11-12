@@ -70,6 +70,8 @@ export interface McpDeps {
   updateSettings: (patch: Partial<Settings>) => Settings
   authState: () => Promise<AuthState>
   accounts?: AccountRegistry
+  /** 退出账号：由应用弹窗问用户本人，并按用户的选择处理它名下的任务和订阅；返回 false 表示用户拒绝 */
+  logoutAccount?: (mid: number) => Promise<boolean>
   /** 搜索、视频详情、评论这些检索接口 */
   lookup: BiliLookup
   login: LoginFlow
@@ -463,9 +465,14 @@ export class McpTools implements ToolSet {
   private async changeAccount(name: 'switch_account' | 'logout_account', mid: number) {
     const account = findAccount(this.deps.accounts, mid)
     const registry = this.deps.accounts!
+    // 退出会清掉这个账号的登录，不能只凭 AI 助手的请求（它读到的评论、字幕可能含有注入的指令）
+    const logout = name === 'logout_account' && account.status !== 'removed' ? this.deps.logoutAccount : undefined
     try {
       if (name === 'switch_account') await registry.select(mid)
-      else await registry.remove(mid)
+      else if (!logout) await registry.remove(mid)
+      else if (!(await logout(mid))) {
+        throw new ToolError('FAILED', t('mcpAccounts.logoutDeclined', { name: account.uname }), t('mcpAccounts.logoutDeclinedHint'))
+      }
     } catch (e) {
       const error = describeError(e)
       if (error.code === 'NOT_LOGGED_IN') throw new ToolError(error.code, error.message, t('mcpAccounts.relogin', { mid }))

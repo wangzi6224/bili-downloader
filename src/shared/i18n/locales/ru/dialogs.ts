@@ -5,6 +5,7 @@ export default {
   cancel: 'Отмена',
   logoutMessage: 'Выйти из аккаунта?',
   logoutDetail: 'После выхода нужно будет снова импортировать данные входа или войти.',
+  mcpLogoutMessage: 'ИИ-помощник просит выйти из аккаунта {name}. Выйти?',
   logoutConfirm: 'Выйти',
   upToDate: 'Установлена последняя версия',
   currentVersion: 'Текущая версия {version}',

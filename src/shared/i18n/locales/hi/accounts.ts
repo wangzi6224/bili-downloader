@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "रोका गया: जाँच जारी रखने के लिए इस खाते में फिर से साइन इन करें",
   subPausedRemoved: "रोका गया: इस खाते से साइन आउट किया गया",
   subPausedNoAccount: "रोका गया: जाँच जारी रखने के लिए इसे किसी खाते को सौंपें",
+  handoverTasks: "अधूरे डाउनलोड: {count}",
+  handoverSubs: "सब्सक्रिप्शन: {count}",
+  handoverPersonal: "इनमें से “बाद में देखें” के {count} सब्सक्रिप्शन सिर्फ़ इसी खाते के हैं, इन्हें नहीं ले जाया जाएगा।",
+  handoverAsk: "लॉग आउट के बाद इनका क्या करें?",
+  handoverTransfer: "{name} को सौंपें",
+  handoverKeep: "रखें, फिर से लॉग इन करने पर जारी रखें",
+  handoverDelete: "इन्हें हटाएँ",
 }

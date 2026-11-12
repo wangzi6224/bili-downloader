@@ -319,6 +319,22 @@ it('定时检查与一键补下载用订阅账号下载，按不分账号的历�
   expect(h.downloadedKeys).toHaveBeenCalledWith()
 })
 
+describe('退出账号时处理名下订阅', () => {
+  it('转给另一个账号时稍后再看留在原账号；一起删除时只删原账号的', () => {
+    const fav = sub({ id: 'fav', input: 'https://space.bilibili.com/1/favlist?fid=2', accountMid: 1, lastError: '账号已失效' })
+    const later = sub({ id: 'later', input: 'https://www.bilibili.com/watchlater', accountMid: 1 })
+    const mine = sub({ id: 'mine', input: 'https://space.bilibili.com/9/favlist?fid=3', accountMid: 2 })
+    m.replaceAll([fav, later, mine])
+    expect(m.accountSubscriptions(1)).toEqual({ all: [fav, later], personal: [later] })
+    m.transferAccount(1, 2)
+    expect(saved().map((s) => [s.id, s.accountMid, s.lastError])).toEqual([['fav', 2, undefined], ['later', 1, undefined], ['mine', 2, undefined]])
+    m.removeAccount(1)
+    expect(m.list().map((s) => s.id)).toEqual(['fav', 'mine'])
+    m.removeAccount(42)
+    expect(m.list()).toHaveLength(2)
+  })
+})
+
 describe('add', () => {
   it('默认只下载以后新增的：现有条目记为已见，保存并通知界面', async () => {
     const onUpdate = vi.fn()

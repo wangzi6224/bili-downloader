@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "Paused: sign in to this account again to keep checking",
   subPausedRemoved: "Paused: this account was signed out",
   subPausedNoAccount: "Paused: assign it to an account to keep checking",
+  handoverTasks: { one: "{count} unfinished download", other: "{count} unfinished downloads" },
+  handoverSubs: { one: "{count} subscription", other: "{count} subscriptions" },
+  handoverPersonal: { one: "{count} Watch Later subscription belongs only to this account and won’t be moved.", other: "{count} Watch Later subscriptions belong only to this account and won’t be moved." },
+  handoverAsk: "What should happen to these after signing out?",
+  handoverTransfer: "Move to {name}",
+  handoverKeep: "Keep until I sign back in",
+  handoverDelete: "Delete them",
 }

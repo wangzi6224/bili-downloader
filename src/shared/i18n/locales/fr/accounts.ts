@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "En pause : reconnectez-vous à ce compte pour reprendre les vérifications",
   subPausedRemoved: "En pause : ce compte a été déconnecté",
   subPausedNoAccount: "En pause : attribuez-le à un compte pour reprendre les vérifications",
+  handoverTasks: { one: "{count} téléchargement inachevé", other: "{count} téléchargements inachevés" },
+  handoverSubs: { one: "{count} abonnement", other: "{count} abonnements" },
+  handoverPersonal: { one: "{count} abonnement « À regarder plus tard » appartient uniquement à ce compte et ne sera pas transféré.", other: "{count} abonnements « À regarder plus tard » appartiennent uniquement à ce compte et ne seront pas transférés." },
+  handoverAsk: "Que faire de ces éléments après la déconnexion ?",
+  handoverTransfer: "Transférer à {name}",
+  handoverKeep: "Les garder jusqu’à la reconnexion",
+  handoverDelete: "Les supprimer",
 }

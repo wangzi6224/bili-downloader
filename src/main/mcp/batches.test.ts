@@ -325,6 +325,25 @@ describe('重启、重复提交、继续、重试、取消', () => {
     expect(c).toMatchObject({ state: 'ready', processed: 2, pending: [] })
   })
 
+  it('退出账号时只把没结束的批次转给另一个账号；一起删除时不再加入没处理的条目', async () => {
+    const m = make()
+    const running = m.submit(request([plain('BV1')], { accountMid: 1, requestId: 'a' }))
+    const finished = m.submit(request([plain('BV2')], { accountMid: 1, requestId: 'b', fingerprint: 'fp2' }))
+    const other = m.submit(request([plain('BV3')], { accountMid: 3, requestId: 'c', fingerprint: 'fp3' }))
+    await settle()
+    for (const task of queue.list()) if (task.batchId === finished.id) task.status = 'done'
+    m.transferAccount(1, 2)
+    expect([running.accountMid, finished.accountMid, other.accountMid]).toEqual([2, 1, 3])
+    expect(saved().map((batch) => batch.accountMid)).toEqual([2, 1, 3])
+
+    const waiting = m.submit(request([plain('BV4')], { accountMid: 3, requestId: 'd', fingerprint: 'fp4' }))
+    await settle()
+    waiting.state = 'interrupted'
+    waiting.pending = [lazy('BV5')]
+    m.cancelAccount(3)
+    expect(waiting).toMatchObject({ state: 'ready', pending: [] })
+  })
+
   it('取消后正在展开的那一段也不再加入；中断的批次取消后算处理完', async () => {
     const gate = deferred<MediaItem[]>()
     expand.mockImplementationOnce(() => gate.promise)

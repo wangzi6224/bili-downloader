@@ -6,7 +6,6 @@ import { api, openLogin, useStore } from '../store'
 import { Button, Group, IconButton, MenuItem, Row } from './ui'
 
 export function useAccountActions() {
-  const t = useT()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
 
@@ -26,11 +25,12 @@ export function useAccountActions() {
   const select = (account: BiliAccount, done?: () => void): Promise<void> =>
     run(() => api.auth.switchAccount(account.mid), done)
 
-  const endSession = (account: UserInfo, signedIn: boolean, done?: () => void): void => {
-    const message = signedIn
-      ? `${t('accounts.logoutTitle', { name: account.uname })}\n\n${t('sidebar.logoutConfirm')}`
-      : t('accounts.removeTitle', { name: account.uname })
-    if (confirm(message)) void run(() => api.auth.removeAccount(account.mid), done)
+  /** 确认框由主进程弹：账号名下还有任务和订阅时，要问用户怎么处理 */
+  const endSession = (account: UserInfo, done?: () => void): void => {
+    void run(async () => {
+      // 用户在确认框里取消时菜单留着
+      if (await api.auth.removeAccount(account.mid) !== false) done?.()
+    })
   }
 
   return { busy, error, select, endSession, run }
@@ -68,7 +68,7 @@ export function QuickAccounts({ close, actions }: { close: () => void; actions: 
               size="sm"
               variant="danger"
               disabled={actions.busy}
-              onClick={() => actions.endSession(account, true, close)}
+              onClick={() => actions.endSession(account, close)}
             />
           )}
         </div>
@@ -112,7 +112,7 @@ export function AccountSettings() {
             <Button
               variant="danger"
               disabled={actions.busy}
-              onClick={() => actions.endSession(account, ready)}
+              onClick={() => actions.endSession(account)}
             >
               {t(ready ? 'sidebar.logout' : 'accounts.remove')}
             </Button>

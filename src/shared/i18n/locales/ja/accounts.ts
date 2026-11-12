@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "一時停止中：アカウントに再ログインすると確認を再開します",
   subPausedRemoved: "一時停止中：このアカウントはログアウトされました",
   subPausedNoAccount: "一時停止中：アカウントに割り当てると確認を再開します",
+  handoverTasks: "未完了のダウンロード：{count} 件",
+  handoverSubs: "購読：{count} 件",
+  handoverPersonal: "うち「後で見る」の購読 {count} 件はこのアカウント専用のため、移しません。",
+  handoverAsk: "ログアウト後、これらをどうしますか？",
+  handoverTransfer: "「{name}」に移す",
+  handoverKeep: "残して再ログイン後に続ける",
+  handoverDelete: "まとめて削除",
 }

@@ -53,7 +53,6 @@ it('首次登录继续使用原侧栏卡片', async () => {
 })
 
 it('侧栏可以切换或单独退出后台账号，过期账号没有退出按钮', async () => {
-  vi.stubGlobal('confirm', vi.fn(() => true))
   useStore.setState({ auth: { loggedIn: true, user: a }, accounts: { activeMid: 1, accounts: [a, b, c], legacyCount: 0 } })
   await act(async () => root.render(createElement(Sidebar)))
   const trigger = button('管理账号 · 日常号')
@@ -85,14 +84,18 @@ it('从侧栏选择过期账号会为该账号重登，成功后才切换', asyn
   expect(useStore.getState()).toMatchObject({ accounts: { activeMid: 1 }, loginTarget: { mode: 'reauth', mid: 3, activate: true } })
 })
 
-it('从侧栏管理入口打开设置，退出确认取消时保留会话', async () => {
-  vi.stubGlobal('confirm', vi.fn(() => false))
+it('从侧栏管理入口打开设置；退出由主进程确认，取消时保留会话', async () => {
+  const confirm = vi.fn(() => true)
+  vi.stubGlobal('confirm', confirm)
+  auth.removeAccount.mockResolvedValueOnce(false)
   useStore.setState({ auth: { loggedIn: true, user: a }, accounts: { activeMid: 1, accounts: [a, b], legacyCount: 0 } })
   await act(async () => root.render(createElement(Sidebar)))
   const trigger = button('管理账号 · 日常号')
   await act(async () => trigger.click())
   await act(async () => button('退出「追番号」的登录').click())
-  expect(auth.removeAccount).not.toHaveBeenCalled()
+  expect(confirm).not.toHaveBeenCalled()
+  expect(auth.removeAccount).toHaveBeenCalledExactlyOnceWith(2)
+  expect(useStore.getState().accounts?.accounts.map((account) => account.mid)).toEqual([1, 2])
   await act(async () => button('管理账号').click())
   expect(useStore.getState()).toMatchObject({ view: 'settings', showAccountSettings: true })
 })

@@ -5,6 +5,7 @@ export default {
   cancel: 'Annulla',
   logoutMessage: 'Vuoi davvero uscire dall’account?',
   logoutDetail: 'Dopo l’uscita dovrai importare di nuovo i dati o accedere di nuovo.',
+  mcpLogoutMessage: 'L’assistente IA chiede di disconnettere {name}. Vuoi disconnetterti?',
   logoutConfirm: 'Esci dall’account',
   upToDate: 'Hai già la versione più recente',
   currentVersion: 'Versione attuale {version}',

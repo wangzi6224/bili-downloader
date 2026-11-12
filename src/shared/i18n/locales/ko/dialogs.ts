@@ -5,6 +5,7 @@ export default {
   cancel: '취소',
   logoutMessage: '로그아웃할까요?',
   logoutDetail: '로그아웃하면 다시 가져오거나 로그인해야 합니다.',
+  mcpLogoutMessage: 'AI 도우미가 {name} 계정에서 로그아웃하려고 합니다. 로그아웃할까요?',
   logoutConfirm: '로그아웃',
   upToDate: '최신 버전입니다',
   currentVersion: '현재 버전 {version}',

@@ -150,9 +150,11 @@ export interface IpcDeps {
   enqueue: (req: EnqueueRequest, beforeQueue?: () => void) => Promise<string | undefined>
   updater: Updater
   accounts?: typeof accounts
+  /** 问过用户后退出账号，并处理它名下的任务和订阅；返回 false 表示取消 */
+  endAccount?: (mid: number) => Promise<boolean>
 }
 
-export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: IpcDeps): void {
+export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts, endAccount }: IpcDeps): void {
   const getSubscription = (id: string): Subscription => {
     const sub = subs.list().find((item) => item.id === id)
     if (!sub) throw new Error(t('subs.sourceUnavailable'))
@@ -169,7 +171,7 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts }: 
   handle('auth:check', async () => checkAuth().catch(() => getAuthState()))
   handle('auth:accounts', () => accounts?.snapshot())
   handle('auth:switchAccount', (mid: number) => accounts?.select(mid))
-  handle('auth:removeAccount', (mid: number) => accounts?.remove(mid))
+  handle('auth:removeAccount', (mid: number) => endAccount ? endAccount(mid) : accounts?.remove(mid))
   handle('auth:assignLegacy', (mid: number) => accounts?.assignLegacy(mid))
   handle('auth:login', (target?: LoginTarget) => accounts ? accounts.login(openLoginWindow, target) : openLoginWindow())
   handle('auth:listBrowsers', () => listBrowserProfiles())

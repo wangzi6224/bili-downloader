@@ -49,6 +49,9 @@ const LOADED_TTL = 10 * 60_000
  * 把缺失的条目分开：番剧只下正片，预告、花絮等不下；
  * 当前账号不是大会员时，会员专享的下了也会失败，跳过。
  */
+/** 稍后再看是账号自己的列表，换个账号读到的是另一份 */
+const isPersonal = (sub: Subscription): boolean => parseInput(sub.input)?.type === 'watchlater'
+
 function splitMissing(result: ParseResult, missing: MediaItem[]): { wanted: MediaItem[]; vip: MediaItem[]; extras: MediaItem[] } {
   const main = result.kind === 'pgc' ? result.groups.find((group) => group.id === 'main') : undefined
   const mainKeys = main?.items.length ? new Set(main.items.map((item) => item.key)) : undefined
@@ -105,6 +108,32 @@ export class SubscriptionManager extends EventEmitter {
       changed = true
     }
     if (changed) this.save()
+  }
+
+  /** 这个账号名下的订阅，以及其中只属于这个账号、转给别人也读不到的（稍后再看） */
+  accountSubscriptions(mid: number): { all: Subscription[]; personal: Subscription[] } {
+    const all = this.subs.filter((sub) => sub.accountMid === mid)
+    return { all, personal: all.filter(isPersonal) }
+  }
+
+  /** 退出账号时把订阅转给另一个账号；稍后再看只属于原账号，留着 */
+  transferAccount(from: number, to: number): void {
+    let changed = false
+    for (const sub of this.subs) {
+      if (sub.accountMid !== from || isPersonal(sub)) continue
+      sub.accountMid = to
+      sub.lastError = undefined
+      changed = true
+    }
+    if (changed) this.save()
+  }
+
+  /** 退出账号时一起删除它名下的订阅 */
+  removeAccount(mid: number): void {
+    const kept = this.subs.filter((sub) => sub.accountMid !== mid)
+    if (kept.length === this.subs.length) return
+    this.subs = kept
+    this.save()
   }
 
   async accountReady(mid: number): Promise<void> {

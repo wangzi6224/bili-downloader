@@ -19,4 +19,11 @@ export default {
   subPausedExpired: "已暂停：账号登录已失效，重新登录后继续检查",
   subPausedRemoved: "已暂停：发起账号已退出",
   subPausedNoAccount: "已暂停：分配给账号后继续检查",
+  handoverTasks: "未完成的下载：{count} 个",
+  handoverSubs: "订阅：{count} 个",
+  handoverPersonal: "其中 {count} 个“稍后再看”订阅只属于这个账号，不会转移。",
+  handoverAsk: "退出后这些怎么处理？",
+  handoverTransfer: "转给「{name}」",
+  handoverKeep: "保留，重新登录后继续",
+  handoverDelete: "一起删除",
 }

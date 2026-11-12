@@ -3,6 +3,7 @@ import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, scree
 import type { TaskInfo, UserInfo } from '@shared/types'
 import { activeAuthState, checkAuth, checkAuthThrottled, onLoginChanged, requireLogin } from './auth/authGuard'
 import { accounts } from './auth/accounts'
+import { endAccount as endAccountWith, type Requester } from './auth/handover'
 import { activeScope, inAuthScope } from './auth/scope'
 import { canCloseBrowser, closeBrowser, confirmCloseBrowser } from './auth/browserClose'
 import { importFromBrowser, isProfileLocked, listBrowserProfiles } from './auth/browserImport'
@@ -194,18 +195,12 @@ function showAndSend(channel: string): void {
   send(channel)
 }
 
+/** 退出账号：问过用户后按选择处理它名下的任务和订阅。启动后才接上下载队列和订阅 */
+let endAccount: (mid: number, requester: Requester) => Promise<boolean> = async () => false
+
 async function confirmLogout(user: UserInfo): Promise<void> {
-  const partition = accounts.partition(user.mid)
-  if (!partition || accounts.status(user.mid) !== 'ready') return
-  const { response } = await showDialog({
-    type: 'warning',
-    message: t('dialogs.logoutMessage'),
-    detail: t('dialogs.logoutDetail'),
-    buttons: [t('dialogs.logoutConfirm'), t('dialogs.cancel')],
-    defaultId: 1,
-    cancelId: 1
-  })
-  if (response === 0 && accounts.partition(user.mid) === partition) await accounts.remove(user.mid)
+  if (accounts.status(user.mid) !== 'ready') return
+  await endAccount(user.mid, 'user')
 }
 
 async function checkUpdateFromTray(updater: Updater): Promise<void> {
@@ -354,6 +349,7 @@ async function start(): Promise<void> {
     updateSettings,
     authState: () => checkAuthThrottled(60_000),
     accounts,
+    logoutAccount: (mid) => endAccount(mid, 'mcp'),
     lookup: biliLookup,
     login,
     watermark: {
@@ -416,7 +412,18 @@ async function start(): Promise<void> {
     updater.stop()
   })
 
-  registerIpc({ manager, subs, mcp, enqueue, updater, accounts })
+  endAccount = (mid, requester) => endAccountWith({
+    accounts,
+    tasks: {
+      accountTasks: (id) => manager.accountTasks(id),
+      transferAccount: (from, to) => manager.transferAccount(from, to),
+      remove: (ids) => manager.remove(ids, false)
+    },
+    subs,
+    batches: mcpTools.batches,
+    dialog: showDialog
+  }, mid, requester)
+  registerIpc({ manager, subs, mcp, enqueue, updater, accounts, endAccount: (mid) => endAccount(mid, 'user') })
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
