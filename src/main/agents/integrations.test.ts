@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StdioEntry } from './configFile'
 import { Integrations, type IntegrationDeps } from './integrations'
-import type { AgentDef, AgentEnv } from './registry'
+import { agentEnv, AGENTS, type AgentDef, type AgentEnv } from './registry'
 
 let home: string
 let env: AgentEnv
@@ -42,6 +42,13 @@ const paths = {
   records: () => join(home, 'records.json')
 }
 const read = (f: string): any => JSON.parse(readFileSync(f, 'utf8'))
+/** agent 自己留下的东西：目录里有一份不是我们写的文件 */
+const presence = (dir: string): void => {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'history.jsonl'), '')
+}
+/** home 下的所有文件和目录（不含安装记录） */
+const tree = (): string[] => (readdirSync(home, { recursive: true }) as string[]).filter((p) => p !== 'records.json').sort()
 
 function make(extra: Partial<IntegrationDeps> = {}): Integrations {
   return new Integrations({
@@ -68,7 +75,7 @@ const byId = (list: ReturnType<Integrations['list']>) => Object.fromEntries(list
 
 describe('list', () => {
   it('按检测结果和系统给出状态', () => {
-    mkdirSync(join(home, '.alpha'))
+    presence(join(home, '.alpha'))
     const s = byId(make().list())
     expect(s.alpha).toMatchObject({ supported: true, detected: true, installed: false, outdated: false, skill: true, note: 'restart', configFile: paths.alphaMcp() })
     expect(s.beta).toMatchObject({ detected: false, skill: false })
@@ -118,9 +125,11 @@ describe('install / uninstall', () => {
   })
 
   it('卸载删掉条目、skill 和记录', () => {
+    presence(join(home, '.alpha'))
+    writeFileSync(paths.alphaMcp(), '{"theme": "dark"}')
     make().install('alpha')
     const list = byId(make().uninstall('alpha'))
-    expect(read(paths.alphaMcp()).mcpServers).toEqual({})
+    expect(read(paths.alphaMcp())).toEqual({ theme: 'dark', mcpServers: {} })
     expect(existsSync(paths.alphaSkill())).toBe(false)
     expect(read(paths.records()).alpha).toBeUndefined()
     expect(list.alpha.installed).toBe(false)
@@ -151,8 +160,8 @@ describe('install / uninstall', () => {
 
 describe('installAll', () => {
   it('只装检测到、能装、还没装、配置没坏的；失败的原因一起报出来，其他的照装', () => {
-    mkdirSync(join(home, '.alpha'))
-    mkdirSync(join(home, '.beta'))
+    presence(join(home, '.alpha'))
+    presence(join(home, '.beta'))
     const list = byId(make().installAll())
     expect(list.alpha.installed && list.beta.installed).toBe(true)
     expect(list.gamma.installed).toBe(false)
@@ -194,6 +203,8 @@ describe('sync', () => {
     expect(make().sync()).toEqual([])
     expect(existsSync(paths.alphaSkill())).toBe(false)
     expect(read(paths.records()).alpha).toBeUndefined()
+    // 我们新建的、只剩空架子的配置文件和目录一并收拾掉
+    expect(tree()).toEqual([])
   })
 
   it('条目被换成了不是本实例写的配置（手写的 HTTP 版、别的数据目录的实例）：不覆盖，当作卸载', () => {
@@ -279,6 +290,17 @@ describe('共用的 skill 目录', () => {
     expect(existsSync(sharedSkill())).toBe(false)
   })
 
+  it('共用目录是第一个装的 agent 新建的：不管先移除哪个，最后一个移除后 ~/.agents 也不在了', () => {
+    for (const order of [['one', 'two'], ['two', 'one']]) {
+      make({ agents }).install('one')
+      make({ agents }).install('two')
+      make({ agents }).uninstall(order[0])
+      expect(existsSync(sharedSkill())).toBe(true)
+      make({ agents }).uninstall(order[1])
+      expect(existsSync(join(home, '.agents')), order.join()).toBe(false)
+    }
+  })
+
   it('共用目录的另一个 agent 已经整个卸载了，就不再算它在用', () => {
     make({ agents }).install('one')
     make({ agents }).install('two')
@@ -295,5 +317,98 @@ describe('共用的 skill 目录', () => {
     expect(make({ agents }).sync()).toEqual([])
     expect(read(paths.records()).one).toBeUndefined()
     expect(existsSync(sharedSkill())).toBe(true)
+  })
+})
+
+describe('检测不受我们写的东西影响', () => {
+  it('本机没有的 agent 强制装上后仍是“未检测到”；目录里只有我们的配置、备份、skill 和系统文件都不算', () => {
+    const list = byId(make().install('alpha'))
+    expect(list.alpha).toMatchObject({ installed: true, detected: false })
+    entry = { ...entry, command: '/Moved' }
+    make().sync()
+    expect(existsSync(`${paths.alphaMcp()}.bili-backup`)).toBe(true)
+    writeFileSync(join(home, '.alpha', '.DS_Store'), '')
+    expect(byId(make().list()).alpha.detected).toBe(false)
+  })
+
+  it('agent 自己写了东西（别的文件、配置里别的键）就算检测到', () => {
+    make().install('alpha')
+    writeFileSync(join(home, '.alpha', 'skills', 'other.md'), '')
+    expect(byId(make().list()).alpha.detected).toBe(true)
+    rmSync(join(home, '.alpha', 'skills', 'other.md'))
+    const data = read(paths.alphaMcp())
+    writeFileSync(paths.alphaMcp(), JSON.stringify({ ...data, theme: 'dark' }))
+    expect(byId(make().list()).alpha.detected).toBe(true)
+  })
+
+  it('空目录不算；不是我们会写的位置（例如应用本体）存在就算', () => {
+    mkdirSync(join(home, '.alpha'))
+    expect(byId(make().list()).alpha.detected).toBe(false)
+    const app = make({ agents: [{ ...jsonAgent, markers: (e) => [join(e.home, 'Alpha.app')] }] })
+    mkdirSync(join(home, 'Alpha.app'))
+    expect(byId(app.list()).alpha.detected).toBe(true)
+  })
+})
+
+describe('移除后恢复原样', () => {
+  it('本机没有的 agent：装上、更新、再移除，home 里什么都不剩', () => {
+    make().install('alpha')
+    make().install('beta')
+    entry = { ...entry, command: '/Moved' }
+    make().sync()
+    make().uninstall('alpha')
+    make().uninstall('beta')
+    expect(tree()).toEqual([])
+    expect(byId(make().list()).alpha).toMatchObject({ detected: false, installed: false })
+  })
+
+  it('装上之后 agent 才装好：它写过的文件和目录都留着，只删我们的', () => {
+    make().install('alpha')
+    presence(join(home, '.alpha'))
+    writeFileSync(paths.alphaMcp(), JSON.stringify({ ...read(paths.alphaMcp()), theme: 'dark' }))
+    make().uninstall('alpha')
+    expect(read(paths.alphaMcp())).toEqual({ theme: 'dark', mcpServers: {} })
+    // 改别人写过的文件前留的备份也留着
+    expect(tree()).toEqual(['.alpha', join('.alpha', 'history.jsonl'), join('.alpha', 'mcp.json'), join('.alpha', 'mcp.json.bili-backup')])
+  })
+
+  it('本来就有的文件和目录不删，即使只剩空架子', () => {
+    mkdirSync(join(home, '.alpha'))
+    writeFileSync(paths.alphaMcp(), '{}')
+    make().install('alpha')
+    make().uninstall('alpha')
+    expect(read(paths.alphaMcp())).toEqual({ mcpServers: {} })
+    expect(tree()).toEqual(['.alpha', join('.alpha', 'mcp.json'), join('.alpha', 'mcp.json.bili-backup')])
+  })
+
+  it('重新安装、同步时新建的也记着，记录没有重复', () => {
+    make().install('beta')
+    make().install('beta')
+    const created = read(paths.records()).beta.created
+    expect(new Set(created).size).toBe(created.length)
+    expect(created).toContain(paths.betaToml())
+  })
+})
+
+describe('真实的 agent 表', () => {
+  it.each(['darwin', 'win32', 'linux'] as const)('%s：全部装进空的 home 后仍是“未检测到”，全部移除后 home 恢复原样', (platform) => {
+    const recordsDir = mkdtempSync(join(tmpdir(), 'agents-rec-'))
+    try {
+      // 只看 home 里的：/Applications 等真实位置上可能真的装着
+      const e: AgentEnv = { ...agentEnv(platform, { BILI_AGENT_HOME: home }), exists: (p) => p.startsWith(home) && existsSync(p) }
+      const integ = new Integrations({ file: join(recordsDir, 'r.json'), agents: AGENTS, env: e, version, entry: () => entry, enableMcp })
+      const ids = AGENTS.filter((a) => !a.platforms || a.platforms.includes(platform)).map((a) => a.id)
+      for (const id of ids) integ.install(id)
+      // 更新一次，让已有的文件留下备份
+      entry = { ...entry, command: '/Moved' }
+      expect(integ.sync().sort()).toEqual([...ids].sort())
+      const list = integ.list()
+      expect(list.filter((s) => s.installed).map((s) => s.id)).toEqual(ids)
+      expect(list.filter((s) => s.detected).map((s) => s.id)).toEqual([])
+      for (const id of ids) integ.uninstall(id)
+      expect(tree()).toEqual([])
+    } finally {
+      rmSync(recordsDir, { recursive: true, force: true })
+    }
   })
 })

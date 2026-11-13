@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, readFileSync } from 'node:fs'
-import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser'
+import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { applyEdits, modify, parse, stripComments, type ParseError } from 'jsonc-parser'
 import { writeTextAtomic } from '../store'
 
 /**
@@ -37,6 +37,9 @@ export class ConfigParseError extends Error {
 
 const BACKUP_SUFFIX = '.bili-backup'
 
+/** 第一次改已有文件前留的备份 */
+export const backupPath = (file: string): string => file + BACKUP_SUFFIX
+
 function read(file: string): string | undefined {
   try {
     return readFileSync(file, 'utf8')
@@ -47,7 +50,7 @@ function read(file: string): string | undefined {
 
 /** 第一次改之前留一份备份 */
 function write(file: string, text: string): void {
-  if (existsSync(file) && !existsSync(file + BACKUP_SUFFIX)) copyFileSync(file, file + BACKUP_SUFFIX)
+  if (existsSync(file) && !existsSync(backupPath(file))) copyFileSync(file, backupPath(file))
   writeTextAtomic(file, text)
 }
 
@@ -232,6 +235,50 @@ export function readEntry(target: ConfigTarget): Partial<StdioEntry> | undefined
   }
   const v = getPath(parseJson(target.file, text), [...target.key, SERVER_NAME])
   return v && typeof v === 'object' ? (v as Partial<StdioEntry>) : undefined
+}
+
+/** data 只是沿着 path 一层套一层的对象，没有别的键；withLeaf 时末端那一项可以在（内容不管） */
+function onlyPath(data: unknown, path: string[], withLeaf: boolean): boolean {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+  const keys = Object.keys(data)
+  if (!keys.length) return true
+  if (keys.length > 1 || keys[0] !== path[0]) return false
+  return path.length === 1 ? withLeaf : onlyPath((data as Record<string, unknown>)[path[0]], path.slice(1), withLeaf)
+}
+
+/** 文件里有没有别的内容（别的键、表、注释）；withEntry 时我们的条目不算。文件不存在算没有，读不了、读不懂算有 */
+function hasOther(target: ConfigTarget, withEntry: boolean): boolean {
+  const text = read(target.file)
+  if (text === undefined) return existsSync(target.file)
+  if (!text.trim()) return false
+  if (target.format === 'toml') {
+    const lines = withEntry ? stripToml(text, target.key.join('.')).lines : text.split('\n')
+    return lines.some((line) => line.trim())
+  }
+  if (stripComments(text) !== text) return true
+  try {
+    return !onlyPath(parseJson(target.file, text), [...target.key, SERVER_NAME], withEntry)
+  } catch {
+    return true
+  }
+}
+
+/**
+ * 文件里除了我们的条目（和放它的空对象，例如 {"mcpServers": {}}）还有没有别的。
+ * 用来判断 agent 的目录里是不是只有我们写的东西
+ */
+export const hasOtherContent = (target: ConfigTarget): boolean => hasOther(target, true)
+
+/**
+ * 文件里连我们的条目都没有了、只剩空架子时，把它删掉，连同只有我们条目的备份。
+ * 用于移除时收拾安装时新建的文件；返回是否删了
+ */
+export function removeIfEmpty(target: ConfigTarget): boolean {
+  if (hasOther(target, false)) return false
+  rmSync(target.file, { force: true })
+  const backup = { ...target, file: backupPath(target.file) }
+  if (existsSync(backup.file) && !hasOther(backup, true)) rmSync(backup.file, { force: true })
+  return true
 }
 
 export const sameEntry = (a: Partial<StdioEntry> | undefined, b: StdioEntry): boolean =>

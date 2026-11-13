@@ -3,7 +3,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'jsonc-parser'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ConfigParseError, readEntry, removeEntry, sameEntry, writeEntry, type ConfigTarget, type StdioEntry } from './configFile'
+import {
+  ConfigParseError,
+  hasOtherContent,
+  readEntry,
+  removeEntry,
+  removeIfEmpty,
+  sameEntry,
+  writeEntry,
+  type ConfigTarget,
+  type StdioEntry
+} from './configFile'
 
 let dir: string
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'agent-cfg-'))))
@@ -181,6 +191,66 @@ describe('TOML 配置（Codex）', () => {
     const t = toml()
     writeFileSync(t.file, "[mcp_servers.bili-downloader]\ncommand = '/x'\n")
     expect(sameEntry(readEntry(t), entry)).toBe(false)
+  })
+})
+
+describe('只剩我们的东西时', () => {
+  it('JSON：只有我们的条目和放它的空对象不算别的内容；别的键、别的服务、注释、读不懂都算', () => {
+    const t = json()
+    expect(hasOtherContent(t)).toBe(false)
+    writeEntry(t, entry)
+    expect(hasOtherContent(t)).toBe(false)
+    for (const other of ['{"theme": "dark"}', '{"mcpServers": {"other": {}}}', '{"mcpServers": 1}', '{"mcpServers": {}} // 我的', '{oops', '[]']) {
+      writeFileSync(t.file, other)
+      expect(hasOtherContent(t), other).toBe(true)
+    }
+    // 位置上是个目录之类读不了的东西，也不当作空的
+    expect(hasOtherContent({ ...t, file: dir })).toBe(true)
+    expect(removeIfEmpty({ ...t, file: dir })).toBe(false)
+    for (const bare of ['', '  \n', '{}', '{"mcpServers": {}}']) {
+      writeFileSync(t.file, bare)
+      expect(hasOtherContent(t), bare).toBe(false)
+    }
+    // 嵌套的键路径
+    const nested: ConfigTarget = { ...t, key: ['mcp', 'servers'] }
+    writeFileSync(t.file, '{"mcp": {"servers": {"bili-downloader": {}}}}')
+    expect(hasOtherContent(nested)).toBe(false)
+    writeFileSync(t.file, '{"mcp": {"servers": {}, "x": 1}}')
+    expect(hasOtherContent(nested)).toBe(true)
+  })
+
+  it('JSON：连我们的条目都没了才删文件；只有我们旧条目的备份一起删，有别的内容的备份留着', () => {
+    const t = json()
+    writeEntry(t, entry)
+    expect(removeIfEmpty(t)).toBe(false)
+    expect(existsSync(t.file)).toBe(true)
+    // 第二次写时备份的是我们自己的旧条目
+    writeEntry(t, { ...entry, command: '/Moved' })
+    removeEntry(t)
+    expect(existsSync(`${t.file}.bili-backup`)).toBe(true)
+    expect(removeIfEmpty(t)).toBe(true)
+    expect(existsSync(t.file) || existsSync(`${t.file}.bili-backup`)).toBe(false)
+
+    writeFileSync(t.file, '{"mcpServers": {}}')
+    writeFileSync(`${t.file}.bili-backup`, '{"theme": "dark"}')
+    expect(removeIfEmpty(t)).toBe(true)
+    expect(existsSync(`${t.file}.bili-backup`)).toBe(true)
+    writeFileSync(t.file, '{"theme": "dark", "mcpServers": {}}')
+    expect(removeIfEmpty(t)).toBe(false)
+  })
+
+  it('TOML：去掉我们的表后只剩空行才算没有别的内容', () => {
+    const t = toml()
+    writeEntry(t, entry)
+    expect(hasOtherContent(t)).toBe(false)
+    expect(removeIfEmpty(t)).toBe(false)
+    writeFileSync(t.file, `# 我的\n${text(t)}`)
+    expect(hasOtherContent(t)).toBe(true)
+    writeFileSync(t.file, 'model = "o3"\n')
+    expect(hasOtherContent(t)).toBe(true)
+    writeFileSync(t.file, '\n\n')
+    expect(removeIfEmpty(t)).toBe(true)
+    expect(existsSync(t.file)).toBe(false)
   })
 })
 

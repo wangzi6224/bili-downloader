@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, Download, Eye, EyeOff, KeyRound, RefreshCw, Sparkles, Terminal, Trash2 } from 'lucide-react'
 import type { AgentStatus } from '@shared/types'
-import { agentHint, agentTone } from '../agents'
+import { agentHint, agentTone, needsForce, sortAgents } from '../agents'
 import { AGENT_ICONS } from '../agentIcons'
 import { useT } from '../i18n'
 import { api, updateSettings, useStore } from '../store'
@@ -73,7 +73,7 @@ export function AgentIntegrations() {
             {t('agents.installAllButton', { count: pending.length })}
           </Button>
         </Row>
-        {agents?.map((a) => (
+        {sortAgents(agents ?? []).map((a) => (
           <div key={a.id} className={`flex items-center gap-3 px-4 py-3 ${a.supported ? '' : 'opacity-50'}`}>
             <AgentIcon id={a.id} name={a.name} />
             <div className="min-w-0 flex-1">
@@ -84,6 +84,7 @@ export function AgentIntegrations() {
               <div className="mt-0.5 truncate text-xs text-muted" title={a.configFile}>
                 {a.broken ? t('agents.brokenHint', { file: a.configFile }) : a.skill ? t('agents.withSkill') : t('agents.mcpOnly')}
                 {a.skillConflict && ` · ${t('agents.skillConflict')}`}
+                {a.installed && !a.detected && ` · ${t('agents.notDetectedHint', { name: a.name })}`}
                 {a.installed && a.note === 'trust' && ` · ${t('agents.trustHint', { name: a.name })}`}
               </div>
             </div>
@@ -95,7 +96,19 @@ export function AgentIntegrations() {
                 onClick={() => run(a.id, () => api.agents.uninstall(a.id), t('agents.uninstalled', { name: a.name }))}
               />
             )}
-            {a.supported && (!a.installed || a.outdated) && (
+            {needsForce(a) && (
+              <Button
+                variant="ghost"
+                disabled={busy !== null || a.broken}
+                onClick={() => {
+                  if (!confirm(t('agents.forceConfirm', { name: a.name, file: a.configFile }))) return
+                  void run(a.id, () => api.agents.install(a.id), t(INSTALLED[a.note], { name: a.name }))
+                }}
+              >
+                {t('agents.installAnyway')}
+              </Button>
+            )}
+            {a.supported && !needsForce(a) && (!a.installed || a.outdated) && (
               <Button
                 icon={a.outdated ? RefreshCw : Download}
                 disabled={busy !== null || a.broken}
