@@ -133,8 +133,15 @@ macOS 12 以降が必要です。
 
 ### セットアップ
 
-1. **设置 → 网络与高级 → MCP 服务**（設定 → ネットワークと詳細 → MCP サーバー）で有効にします。
-2. 同じセクションのボタンで、クライアント設定（JSON）または Claude Code のコマンドをコピーします。アクセストークンは入力済みです。
+**设置 → AI 助手**（設定 → AI アシスタント）で **全部安装**（すべてインストール）をクリックするか、アシスタントごとにインストールします。ワンクリックで MCP サーバーと skill が次のアシスタントに追加されます：
+
+Claude Code · Claude Desktop (macOS, Windows) · Codex · Cursor · Gemini CLI · WorkBuddy · CodeBuddy · Trae CN · Qoder · Qwen Code
+
+- インストール後はアシスタントを再起動してください。以降、どの会話でもビリビリからのダウンロードや検索を頼むと、このアプリが使われます。
+- アシスタントの設定にトークンは保存されません。アシスタントは小さなブリッジを起動し、ブリッジがアプリの現在のポートとトークンを読み取ります。アプリが起動していなければバックグラウンドで起動します（トレイアイコンのみ）。
+- アプリが更新されたり移動されたりすると、次回起動時にインストール済みの設定と skill が自動で更新されます。アシスタント側で削除したものは再インストールされません。
+
+ほかのクライアントは引き続き HTTP で接続できます。同じページの **接入 AI 客户端**（AI クライアントを接続）のボタンで、アクセストークン入りのクライアント設定（JSON）や Claude Code のコマンドをコピーできます。
 
 ```json
 {
@@ -338,6 +345,8 @@ src/main/watermark          ウォーターマークの検出と除去（ffmpeg 
 src/main/net                プロキシと CDN の選択
 src/main/update             アプリ内アップデート：update.json の確認、ダウンロードの検証、.app / AppImage / NSIS 向けアップデートのインストール
 src/main/mcp                ローカル MCP サーバー
+src/main/agents             MCP サーバーと skill を AI アシスタントにワンクリックで導入
+src/bridge                  AI アシスタントが起動する stdio ブリッジ（MCP サーバーへ中継）
 src/main/subscriptions.ts   購読
 src/shared                  全プロセス共通の型、リンク解析、命名テンプレート
 src/renderer                UI（React + Tailwind CSS + zustand）

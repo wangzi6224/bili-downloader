@@ -18,6 +18,7 @@ export default {
   tabFormat: '기본 형식',
   tabNaming: '파일 이름',
   tabAdvanced: '네트워크 및 고급',
+  tabAgents: 'AI 어시스턴트',
   themeSystem: '시스템 설정 따르기',
   themeLight: '라이트',
   themeDark: '다크',

@@ -20,6 +20,7 @@ export default {
   tabFormat: 'デフォルト形式',
   tabNaming: 'ファイル名',
   tabAdvanced: 'ネットワークと詳細',
+  tabAgents: 'AI アシスタント',
   // 外観
   themeSystem: 'システムに従う',
   themeLight: 'ライト',

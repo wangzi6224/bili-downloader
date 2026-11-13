@@ -37,10 +37,15 @@ import { estimateTime, initSpeed, speedRatio } from './watermark/speed'
 import { closeDecision, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
 import { applyLanguage } from './i18n'
+import { bridgeEntry, installBridge } from './agents/entry'
+import { Integrations } from './agents/integrations'
+import { agentEnv, AGENTS } from './agents/registry'
 import { getLanguage, t } from '@shared/i18n'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 const isMac = process.platform === 'darwin'
+/** AI agent 调用工具时应用没开，由桥接进程带着 --background 拉起：只显示托盘，不打开窗口 */
+const background = process.argv.includes('--background')
 /** ⌘Q、程序坞“退出”等真正退出（确认放行后）时，关窗口不再拦截 */
 let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
@@ -118,6 +123,8 @@ function platformWindowOptions(): Electron.BrowserWindowConstructorOptions {
 }
 
 function showMainWindow(): void {
+  // 后台启动时隐藏了程序坞图标，打开窗口时再显示
+  if (isMac && app.dock && !app.dock.isVisible()) void app.dock.show()
   const win = getMainWindow() ?? createWindow()
   if (win.isMinimized()) win.restore()
   win.show()
@@ -248,7 +255,10 @@ if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.wa
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', showMainWindow)
+  // 桥接进程在应用已经开着时也可能再拉一次（例如刚好在启动中），这时不弹窗口
+  app.on('second-instance', (_e, argv) => {
+    if (!argv.includes('--background')) showMainWindow()
+  })
   app.whenReady().then(() => start())
 }
 
@@ -361,6 +371,44 @@ async function start(): Promise<void> {
   })
   const mcp = new McpServer(mcpTools)
   void mcp.apply(settings.mcp)
+  // 应用没开时 stdio 桥接进程用它代答握手和工具列表；语言变了重写
+  const writeManifest = (): void => writeJson(join(app.getPath('userData'), 'mcp-manifest.json'), mcp.manifest())
+  writeManifest()
+
+  // 装进各个 AI agent 的 MCP 配置和 skill：应用升级或挪了位置后自动更新
+  let bridgeScript: string | undefined
+  const agents = new Integrations({
+    file: join(app.getPath('userData'), 'agent-integrations.json'),
+    agents: AGENTS,
+    env: agentEnv(),
+    version: app.getVersion(),
+    entry: () =>
+      bridgeEntry({
+        platform: process.platform,
+        execPath: process.execPath,
+        appImage: process.env.APPIMAGE,
+        bridge: (bridgeScript ??= installBridge(join(__dirname, 'bridge.js'), app.getPath('userData'))),
+        userData: app.getPath('userData'),
+        // 开发版要告诉 Electron 项目在哪；用 --user-data-dir 启动的实例，拉起时也要用同一个数据目录
+        appArgs: [
+          ...(app.isPackaged ? [] : [app.getAppPath()]),
+          ...(app.commandLine.hasSwitch('user-data-dir') ? [`--user-data-dir=${app.getPath('userData')}`] : [])
+        ]
+      }),
+    enableMcp: () => {
+      const { mcp } = getSettings()
+      if (!mcp.enabled) updateSettings({ mcp: { ...mcp, enabled: true } })
+    }
+  })
+  // 开发版和正式版共用数据目录，agent 的配置却是全局的：开发版不自动同步，免得把配置改成指向开发目录
+  if (app.isPackaged || process.env.BILI_AGENT_HOME) setImmediate(() => {
+    try {
+      const updated = agents.sync()
+      if (updated.length) console.info(`已更新 AI 助手的配置：${updated.join('、')}`)
+    } catch (e) {
+      console.warn('更新 AI 助手的配置失败', e)
+    }
+  })
 
   accounts.connect((mid, status) => {
     manager.accountChanged(mid, status)
@@ -386,6 +434,7 @@ async function start(): Promise<void> {
     send('settings:changed', s)
     if (applyLanguage(s.language)) {
       send('i18n:changed', getLanguage())
+      writeManifest()
       buildMenu()
       refreshTray?.()
     }
@@ -423,11 +472,18 @@ async function start(): Promise<void> {
     batches: mcpTools.batches,
     dialog: showDialog
   }, mid, requester)
-  registerIpc({ manager, subs, mcp, enqueue, updater, accounts, endAccount: (mid) => endAccount(mid, 'user') })
+  registerIpc({ manager, subs, mcp, agents, enqueue, updater, accounts, endAccount: (mid) => endAccount(mid, 'user') })
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   createTray(updater)
+  if (background) {
+    // 只在托盘里待命；程序坞图标等用户打开窗口时再显示
+    if (isMac) app.dock?.hide()
+    setTimeout(() => updater.start(() => getSettings().autoCheckUpdate), 3000)
+    app.on('activate', showMainWindow)
+    return
+  }
   createWindow()
 
   // 启动时确认登录状态，未登录就弹出登录；稍后再检查更新，免得和登录弹窗挤在一起

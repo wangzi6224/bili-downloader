@@ -92,6 +92,15 @@ describe('McpServer', () => {
     expect(list.result.tools).toEqual(DEFS)
   })
 
+  it('manifest 和 initialize、tools/list 的内容一致', async () => {
+    const init = (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).body
+    const m = server.manifest()
+    expect(m.protocols[0]).toBe(init.result.protocolVersion)
+    expect(m.serverInfo).toEqual(init.result.serverInfo)
+    expect(m.instructions).toBe(init.result.instructions)
+    expect(m.tools).toEqual(DEFS)
+  })
+
   it('服务说明和工具列表按请求时的界面语言现算', async () => {
     const orig = DICTS.en.mcp
     // 英文字典还没有 mcp 命名空间（沿用中文），临时塞一条覆盖值来区分

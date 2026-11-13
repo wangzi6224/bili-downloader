@@ -23,6 +23,8 @@ export default defineConfig({
         'src/main/index.ts',
         // 推理子进程的入口只做接线，逻辑在 hostCore.ts
         'src/main/watermark/ai/hostEntry.ts',
+        // 桥接进程的入口只做接线，逻辑在 bridge.ts
+        'src/bridge/index.ts',
         // 纯展示的 JSX，逻辑在 src/renderer/src/*.ts 里测
         'src/renderer/src/main.tsx',
         'src/renderer/src/App.tsx',

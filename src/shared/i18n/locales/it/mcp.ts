@@ -2,7 +2,8 @@ import type { Messages } from '../types'
 
 export default {
   instructions:
-    'Servizio locale di {appName} per cercare video su Bilibili, analizzare link, scaricare in blocco e seguire l’avanzamento. Procedura consigliata per scaricare:\n' +
+    'Servizio locale di {appName} (downloader di video Bilibili / B站) per scaricare video, raccolte, anime e cartelle dei preferiti da Bilibili, cercare video e creator su Bilibili, analizzare link, scaricare in blocco e seguire l’avanzamento. ' +
+    'Usa questi strumenti quando l’utente vuole scaricare da Bilibili, cercare su Bilibili o fornisce un link Bilibili o un ID BV. Procedura consigliata per scaricare:\n' +
     '1. get_status per verificare lo stato di accesso e la coda; se l’accesso non è stato effettuato, usa start_login per importare i dati di accesso dal browser e, se non funziona, start_login method=qr per mostrare il codice QR; get_login_status con wait_seconds per attendere il completamento dell’accesso;\n' +
     '2. parse_link per vedere gli elementi del link (raccolte, cartelle dei preferiti ecc. vengono sfogliate automaticamente; gli id degli elementi sono stabili e si possono leggere a blocchi);\n' +
     '3. download_batch per inviare tutto in una volta; restituisce batch_id; gli elementi già scaricati vengono saltati per impostazione predefinita e, se il batch non è ancora terminato, reinviare la stessa richiesta restituisce lo stesso batch;\n' +

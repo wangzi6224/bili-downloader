@@ -151,6 +151,7 @@ const manager = {
 }
 const subs = { list: vi.fn(), add: vi.fn(), update: vi.fn(), remove: vi.fn(), check: vi.fn(), downloadSource: vi.fn() }
 const mcp = { status: vi.fn() }
+const agents = { list: vi.fn(), install: vi.fn(), uninstall: vi.fn(), installAll: vi.fn() }
 const updater = {
   getState: vi.fn(),
   check: vi.fn(),
@@ -161,7 +162,7 @@ const updater = {
   openPage: vi.fn()
 }
 const enqueue = vi.fn()
-const deps = { manager, subs, mcp, updater, enqueue } as unknown as IpcDeps
+const deps = { manager, subs, mcp, agents, updater, enqueue } as unknown as IpcDeps
 
 const WIN = { id: 'main-window' }
 const SETTINGS = { downloadDir: '/dl', closeAction: 'ask', mcp: { enabled: true, port: 39231, token: 'old' } }
@@ -239,7 +240,7 @@ describe('返回值包装', () => {
 
   it('每个频道只注册一次', () => {
     expect(h.registered).toHaveLength(h.handlers.size)
-    expect(h.handlers.size).toBe(78)
+    expect(h.handlers.size).toBe(82)
   })
 })
 
@@ -833,6 +834,10 @@ describe('直接转发的频道', () => {
     { channel: 'config:export', args: [], fn: h.exportConfig, called: [WIN, subs] },
     { channel: 'config:import', args: [], fn: h.importConfig, called: [WIN, subs] },
     { channel: 'mcp:status', args: [], fn: mcp.status },
+    { channel: 'agents:list', args: [], fn: agents.list },
+    { channel: 'agents:install', args: ['codex'], fn: agents.install },
+    { channel: 'agents:uninstall', args: ['codex'], fn: agents.uninstall },
+    { channel: 'agents:installAll', args: [], fn: agents.installAll },
     { channel: 'update:state', args: [], fn: updater.getState },
     { channel: 'update:check', args: [], fn: updater.check, called: [true] },
     { channel: 'update:download', args: [], fn: updater.download },

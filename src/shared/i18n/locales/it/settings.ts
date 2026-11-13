@@ -20,6 +20,7 @@ export default {
   tabFormat: 'Formato predefinito',
   tabNaming: 'Nomi dei file',
   tabAdvanced: 'Rete e avanzate',
+  tabAgents: 'Assistenti AI',
   // Aspetto
   themeSystem: 'Come il sistema',
   themeLight: 'Chiaro',

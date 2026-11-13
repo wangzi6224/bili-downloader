@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Film, FileType, FolderOpen, Globe, Monitor, Moon, RefreshCw, SlidersHorizontal, Sun } from 'lucide-react'
+import { Bot, Download, Film, FileType, FolderOpen, Globe, Monitor, Moon, RefreshCw, SlidersHorizontal, Sun } from 'lucide-react'
 import {
   DEFAULT_TEMPLATES,
   MEDIA_LIBRARY_PGC,
@@ -17,6 +17,7 @@ import { useT } from '../i18n'
 import { api, sysText, updateSettings, useStore } from '../store'
 import { updateHint } from '../viewLogic'
 import { AdvancedSettings } from './AdvancedSettings'
+import { AgentIntegrations } from './AgentIntegrations'
 import { AccountSettings } from './AccountControls'
 import { OptionsEditor } from './OptionsEditor'
 import { Button, fieldCls, Group, Input, PageHeader, rich, Row, Segmented, Select, Switch } from './ui'
@@ -24,13 +25,14 @@ import { Button, fieldCls, Group, Input, PageHeader, rich, Row, Segmented, Selec
 // 需要包含所有清晰度代码：“记住上次选择”可能存下其中任意一个
 const QN = [127, 126, 125, 120, 116, 112, 80, 74, 64, 32, 16] as const
 
-type Tab = 'general' | 'download' | 'format' | 'naming' | 'advanced'
+type Tab = 'general' | 'download' | 'format' | 'naming' | 'agents' | 'advanced'
 // 文案在渲染时取，切换语言后跟着变
 const tabs = () => [
   { value: 'general' as const, label: t('settings.tabGeneral'), icon: SlidersHorizontal },
   { value: 'download' as const, label: t('settings.tabDownload'), icon: Download },
   { value: 'format' as const, label: t('settings.tabFormat'), icon: Film },
   { value: 'naming' as const, label: t('settings.tabNaming'), icon: FileType },
+  { value: 'agents' as const, label: t('settings.tabAgents'), icon: Bot },
   { value: 'advanced' as const, label: t('settings.tabAdvanced'), icon: Globe }
 ]
 
@@ -433,6 +435,7 @@ export function SettingsPage() {
           )}
 
           {tab === 'naming' && <NamingEditor />}
+          {tab === 'agents' && <AgentIntegrations />}
           {tab === 'advanced' && <AdvancedSettings />}
         </div>
       </div>

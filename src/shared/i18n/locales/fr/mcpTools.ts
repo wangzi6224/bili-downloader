@@ -43,7 +43,7 @@ export default {
 
   downloadTitle: 'Téléchargement par lot',
   downloadDesc:
-    'Ajoute les éléments d’un lien à la file de téléchargement sous forme d’un lot et renvoie immédiatement un batch_id ; les parties des vidéos de liste sont développées en arrière-plan. ' +
+    'Télécharge des vidéos, collections, animes, dossiers de favoris Bilibili, etc. Ajoute les éléments d’un lien à la file de téléchargement sous forme d’un lot et renvoie immédiatement un batch_id ; les parties des vidéos de liste sont développées en arrière-plan. ' +
     'Choisissez les éléments avec ids, ou all=true pour tout télécharger ; pour le lien d’une seule vidéo, aucun des deux n’est nécessaire. ' +
     'Si les vidéos viennent de liens différents (par exemple des résultats de recherche), soumettez-les en une fois avec videos, et non une par une. Les éléments déjà téléchargés sont ignorés par défaut, ceux déjà dans la file ne sont pas ajoutés deux fois. ' +
     'Tant que le lot d’origine n’est pas terminé, soumettre la même requête renvoie ce lot (deduplicated=true) ; passez request_id pour fixer explicitement la clé d’idempotence.',

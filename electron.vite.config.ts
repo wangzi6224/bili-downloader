@@ -10,8 +10,13 @@ export default defineConfig({
     resolve: { alias: shared },
     build: {
       rollupOptions: {
-        // AI 去水印的推理子进程单独一个入口：由 utilityProcess 启动，和主进程不在一个进程里
-        input: { index: resolve('src/main/index.ts'), refineHost: resolve('src/main/watermark/ai/hostEntry.ts') }
+        // AI 去水印的推理子进程单独一个入口：由 utilityProcess 启动，和主进程不在一个进程里；
+        // bridge 是 AI agent 按 stdio MCP 启动的桥接进程（ELECTRON_RUN_AS_NODE），只用 Node 自带模块
+        input: {
+          index: resolve('src/main/index.ts'),
+          refineHost: resolve('src/main/watermark/ai/hostEntry.ts'),
+          bridge: resolve('src/bridge/index.ts')
+        }
       }
     }
   },

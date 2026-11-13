@@ -20,6 +20,7 @@ export default {
   tabFormat: 'डिफ़ॉल्ट फ़ॉर्मेट',
   tabNaming: 'नामकरण',
   tabAdvanced: 'नेटवर्क और उन्नत',
+  tabAgents: 'AI असिस्टेंट',
   // 外观
   themeSystem: 'सिस्टम के अनुसार',
   themeLight: 'लाइट',

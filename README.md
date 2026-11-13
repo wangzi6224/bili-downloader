@@ -133,8 +133,15 @@ Here the agent uses `parse_link` to expand the collection, `download_batch` (alr
 
 ### Setup
 
-1. Go to **设置 → 网络与高级 → MCP 服务** (Settings → Network & Advanced → MCP server) and turn it on.
-2. Use the buttons in the same section to copy the client configuration (JSON) or the Claude Code command, which already include your access token.
+Go to **设置 → AI 助手** (Settings → AI assistants) and click **全部安装** (Install all), or install for one assistant at a time. One click adds the MCP server and a skill to:
+
+Claude Code · Claude Desktop (macOS, Windows) · Codex · Cursor · Gemini CLI · WorkBuddy · CodeBuddy · Trae CN · Qoder · Qwen Code
+
+- Restart the assistant afterwards. From then on, any conversation that asks to download from or search bilibili will use this app.
+- No token is stored in the assistants' configs: they start a small bridge that reads the current port and token from the app, and opens the app in the background (tray icon only) if it isn't running.
+- When the app is updated or moved, the installed configs and skills are updated on its next launch. Anything you remove inside an assistant stays removed.
+
+Other clients can still connect over HTTP: the buttons under **接入 AI 客户端** (Connect an AI client) on the same page copy the client configuration (JSON) or the Claude Code command, which already include your access token.
 
 ```json
 {
@@ -343,6 +350,8 @@ src/main/watermark          Watermark detection and removal (ffmpeg delogo); ai/
 src/main/net                Proxy and CDN selection
 src/main/update             In-app updates: check update.json, verify downloads, install .app / AppImage / NSIS updates
 src/main/mcp                Local MCP server
+src/main/agents             One-click install of the MCP server and skill into AI assistants
+src/bridge                  stdio bridge that AI assistants start to reach the MCP server
 src/main/subscriptions.ts   Subscriptions
 src/shared                  Types, link parsing and naming templates shared by all processes
 src/renderer                User interface (React + Tailwind CSS + zustand)

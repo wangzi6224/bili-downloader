@@ -20,6 +20,7 @@ export default {
   tabFormat: 'Формат по умолчанию',
   tabNaming: 'Имена файлов',
   tabAdvanced: 'Сеть и дополнительно',
+  tabAgents: 'ИИ-ассистенты',
   // 外观
   themeSystem: 'Как в системе',
   themeLight: 'Светлая',

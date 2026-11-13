@@ -1,8 +1,8 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readJson, readJsonArray, writeJson } from './store'
+import { readJson, readJsonArray, writeJson, writeTextAtomic } from './store'
 
 let dir = ''
 
@@ -46,5 +46,25 @@ describe('readJsonArray', () => {
       writeFileSync(file, content)
       expect(readJsonArray(file)).toEqual([])
     }
+  })
+})
+
+describe('writeTextAtomic', () => {
+  it.skipIf(process.platform === 'win32')('写到软链接指向的文件，链接保留；已有文件的权限不变', () => {
+    const real = join(dir, 'real.toml')
+    const link = join(dir, 'link.toml')
+    writeFileSync(real, 'a')
+    chmodSync(real, 0o600)
+    symlinkSync(real, link)
+    writeTextAtomic(link, 'b')
+    expect(lstatSync(link).isSymbolicLink()).toBe(true)
+    expect(readFileSync(real, 'utf8')).toBe('b')
+    expect(statSync(real).mode & 0o777).toBe(0o600)
+  })
+
+  it('新文件按默认权限创建', () => {
+    const file = join(dir, 'new', 'x.txt')
+    writeTextAtomic(file, '中文')
+    expect(readFileSync(file, 'utf8')).toBe('中文')
   })
 })

@@ -35,6 +35,7 @@ import { exportConfig, importConfig } from './config'
 import type { DownloadManager } from './download/manager'
 import { prepareEnqueueItems } from './enqueue'
 import type { McpServer } from './mcp/server'
+import type { Integrations } from './agents/integrations'
 import { cdnHosts, pingHost } from './net/cdn'
 import { networkStatus } from './net/network'
 import type { SubscriptionManager } from './subscriptions'
@@ -147,6 +148,7 @@ export interface IpcDeps {
   manager: DownloadManager
   subs: SubscriptionManager
   mcp: McpServer
+  agents: Integrations
   enqueue: (req: EnqueueRequest, beforeQueue?: () => void) => Promise<string | undefined>
   updater: Updater
   accounts?: typeof accounts
@@ -154,7 +156,7 @@ export interface IpcDeps {
   endAccount?: (mid: number) => Promise<boolean>
 }
 
-export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts, endAccount }: IpcDeps): void {
+export function registerIpc({ manager, subs, mcp, agents, enqueue, updater, accounts, endAccount }: IpcDeps): void {
   const getSubscription = (id: string): Subscription => {
     const sub = subs.list().find((item) => item.id === id)
     if (!sub) throw new Error(t('subs.sourceUnavailable'))
@@ -426,6 +428,11 @@ export function registerIpc({ manager, subs, mcp, enqueue, updater, accounts, en
   handle('mcp:regenerateToken', () =>
     updateSettings({ mcp: { ...getSettings().mcp, token: randomBytes(24).toString('hex') } })
   )
+
+  handle('agents:list', () => agents.list())
+  handle('agents:install', (id: string) => agents.install(id))
+  handle('agents:uninstall', (id: string) => agents.uninstall(id))
+  handle('agents:installAll', () => agents.installAll())
 
   handle('app:close', (action: Exclude<CloseAction, 'ask'>, remember: boolean) => {
     if (remember) updateSettings({ closeAction: action })

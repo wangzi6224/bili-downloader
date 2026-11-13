@@ -126,6 +126,12 @@ const api: BiliApi = {
     status: () => invoke('mcp:status'),
     regenerateToken: () => invoke('mcp:regenerateToken')
   },
+  agents: {
+    list: () => invoke('agents:list'),
+    install: (id) => invoke('agents:install', id),
+    uninstall: (id) => invoke('agents:uninstall', id),
+    installAll: () => invoke('agents:installAll')
+  },
   app: {
     onCloseRequested: on('app:closeRequested'),
     onOpenSettings: on('app:openSettings'),

@@ -20,6 +20,7 @@ export default {
   tabFormat: 'Default format',
   tabNaming: 'Naming',
   tabAdvanced: 'Network & advanced',
+  tabAgents: 'AI assistants',
   // 外观
   themeSystem: 'System',
   themeLight: 'Light',

@@ -18,6 +18,7 @@ export default {
   tabFormat: '默认格式',
   tabNaming: '命名',
   tabAdvanced: '网络与高级',
+  tabAgents: 'AI 助手',
   // 外观
   themeSystem: '跟随系统',
   themeLight: '浅色',

@@ -14,6 +14,7 @@ import type { ToolSet } from './tools'
 const instructions = (): string => `${t('mcp.instructions', { appName: t('common.appName') })}\n${t('mcpAccounts.instructions')}`
 
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05']
+const SERVER_INFO = () => ({ name: 'bili-downloader', version: app.getVersion() })
 const MAX_BODY = 1024 * 1024
 
 interface RpcRequest {
@@ -30,6 +31,14 @@ export class McpServer {
   private error?: () => string
 
   constructor(private tools: ToolSet) {}
+
+  /**
+   * 应用没开时由 stdio 桥接进程代答 initialize 和 tools/list 用的内容（存到数据目录的 mcp-manifest.json）：
+   * agent 启动时连一下 MCP 服务不该把应用拉起来，真正调用工具时才需要
+   */
+  manifest(): { protocols: string[]; serverInfo: { name: string; version: string }; instructions: string; tools: unknown[] } {
+    return { protocols: PROTOCOLS, serverInfo: SERVER_INFO(), instructions: instructions(), tools: this.tools.definitions() }
+  }
 
   status(): { running: boolean; error?: string } {
     return { running: Boolean(this.server?.listening), error: this.error?.() }
@@ -129,7 +138,7 @@ export class McpServer {
           return ok({
             protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
             capabilities: { tools: {} },
-            serverInfo: { name: 'bili-downloader', version: app.getVersion() },
+            serverInfo: SERVER_INFO(),
             instructions: instructions()
           })
         }

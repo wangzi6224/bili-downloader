@@ -388,6 +388,29 @@ export interface McpSettings {
   token: string
 }
 
+/** 设置页“AI 助手”里每个 agent 的状态 */
+export interface AgentStatus {
+  id: string
+  name: string
+  /** 这个系统上能不能装（例如 Claude Desktop 没有 Linux 版） */
+  supported: boolean
+  /** 本机检测到装了这个 agent */
+  detected: boolean
+  installed: boolean
+  /** 装过，但版本或应用位置变了，需要更新 */
+  outdated: boolean
+  /** 是否带 skill（有的 agent 不支持 skill，只装 MCP） */
+  skill: boolean
+  /** 同名的 skill 是用户自己放的，没有覆盖 */
+  skillConflict?: boolean
+  /** MCP 配置文件的位置，界面上显示 */
+  configFile: string
+  /** 配置文件读不懂（例如手改坏了），没有改动它 */
+  broken?: boolean
+  /** 装好后要做的事：重启这个 agent，或者在它的 MCP 面板里点“信任” */
+  note: 'restart' | 'trust' | 'none'
+}
+
 /** 订阅：定期检查收藏夹、合集、UP 主等来源，有新内容就自动下载 */
 export interface Subscription {
   id: string
@@ -695,6 +718,13 @@ export interface BiliApi {
   mcp: {
     status(): Promise<{ running: boolean; error?: string }>
     regenerateToken(): Promise<Settings>
+  }
+  agents: {
+    list(): Promise<AgentStatus[]>
+    install(id: string): Promise<AgentStatus[]>
+    uninstall(id: string): Promise<AgentStatus[]>
+    /** 给检测到、还没装的全部装上 */
+    installAll(): Promise<AgentStatus[]>
   }
   app: {
     /** 用户点了关闭按钮，需要询问退出还是后台运行 */

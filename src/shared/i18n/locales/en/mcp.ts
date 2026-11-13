@@ -3,7 +3,8 @@ import type { Messages } from '../types'
 
 export default {
   instructions:
-    'Local service of {appName} for searching Bilibili videos, parsing links, downloading in batches and tracking progress. Recommended download flow:\n' +
+    'Local service of {appName} (Bilibili / B站 video downloader) for downloading Bilibili videos, collections, anime and favorites folders, searching Bilibili videos and uploaders, parsing links, downloading in batches and tracking progress. ' +
+    'Use these tools when the user wants to download from Bilibili, search Bilibili, or gives a Bilibili link or BV id. Recommended download flow:\n' +
     '1. get_status to check the login status and the queue; if not signed in, use start_login to import the login from the browser, and if that fails, start_login method=qr to open a QR code window; use get_login_status with wait_seconds to wait for sign-in to complete;\n' +
     '2. parse_link to see the items in a link (collections, favorites folders, etc. are paged through automatically; item ids are stable and can be read in chunks);\n' +
     '3. download_batch to submit everything at once; it returns a batch_id. Already downloaded items are skipped by default, and resubmitting while the batch is unfinished returns the same batch;\n' +

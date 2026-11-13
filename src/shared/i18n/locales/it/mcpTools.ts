@@ -41,7 +41,7 @@ export default {
 
   downloadTitle: 'Download in blocco',
   downloadDesc:
-    'Aggiunge gli elementi del link alla coda di download come un unico batch e restituisce subito batch_id; le parti dei video degli elenchi vengono espanse in background. ' +
+    'Scarica video, raccolte, anime, cartelle dei preferiti e altro da Bilibili. Aggiunge gli elementi del link alla coda di download come un unico batch e restituisce subito batch_id; le parti dei video degli elenchi vengono espanse in background. ' +
     'Scegli gli elementi con ids, oppure all=true per scaricarli tutti; per il link di un singolo video puoi ometterli entrambi. ' +
     'Se i video da scaricare provengono da link diversi (ad esempio risultati di ricerca), inviali tutti insieme con videos invece di chiamarlo per ciascuno. Gli elementi già scaricati vengono saltati per impostazione predefinita e quelli già in coda non vengono aggiunti di nuovo. ' +
     'Se il batch originale non è ancora terminato, reinviare la stessa richiesta restituisce il batch originale (deduplicated=true); con request_id puoi indicare esplicitamente la chiave di idempotenza.',

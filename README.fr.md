@@ -133,8 +133,15 @@ Ici, l'agent utilise `parse_link` pour déplier la collection, `download_batch` 
 
 ### Configuration
 
-1. Allez dans **设置 → 网络与高级 → MCP 服务** (Réglages → Réseau et avancé → Serveur MCP) et activez-le.
-2. Utilisez les boutons de cette même section pour copier la configuration client (JSON) ou la commande Claude Code, qui contiennent déjà votre jeton d'accès.
+Dans **设置 → AI 助手** (Réglages → Assistants IA), cliquez sur **全部安装** (Tout installer), ou installez pour un seul assistant. En un clic, le serveur MCP et une skill sont ajoutés à :
+
+Claude Code · Claude Desktop (macOS, Windows) · Codex · Cursor · Gemini CLI · WorkBuddy · CodeBuddy · Trae CN · Qoder · Qwen Code
+
+- Redémarrez ensuite l’assistant. Dès lors, toute conversation qui demande de télécharger depuis bilibili ou d’y faire une recherche utilisera cette application.
+- Aucun jeton n’est enregistré dans la configuration des assistants : ils lancent un petit pont qui lit le port et le jeton actuels de l’application, et ouvre l’application en arrière-plan (icône dans la barre seulement) si elle n’est pas lancée.
+- Quand l’application est mise à jour ou déplacée, les configurations et skills installées sont mises à jour au lancement suivant. Ce que vous retirez dans un assistant n’est pas réinstallé.
+
+Les autres clients peuvent toujours se connecter en HTTP : les boutons de **接入 AI 客户端** (Connecter un client IA) sur la même page copient la configuration du client (JSON) ou la commande Claude Code, avec votre jeton d’accès déjà inclus.
 
 ```json
 {
@@ -338,6 +345,8 @@ src/main/watermark          Détection et suppression du filigrane (delogo de ff
 src/main/net                Proxy et choix du CDN
 src/main/update             Mises à jour intégrées : vérification de update.json, contrôle des téléchargements, installation des mises à jour .app / AppImage / NSIS
 src/main/mcp                Serveur MCP local
+src/main/agents             Installation en un clic du serveur MCP et de la skill dans les assistants IA
+src/bridge                  Pont stdio lancé par les assistants IA pour joindre le serveur MCP
 src/main/subscriptions.ts   Abonnements
 src/shared                  Types, analyse des liens et modèles de nommage partagés entre les processus
 src/renderer                Interface (React + Tailwind CSS + zustand)

@@ -131,8 +131,15 @@ Agent 会先用 `search_videos` 找到候选视频，再用 `download_batch` 把
 
 ### 怎么配置
 
-1. 在 **设置 → 网络与高级 → MCP 服务** 里打开 **开启 MCP 服务**。
-2. 用同一区域的按钮复制客户端配置（JSON）或 Claude Code 命令，里面已经带好访问令牌。
+在 **设置 → AI 助手** 里点 **全部安装**，或者给某一个 AI 助手单独安装。一键就会把 MCP 服务和 skill 装进：
+
+Claude Code · Claude Desktop（macOS、Windows） · Codex · Cursor · Gemini CLI · WorkBuddy · CodeBuddy · Trae CN · Qoder · Qwen Code
+
+- 装好后重启对应的 AI 助手。之后在任何对话里提到下载 B站视频、在 B站搜索，它都会用这个应用来做。
+- AI 助手的配置里不存令牌：它们启动的是一个小的桥接程序，用时现读应用的端口和令牌；应用没开时会在后台把它打开（只显示托盘图标）。
+- 应用升级或者换了位置，下次启动时会自动更新已装的配置和 skill；你在 AI 助手里自己删掉的，不会再装回去。
+
+其他客户端仍然可以通过 HTTP 接入：同一页 **接入 AI 客户端** 的按钮可以复制客户端配置（JSON）或 Claude Code 命令，里面已经带好访问令牌。
 
 ```json
 {
@@ -341,6 +348,8 @@ src/main/watermark          去水印：识别水印位置，用 ffmpeg 的 delo
 src/main/net                代理和 CDN 选择
 src/main/update             应用内更新：检查 update.json、下载校验、替换 .app 或 AppImage
 src/main/mcp                本地 MCP 服务
+src/main/agents             把 MCP 服务和 skill 一键装进各个 AI 助手
+src/bridge                  AI 助手启动的 stdio 桥接程序，转发到本地 MCP 服务
 src/main/subscriptions.ts   订阅
 src/shared                  各进程共用的类型、链接识别和命名模板
 src/renderer                界面（React + Tailwind CSS + zustand）

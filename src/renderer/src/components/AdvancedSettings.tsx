@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Copy, Download, Eye, EyeOff, FileDown, FileUp, Gauge, KeyRound, Terminal, Trash2, Wifi, X } from 'lucide-react'
+import { Download, FileDown, FileUp, Gauge, Trash2, Wifi, X } from 'lucide-react'
 import type { AiModelStatus, NetworkStatus, ProxyMode } from '@shared/types'
 import { modelSettingsText } from '../aiRefine'
 import { useT } from '../i18n'
 import { api, updateSettings, useStore } from '../store'
-import { mcpClientConfig, pingLabel, sortPings } from '../viewLogic'
-import { Badge, Button, Group, IconButton, Input, Row, Select, Switch } from './ui'
+import { pingLabel, sortPings } from '../viewLogic'
+import { Button, Group, IconButton, Input, Row, Select } from './ui'
 
 export function AdvancedSettings() {
   const t = useT()
@@ -16,8 +16,6 @@ export function AdvancedSettings() {
   const [testResult, setTestResult] = useState('')
   const [hosts, setHosts] = useState<{ host: string; label: string }[]>([])
   const [pings, setPings] = useState<Record<string, number | null> | null>(null)
-  const [mcpStatus, setMcpStatus] = useState<{ running: boolean; error?: string } | null>(null)
-  const [showToken, setShowToken] = useState(false)
   const [message, setMessage] = useState('')
   const [aiModel, setAiModel] = useState<AiModelStatus | null>(null)
 
@@ -26,20 +24,11 @@ export function AdvancedSettings() {
     void api.watermark.aiStatus().then(setAiModel)
     return api.watermark.onAiStatus(setAiModel)
   }, [])
-  // 设置变化后主进程会重新应用代理和 MCP，稍等再读状态
+  // 设置变化后主进程会重新应用代理，稍等再读状态
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void api.net.status().then(setNetStatus)
-      void api.mcp.status().then(setMcpStatus)
-    }, 400)
+    const timer = setTimeout(() => void api.net.status().then(setNetStatus), 400)
     return () => clearTimeout(timer)
-  }, [s.proxy, s.mcp])
-
-  const { endpoint, json: clientConfig, command } = mcpClientConfig(s.mcp.port, s.mcp.token)
-  const copy = async (text: string, done: string): Promise<void> => {
-    await api.writeClipboard(text)
-    setMessage(done)
-  }
+  }, [s.proxy])
 
   return (
     <>
@@ -125,48 +114,6 @@ export function AdvancedSettings() {
             )}
           </div>
         )}
-      </Group>
-
-      <Group title={t('advanced.mcpGroup')}>
-        <Row label={t('advanced.mcpEnable')} hint={t('advanced.mcpEnableHint')}>
-          {s.mcp.enabled && mcpStatus && (
-            <Badge tone={mcpStatus.running ? 'success' : 'danger'} title={mcpStatus.error}>
-              {mcpStatus.running ? t('advanced.mcpRunning') : t('advanced.mcpStopped')}
-            </Badge>
-          )}
-          <Switch checked={s.mcp.enabled} onChange={(enabled) => updateSettings({ mcp: { ...s.mcp, enabled } })} />
-        </Row>
-        {s.mcp.enabled && mcpStatus && !mcpStatus.running && mcpStatus.error && (
-          <div className="px-4 py-2 text-xs text-red-600 dark:text-red-400">{mcpStatus.error}</div>
-        )}
-        <Row label={t('advanced.port')} hint={<span className="font-mono">{endpoint}</span>}>
-          <Input
-            type="number"
-            min={1024}
-            max={65535}
-            value={s.mcp.port}
-            onChange={(e) => updateSettings({ mcp: { ...s.mcp, port: Number(e.target.value) || 39231 } })}
-            className="w-24"
-          />
-        </Row>
-        <Row label={t('advanced.token')} hint={<code className="font-mono break-all">{showToken ? s.mcp.token : '•'.repeat(24)}</code>}>
-          <IconButton icon={showToken ? EyeOff : Eye} label={showToken ? t('advanced.hide') : t('advanced.show')} onClick={() => setShowToken(!showToken)} />
-          <IconButton
-            icon={KeyRound}
-            label={t('advanced.regenerateToken')}
-            onClick={async () => {
-              if (confirm(t('advanced.regenerateConfirm'))) set({ settings: await api.mcp.regenerateToken() })
-            }}
-          />
-        </Row>
-        <Row label={t('advanced.connectClient')} hint={t('advanced.connectClientHint')}>
-          <Button icon={Copy} onClick={() => copy(clientConfig, t('advanced.copiedConfig'))}>
-            {t('advanced.clientConfig')}
-          </Button>
-          <Button icon={Terminal} onClick={() => copy(command, t('advanced.copiedCommand'))}>
-            {t('advanced.claudeCodeCommand')}
-          </Button>
-        </Row>
       </Group>
 
       <Group title={t('advanced.aiGroup')}>

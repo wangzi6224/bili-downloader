@@ -1,7 +1,8 @@
 // MCP 服务给 AI 客户端看的通用文案：服务说明、参数校验和通用报错
 export default {
   instructions:
-    '{appName}的本地服务，用来检索 B站视频、解析链接、批量下载并跟踪进度。下载的推荐流程：\n' +
+    '{appName}的本地服务（B站 / 哔哩哔哩 / bilibili 视频下载器），用来下载 B站视频、合集、番剧和收藏夹，在 B站搜索视频和 UP 主，解析链接、批量下载并跟踪进度。' +
+    '用户说“B站下载”“下载B站视频”“B站搜索”，或者给出 B站链接、BV 号时，用这里的工具完成。下载的推荐流程：\n' +
     '1. get_status 确认登录状态和队列；没有登录时用 start_login 导入浏览器里的登录信息，不行再 start_login method=qr 弹出扫码，get_login_status 带 wait_seconds 等登录完成；\n' +
     '2. parse_link 查看链接里的条目（合集、收藏夹等会自动翻页，条目 id 稳定，可分段读取）；\n' +
     '3. download_batch 一次提交，返回 batch_id；已下载的默认跳过，批次没结束时重复提交会返回同一个批次；\n' +

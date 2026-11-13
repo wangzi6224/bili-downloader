@@ -38,6 +38,7 @@ import mcpLookup from './mcpLookup'
 import mcpLogin from './mcpLogin'
 import mcpBatch from './mcpBatch'
 import mcpWm from './mcpWm'
+import agents from './agents'
 
 export default {
   common,
@@ -78,5 +79,6 @@ export default {
   mcpLookup,
   mcpLogin,
   mcpBatch,
-  mcpWm
+  mcpWm,
+  agents
 }

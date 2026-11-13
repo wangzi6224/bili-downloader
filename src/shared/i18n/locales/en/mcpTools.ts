@@ -42,7 +42,7 @@ export default {
 
   downloadTitle: 'Batch download',
   downloadDesc:
-    'Adds the items in a link to the download queue as one batch and immediately returns a batch_id; parts of list videos are expanded in the background. ' +
+    'Downloads Bilibili videos, collections, anime, favorites folders and more. Adds the items in a link to the download queue as one batch and immediately returns a batch_id; parts of list videos are expanded in the background. ' +
     'Use ids to choose items, or all=true to download everything; for a single-video link you can pass neither. ' +
     'When the videos to download come from different links (e.g. search results), submit them all at once with videos instead of calling once per video. Already downloaded items are skipped by default, and items already in the queue aren’t added again. ' +
     'While the original batch is unfinished, submitting the same request again returns the original batch (deduplicated=true); pass request_id to specify an idempotency key explicitly.',

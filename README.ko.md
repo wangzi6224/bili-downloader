@@ -133,8 +133,15 @@ macOS 12 이상이 필요합니다.
 
 ### 설정
 
-1. **设置 → 网络与高级 → MCP 服务**(설정 → 네트워크 및 고급 → MCP 서버)에서 켭니다.
-2. 같은 영역의 버튼으로 클라이언트 설정(JSON) 또는 Claude Code 명령을 복사합니다. 액세스 토큰이 이미 포함되어 있습니다.
+**设置 → AI 助手**(설정 → AI 어시스턴트)에서 **全部安装**(모두 설치)를 누르거나 어시스턴트별로 설치합니다. 한 번의 클릭으로 MCP 서버와 skill이 다음에 추가됩니다:
+
+Claude Code · Claude Desktop (macOS, Windows) · Codex · Cursor · Gemini CLI · WorkBuddy · CodeBuddy · Trae CN · Qoder · Qwen Code
+
+- 설치한 뒤 어시스턴트를 다시 시작하세요. 그다음부터는 어떤 대화에서든 빌리빌리 다운로드나 검색을 요청하면 이 앱을 사용합니다.
+- 어시스턴트 설정에는 토큰이 저장되지 않습니다. 어시스턴트가 작은 브리지를 실행하고, 브리지가 앱의 현재 포트와 토큰을 읽습니다. 앱이 실행 중이 아니면 백그라운드에서 엽니다(트레이 아이콘만 표시).
+- 앱이 업데이트되거나 위치가 바뀌면 다음 실행 때 설치된 설정과 skill이 자동으로 업데이트됩니다. 어시스턴트에서 직접 지운 것은 다시 설치하지 않습니다.
+
+다른 클라이언트는 여전히 HTTP로 연결할 수 있습니다. 같은 페이지의 **接入 AI 客户端**(AI 클라이언트 연결) 버튼으로 액세스 토큰이 들어 있는 클라이언트 설정(JSON)이나 Claude Code 명령을 복사할 수 있습니다.
 
 ```json
 {
@@ -338,6 +345,8 @@ src/main/watermark          워터마크 감지와 제거(ffmpeg delogo), ai/는
 src/main/net                프록시와 CDN 선택
 src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app / AppImage / NSIS 업데이트 설치
 src/main/mcp                로컬 MCP 서버
+src/main/agents             MCP 서버와 skill을 AI 어시스턴트에 원클릭 설치
+src/bridge                  AI 어시스턴트가 실행하는 stdio 브리지(MCP 서버로 중계)
 src/main/subscriptions.ts   구독
 src/shared                  모든 프로세스가 공유하는 타입, 링크 분석, 이름 템플릿
 src/renderer                UI(React + Tailwind CSS + zustand)

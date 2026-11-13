@@ -133,8 +133,15 @@ Qui l'agente usa `parse_link` per espandere la raccolta, `download_batch` (gli e
 
 ### Configurazione
 
-1. Vai in **设置 → 网络与高级 → MCP 服务** (Impostazioni → Rete e avanzate → Server MCP) e attivalo.
-2. Usa i pulsanti della stessa sezione per copiare la configurazione del client (JSON) o il comando di Claude Code, che contengono già il tuo token di accesso.
+In **设置 → AI 助手** (Impostazioni → Assistenti AI) fai clic su **全部安装** (Installa tutti), oppure installa per un solo assistente. Con un clic il server MCP e una skill vengono aggiunti a:
+
+Claude Code · Claude Desktop (macOS, Windows) · Codex · Cursor · Gemini CLI · WorkBuddy · CodeBuddy · Trae CN · Qoder · Qwen Code
+
+- Poi riavvia l’assistente. Da quel momento ogni conversazione che chiede di scaricare da bilibili o di cercarvi qualcosa userà questa app.
+- Nella configurazione degli assistenti non viene salvato alcun token: avviano un piccolo bridge che legge porta e token attuali dall’app e, se l’app non è aperta, la avvia in background (solo icona nell’area di notifica).
+- Quando l’app viene aggiornata o spostata, configurazioni e skill installate vengono aggiornate all’avvio successivo. Ciò che rimuovi in un assistente non viene reinstallato.
+
+Gli altri client possono ancora collegarsi via HTTP: i pulsanti di **接入 AI 客户端** (Collega un client AI) nella stessa pagina copiano la configurazione del client (JSON) o il comando di Claude Code, con il token di accesso già incluso.
 
 ```json
 {
@@ -338,6 +345,8 @@ src/main/watermark          Rilevamento e rimozione della filigrana (delogo di f
 src/main/net                Proxy e scelta del CDN
 src/main/update             Aggiornamenti integrati: controllo di update.json, verifica dei download, installazione degli aggiornamenti .app / AppImage / NSIS
 src/main/mcp                Server MCP locale
+src/main/agents             Installazione con un clic del server MCP e della skill negli assistenti AI
+src/bridge                  Bridge stdio avviato dagli assistenti AI per raggiungere il server MCP
 src/main/subscriptions.ts   Abbonamenti
 src/shared                  Tipi, analisi dei link e modelli di denominazione condivisi tra i processi
 src/renderer                Interfaccia (React + Tailwind CSS + zustand)

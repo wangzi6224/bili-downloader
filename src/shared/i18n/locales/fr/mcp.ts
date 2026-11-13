@@ -3,7 +3,8 @@ import type { Messages } from '../types'
 // MCP 服务给 AI 客户端看的通用文案：服务说明、参数校验和通用报错
 export default {
   instructions:
-    'Service local de {appName}, pour rechercher des vidéos Bilibili, analyser des liens, télécharger par lots et suivre la progression. Déroulement recommandé pour télécharger :\n' +
+    'Service local de {appName} (téléchargeur de vidéos Bilibili / B站), pour télécharger des vidéos, collections, animes et dossiers de favoris Bilibili, rechercher des vidéos et des créateurs sur Bilibili, analyser des liens, télécharger par lots et suivre la progression. ' +
+    'Utilisez ces outils quand l’utilisateur veut télécharger depuis Bilibili, faire une recherche sur Bilibili, ou donne un lien Bilibili ou un identifiant BV. Déroulement recommandé pour télécharger :\n' +
     '1. get_status pour vérifier l’état de connexion et la file ; si l’application n’est pas connectée, start_login pour importer la connexion du navigateur, sinon start_login method=qr pour afficher un QR code, puis get_login_status avec wait_seconds pour attendre la fin de la connexion ;\n' +
     '2. parse_link pour voir les éléments du lien (les collections, dossiers de favoris, etc. sont paginés automatiquement ; les id des éléments sont stables et peuvent être lus par tranches) ;\n' +
     '3. download_batch pour tout soumettre en une fois, renvoie un batch_id ; les éléments déjà téléchargés sont ignorés par défaut, et soumettre à nouveau avant la fin du lot renvoie le même lot ;\n' +
