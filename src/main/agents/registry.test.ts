@@ -42,12 +42,14 @@ describe('AGENTS', () => {
   })
 
   it.each(['darwin', 'win32', 'linux'] as const)('%s 上每个 agent 的路径都在 home 下，检测标记都算得出来', (platform) => {
+    // 按本机的路径分隔符比较：Windows 上 join('/h', …) 得到的是 \\h\\…
+    const home = join('/h')
     for (const a of AGENTS) {
       const e = env(platform)
       if (a.platforms && !a.platforms.includes(platform)) continue
-      for (const c of a.mcp(e)) expect(c.file.startsWith('/h'), a.id).toBe(true)
-      expect(a.root(e).startsWith('/h'), a.id).toBe(true)
-      if (a.skills) expect(a.skills(e).startsWith('/h'), a.id).toBe(true)
+      for (const c of a.mcp(e)) expect(c.file.startsWith(home), a.id).toBe(true)
+      expect(a.root(e).startsWith(home), a.id).toBe(true)
+      if (a.skills) expect(a.skills(e).startsWith(home), a.id).toBe(true)
       expect(a.markers(e).length, a.id).toBeGreaterThan(0)
     }
   })
