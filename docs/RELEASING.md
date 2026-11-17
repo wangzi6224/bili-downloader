@@ -14,7 +14,7 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 都会先跑类型检查和单元测试（`npm run verify`），任何一项失败，或者覆盖率低于 `vitest.config.mts` 里的门槛，都会直接停下、不打包；通过后下载当前系统用的静态 ffmpeg（固定 sha256 校验，放在 `resources/ffmpeg/<系统>-<架构>/`），并检查它能不能去水印（`npm run check-ffmpeg`：delogo 滤镜、libx264 编码、抽 JPEG 和灰度帧，缺了就停下），再在 `dist/` 里生成安装包。Electron 自带的语言包只保留界面支持的语言（`electron-builder.yml` 的 `electronLanguages`，和 `src/shared/i18n` 的 `LANGS` 对应；新增界面语言时两处一起改）。
 
-- **macOS**：`x64` 和 `arm64` 各一个 dmg 和 zip。electron-builder 打出的 dmg 是 zlib 压缩，`scripts/compress-dmg.mjs` 随后用 hdiutil 把它转成 LZMA 压缩（ULMO，macOS 10.15 起支持），小约四分之一；zip 是应用内更新用的，保持原样。打开 dmg 后把应用图标拖到“应用程序”即可安装。应用使用 ad-hoc 签名、没有公证，第一次打开会被拦截，需要到“系统设置 → 隐私与安全性”里点“仍要打开”（macOS 15 起右键 →“打开”已不再有效）。
+- **macOS**：`x64` 和 `arm64` 各一个 dmg 和 zip。electron-builder 打出的 dmg 是 zlib 压缩，`scripts/compress-dmg.mjs` 随后用 hdiutil 把它转成 LZMA 压缩（ULMO，macOS 10.15 起支持），小约四分之一。打开 dmg 后把应用图标拖到“应用程序”即可安装。本机运行 `npm run build:mac` 生成 ad-hoc 签名的测试包。发布工作流使用 Developer ID Application 证书给应用签名并附上 Apple 公证票据，然后生成更新 zip 和 dmg。CI 会在压缩完成后给最终 dmg 签名、公证并附票。
 - **Linux**：`bili-downloader-<版本>-x86_64.AppImage` 和 `bili-downloader-<版本>-amd64.deb`（文件名里的架构名是 electron-builder 起的）。AppImage 加上可执行权限就能运行；deb 用 `sudo apt install ./bili-downloader-<版本>-amd64.deb` 安装，装到 `/opt/B站下载器/`，应用菜单里会出现“B站下载器”。Ubuntu 24.04 起限制了非特权用户命名空间，AppImage 的启动脚本检测到后会自动加 `--no-sandbox`，deb 包自带 AppArmor 配置，都不需要额外处理。
 - **Windows**：`bili-downloader-<版本>-x64.exe` 是 NSIS 当前用户安装器，不需要管理员权限。尚未配置代码签名证书，首次运行时 Windows 可能提示发布者未知。
 
@@ -26,7 +26,7 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 `update.json` 的 `files` 里每个能自动更新的安装包一项：macOS 的键只写架构（`arm64`、`x64`，已发布的旧版本就是按 `process.arch` 取的，不能改），Linux 和 Windows 的键带上系统名（`linux-x64`、`win32-x64`）。旧版本遇到不认识的键会忽略。
 
-- **macOS**：下载当前架构的 zip，按 sha512 校验后解压，确认是本应用的对应版本，退出时由一个独立脚本替换 `.app` 并重新打开；替换失败会恢复旧版本。应用没有开发者证书，electron-updater（Squirrel.Mac）要求正式签名，所以没有用它。应用不在可写的位置时（直接从 dmg 或“下载”文件夹里打开、没有 `/Applications` 写权限）不能自动安装，弹窗里会改为“前往下载页面”。
+- **macOS**：下载当前架构的 zip，按 sha512 校验后解压，确认是本应用的对应版本，退出时由一个独立脚本替换 `.app` 并重新打开；替换失败会恢复旧版本。应用不在可写的位置时（直接从 dmg 或“下载”文件夹里打开、没有 `/Applications` 写权限）不能自动安装，弹窗里会改为“前往下载页面”。
 - **Linux**：只有 AppImage 版能自动安装（AppImage 运行时会设置 `APPIMAGE` 环境变量，指向正在运行的文件）。下载新的 AppImage、按 sha512 校验后复制到原文件旁边，退出时由一个独立脚本覆盖原文件（路径不变，用户建的启动器照样能用）并重新打开；替换失败会保留旧版本。deb 安装的、或者 AppImage 所在目录不可写时，弹窗里会改为“前往下载页面”。
 - **Windows**：下载并校验 NSIS `.exe`，应用退出后由 PowerShell 结束残留的 ffmpeg、静默安装（`/S --updated`），再重新打开应用；不是从安装器装好的位置运行（旁边没有卸载程序），或者安装目录不可写时，弹窗里会改为“前往下载页面”。
 
@@ -65,11 +65,27 @@ npm run build:win     # Windows：x64 的 NSIS 安装器 exe
 
 项目里的应用 `release` skill 放在 `.agents/skills/release/`；`.claude/skills/release` 是指向它的软链接。官网另有 `.agents/skills/website-release/` skill；`.claude/skills/website-release` 同样指向官网 skill。修改各自流程时只改对应 `.agents/skills/` 下的文件。
 
-Actions 不可用时，也可以在本机发布：先在其他系统上运行对应的 `npm run build:linux`、`npm run build:win`，把生成的包拷到发布机器的 `dist/` 里；然后在发布机器上运行 `npm run release`。它会先离线预检并打当前系统包，随后用 `gh` 创建 `v版本号` 的 Release 并上传；`dist/` 里缺任何一个安装包都会停下。只在 Actions 确实不可用时这样做，不能和 tag 工作流同时发布。
+## macOS 发布签名
+
+在 [GitHub Actions Secrets](https://github.com/wangzi6224/bili-downloader/settings/secrets/actions) 配置以下仓库密钥。已有的 Developer ID Application 证书可以复用，在保存着对应私钥的 Mac 上将证书和私钥一起导出为带密码的 `.p12`。公证使用同一 Apple 开发者团队的 [App Store Connect 团队 API Key](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/)。
+
+| Secret | 值 |
+| --- | --- |
+| `MAC_CERTIFICATE_BASE64` | `.p12` 的单行 Base64 |
+| `MAC_CERTIFICATE_PASSWORD` | 导出 `.p12` 时设置的密码 |
+| `APPLE_API_KEY_BASE64` | 团队 API Key 的 `.p8` 的单行 Base64 |
+| `APPLE_API_KEY_ID` | 该团队 API Key 的 Key ID |
+| `APPLE_API_ISSUER` | App Store Connect 显示的 Issuer ID |
+
+在 Mac 上可以用 `base64 -i 文件路径 | tr -d '\n' | pbcopy` 把文件编码后的值复制到剪贴板，再直接粘贴到 GitHub。
+
+配置后手动运行“发布”工作流。macOS 任务会检查两个架构的最终 dmg 以及各自 zip 解出的 `.app`，验证 Developer ID 签名、公证票据和 Gatekeeper 检查。签名或公证失败时打包任务会失败，发布步骤会随之停止。下载成功的 Actions 产物，再按下文用旧版验收一次应用内更新。
+
+Actions 不可用时，可在 macOS 上运行 `node scripts/release.mjs --check` 和 `npm run build:mac:prepare`，在环境里配置上述五项签名凭据后运行 `bash scripts/package-signed-mac.sh`。在其他系统打包 Linux 和 Windows 产物并拷到 macOS 的 `dist/`。全平台产物准备完成后，运行 `node scripts/release.mjs` 创建 Release。这条路径适用于 Actions 停用期间，避免与 tag 工作流同时发布。
 
 ## 在本地测试更新流程
 
-用旧版本号打包一份运行，再用新版本号打包（不想改 `package.json` 时可以给 electron-builder 加 `-c.extraMetadata.version=新版本号`）。`node scripts/release.mjs --dry-run` 只生成 `dist/update.json` 不上传（它要求两个系统的安装包都在 `dist/` 里，只测一个系统时照着 `scripts/lib/release.mjs` 手写一份也行）；把其中的下载地址改成本机地址后，在 `dist/` 里起一个静态服务器，用 `BILI_UPDATE_FEED=http://127.0.0.1:端口/update.json` 启动旧版本。这个环境变量只放行本机的 http 地址。
+运行已发布的旧版，用 Actions 执行记录里的新版本安装包和 `update.json`，或者在本机分别打包两个版本。更新清单的版本须高于正在运行的旧版。`node scripts/release.mjs --dry-run` 可用 `dist/` 里的全平台产物生成 `update.json`。把清单里的下载地址改成本机地址，在产物目录起一个静态服务器，用 `BILI_UPDATE_FEED=http://127.0.0.1:端口/update.json` 启动旧版本。更新后检查版本号和重新启动结果。这个环境变量只放行本机的 http 地址。
 
 - macOS：直接运行 `.app/Contents/MacOS/` 里的可执行文件
 - Linux：把旧版本的 AppImage 复制到一个可写的目录里运行；不想动自己的数据，可以同时设置 `XDG_CONFIG_HOME` 指到一个临时目录（自动重启的新版本会沿用这个环境变量）

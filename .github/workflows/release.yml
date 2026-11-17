@@ -41,11 +41,11 @@ jobs:
       matrix:
         include:
           # dmg 只能在 macOS 上打；Apple 芯片的 runner 也能打 x64 的包
-          - { name: mac, os: macos-latest, script: 'build:mac' }
+          - { name: mac, os: macos-latest, script: 'build:mac:prepare' }
           - { name: linux, os: ubuntu-latest, script: 'build:linux' }
           - { name: windows, os: windows-latest, script: 'build:win' }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.name == 'mac' && 90 || 30 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,8 +69,18 @@ jobs:
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
 
       # 打包前会先跑类型检查和单元测试，覆盖率低于 vitest.config.mts 里的门槛也会失败
-      - name: 打包
+      - name: 构建
         run: npm run ${{ matrix.script }}
+
+      - name: macOS 打包、签名与公证
+        if: matrix.name == 'mac'
+        run: bash scripts/package-signed-mac.sh
+        env:
+          MAC_CERTIFICATE_BASE64: ${{ secrets.MAC_CERTIFICATE_BASE64 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       # 真的装一遍：安装器能静默安装，装进去的 ffmpeg 和应用都能启动，旁边有自动更新要认的卸载程序
       - name: 安装并启动（Windows）
