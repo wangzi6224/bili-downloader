@@ -9,8 +9,8 @@ import { encodeCommand, POWERSHELL } from '../powershell'
 const run = promisify(execFile)
 
 /**
- * 应用退出后由它替换 .app：没有开发者证书时 Squirrel.Mac（electron-updater）无法校验签名，
- * 所以自己换。替换失败就恢复旧版本，最后都会重新打开应用。
+ * 应用退出后由它替换 .app：不用 Squirrel.Mac（electron-updater），自己换。0.17.1 及更早的版本是 ad-hoc 签名，
+ * Squirrel.Mac 无法校验，这套流程因此保留下来。替换失败就恢复旧版本，最后都会重新打开应用。
  * 参数：要等待退出的进程号、解压好的新版 .app、要替换的 .app
  * 导出供单元测试单独运行
  */

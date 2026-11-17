@@ -34,7 +34,8 @@ mac:
   target:
     - dmg
     - zip
-  # 没有开发者证书，用 ad-hoc 签名；Apple 芯片上未签名的 app 无法启动
+  # 本机打包没有证书时的兜底：用 ad-hoc 签名，Apple 芯片上未签名的 app 无法启动。
+  # 发布时 scripts/package-signed-mac.sh 会用 -c.mac.identity 换成 Developer ID，并开启 hardenedRuntime 和公证
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false

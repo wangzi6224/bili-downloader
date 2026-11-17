@@ -70,7 +70,7 @@ Vous pouvez aussi saisir ces mots-clés à la place d'un lien : `稍后再看` o
 
 1. Téléchargez le dernier `.dmg` depuis les [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) : `arm64` pour Apple Silicon, `x64` pour Intel.
 2. Ouvrez le dmg et faites glisser **B站下载器** dans **Applications**.
-3. L'application est signée ad hoc mais pas notarisée, donc macOS la bloque au premier lancement. Essayez de l'ouvrir une fois, puis allez dans **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**. (Depuis macOS 15, clic droit → Ouvrir ne fonctionne plus.) Vous pouvez aussi exécuter :
+3. L'application est signée avec un certificat Developer ID et notarisée par Apple, elle s'ouvre donc normalement. Les versions 0.17.1 et antérieures n'étaient signées qu'ad hoc et non notarisées : macOS les bloque au premier lancement. Essayez de l'ouvrir une fois, puis allez dans **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**. (Depuis macOS 15, clic droit → Ouvrir ne fonctionne plus.) Vous pouvez aussi exécuter :
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
@@ -280,7 +280,7 @@ La liste des qualités vient directement de bilibili pour votre compte. Les nive
 <details>
 <summary>macOS dit que l'application ne peut pas être ouverte. Je fais quoi ?</summary>
 
-L'application n'est pas notarisée par Apple. Ouvrez-la une fois, puis cliquez sur **Ouvrir quand même** dans **Réglages Système → Confidentialité et sécurité**, ou exécutez la commande `xattr` indiquée dans [Installation](#macos).
+Les versions 0.18.0 et ultérieures sont signées et notarisées par Apple et s'ouvrent normalement. Les versions 0.17.1 et antérieures ne sont pas notarisées : ouvrez-les une fois, puis cliquez sur **Ouvrir quand même** dans **Réglages Système → Confidentialité et sécurité**, ou exécutez la commande `xattr` indiquée dans [Installation](#macos).
 
 </details>
 

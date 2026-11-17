@@ -70,7 +70,7 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 
 1. [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) से नवीनतम `.dmg` डाउनलोड करें: Apple Silicon के लिए `arm64`, Intel के लिए `x64`।
 2. dmg खोलें और **B站下载器** को **Applications** में खींचें।
-3. ऐप ad-hoc साइन है पर नोटराइज़ नहीं है, इसलिए पहली बार खोलने पर macOS इसे रोक देता है। एक बार खोलने की कोशिश करें, फिर **System Settings → Privacy & Security** में जाकर **Open Anyway** पर क्लिक करें। (macOS 15 से राइट-क्लिक → Open काम नहीं करता।) या फिर यह चलाएँ:
+3. ऐप Developer ID प्रमाणपत्र से साइन है और Apple से नोटराइज़ है, इसलिए सामान्य रूप से खुलता है। 0.17.1 और उससे पुराने संस्करण केवल ad-hoc साइन थे और नोटराइज़ नहीं थे, इसलिए पहली बार खोलने पर macOS उन्हें रोक देता है। एक बार खोलने की कोशिश करें, फिर **System Settings → Privacy & Security** में जाकर **Open Anyway** पर क्लिक करें। (macOS 15 से राइट-क्लिक → Open काम नहीं करता।) या फिर यह चलाएँ:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
@@ -280,7 +280,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 <details>
 <summary>macOS कह रहा है कि ऐप खुल नहीं सकता। अब क्या करें?</summary>
 
-ऐप Apple से नोटराइज़ नहीं है। इसे एक बार खोलें, फिर **System Settings → Privacy & Security** में **Open Anyway** पर क्लिक करें, या [इंस्टॉलेशन](#macos) में दिया गया `xattr` कमांड चलाएँ।
+0.18.0 और उसके बाद के संस्करण साइन और Apple से नोटराइज़ हैं और सामान्य रूप से खुलते हैं। 0.17.1 और पुराने संस्करण नोटराइज़ नहीं हैं: इन्हें एक बार खोलें, फिर **System Settings → Privacy & Security** में **Open Anyway** पर क्लिक करें, या [इंस्टॉलेशन](#macos) में दिया गया `xattr` कमांड चलाएँ।
 
 </details>
 

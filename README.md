@@ -70,7 +70,7 @@ You can also type these keywords instead of a link: `稍后再看` or `watchlate
 
 1. Download the latest `.dmg` from [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest): `arm64` for Apple Silicon, `x64` for Intel.
 2. Open the dmg and drag **B站下载器** into **Applications**.
-3. The app is ad-hoc signed but not notarized, so macOS blocks it the first time. Try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. (Since macOS 15, right-click → Open no longer works.) Alternatively, run:
+3. The app is signed with a Developer ID certificate and notarized by Apple, so it opens normally. Versions 0.17.1 and earlier were only ad-hoc signed and not notarized, so macOS blocks them the first time: try to open once, then go to **System Settings → Privacy & Security** and click **Open Anyway** (since macOS 15, right-click → Open no longer works), or run:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
@@ -285,7 +285,7 @@ The quality list comes straight from bilibili for your account. Higher tiers (10
 <details>
 <summary>macOS says the app can't be opened. Now what?</summary>
 
-The app is not notarized by Apple. Open it once, then click **Open Anyway** in **System Settings → Privacy & Security**, or run the `xattr` command in [Installation](#macos).
+Versions 0.18.0 and later are signed and notarized by Apple and should open normally. Older versions (0.17.1 and earlier) are not notarized: open it once, then click **Open Anyway** in **System Settings → Privacy & Security**, or run the `xattr` command in [Installation](#macos).
 
 </details>
 

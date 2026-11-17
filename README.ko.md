@@ -70,7 +70,7 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 
 1. [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest)에서 최신 `.dmg`를 다운로드합니다. Apple 실리콘은 `arm64`, Intel은 `x64`입니다.
 2. dmg를 열고 **B站下载器**를 **응용 프로그램** 폴더로 드래그합니다.
-3. 앱은 ad-hoc 서명만 되어 있고 공증되지 않았기 때문에 처음 실행할 때 macOS가 차단합니다. 한 번 열기를 시도한 뒤 **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 클릭하세요(macOS 15부터는 우클릭 → 열기가 더 이상 동작하지 않습니다). 또는 터미널에서 다음을 실행합니다:
+3. 앱은 Developer ID 인증서로 서명되고 Apple의 공증을 받았으므로 바로 열 수 있습니다. 0.17.1 이하 버전은 ad-hoc 서명만 되어 있고 공증되지 않아 처음 실행할 때 macOS가 차단합니다. 한 번 열기를 시도한 뒤 **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 클릭하세요(macOS 15부터는 우클릭 → 열기가 더 이상 동작하지 않습니다). 또는 터미널에서 다음을 실행합니다:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
@@ -280,7 +280,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 <details>
 <summary>macOS에서 앱을 열 수 없대요. 이제 어떡하죠?</summary>
 
-앱이 Apple의 공증을 받지 않았기 때문입니다. 한 번 열기를 시도한 뒤 **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 클릭하거나, [설치](#macos)의 `xattr` 명령을 실행하세요.
+0.18.0 이후 버전은 서명되어 있고 Apple의 공증을 받았으므로 보통은 바로 열립니다. 0.17.1 이하 버전은 공증되지 않았습니다. 한 번 열기를 시도한 뒤 **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 클릭하거나, [설치](#macos)의 `xattr` 명령을 실행하세요.
 
 </details>
 

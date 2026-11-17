@@ -70,7 +70,7 @@ Al posto di un link puoi anche scrivere queste parole chiave: `稍后再看` o `
 
 1. Scarica l'ultimo `.dmg` dalle [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest): `arm64` per Apple Silicon, `x64` per Intel.
 2. Apri il dmg e trascina **B站下载器** in **Applicazioni**.
-3. L'app ha una firma ad hoc ma non è autenticata da Apple, quindi macOS la blocca al primo avvio. Prova ad aprirla una volta, poi vai in **Impostazioni di Sistema → Privacy e sicurezza** e fai clic su **Apri comunque**. (Da macOS 15 clic destro → Apri non funziona più.) In alternativa, esegui:
+3. L'app è firmata con un certificato Developer ID e autenticata da Apple, quindi si apre normalmente. Le versioni 0.17.1 e precedenti avevano solo una firma ad hoc e non erano autenticate, quindi macOS le blocca al primo avvio. Prova ad aprirla una volta, poi vai in **Impostazioni di Sistema → Privacy e sicurezza** e fai clic su **Apri comunque**. (Da macOS 15 clic destro → Apri non funziona più.) In alternativa, esegui:
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
@@ -280,7 +280,7 @@ L'elenco delle qualità arriva direttamente da bilibili per il tuo account. I li
 <details>
 <summary>macOS dice che l'app non può essere aperta. E adesso?</summary>
 
-L'app non è autenticata da Apple. Aprila una volta, poi fai clic su **Apri comunque** in **Impostazioni di Sistema → Privacy e sicurezza**, oppure esegui il comando `xattr` indicato in [Installazione](#macos).
+Le versioni 0.18.0 e successive sono firmate e autenticate da Apple e si aprono normalmente. Le versioni 0.17.1 e precedenti non sono autenticate: aprile una volta, poi fai clic su **Apri comunque** in **Impostazioni di Sistema → Privacy e sicurezza**, oppure esegui il comando `xattr` indicato in [Installazione](#macos).
 
 </details>
 

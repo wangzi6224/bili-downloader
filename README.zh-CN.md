@@ -68,7 +68,7 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 
 1. 从 [Releases](https://github.com/wangzi6224/bili-downloader/releases/latest) 下载最新的 `.dmg`：Apple 芯片选 `arm64`，Intel 芯片选 `x64`。
 2. 打开 dmg，把 **B站下载器** 拖到 **应用程序**。
-3. 应用使用 ad-hoc 签名、没有公证，第一次打开会被 macOS 拦截。先尝试打开一次，再到 **系统设置 → 隐私与安全性** 里点 **仍要打开**（macOS 15 起右键 →“打开”已不再有效）。也可以在终端运行：
+3. 应用已用 Developer ID 证书签名并经过 Apple 公证，双击即可打开。0.17.1 及更早的版本只有 ad-hoc 签名、没有公证，第一次打开会被 macOS 拦截：先尝试打开一次，再到 **系统设置 → 隐私与安全性** 里点 **仍要打开**（macOS 15 起右键 →“打开”已不再有效），也可以在终端运行：
 
    ```bash
    xattr -dr com.apple.quarantine "/Applications/B站下载器.app"
@@ -283,7 +283,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 <details>
 <summary>macOS 说“无法打开”，怎么办？</summary>
 
-应用没有经过 Apple 公证。先尝试打开一次，再到 **系统设置 → 隐私与安全性** 里点 **仍要打开**，或者运行 [安装](#macos) 里的 `xattr` 命令。
+0.18.0 及以后的版本已签名并经过 Apple 公证，正常情况下可以直接打开。0.17.1 及更早的版本没有公证：先尝试打开一次，再到 **系统设置 → 隐私与安全性** 里点 **仍要打开**，或者运行 [安装](#macos) 里的 `xattr` 命令。
 
 </details>
 
