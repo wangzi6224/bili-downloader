@@ -27,7 +27,6 @@ import {
   appendToFirst,
   bestQuality,
   CODEC_TEXT,
-  downloadedMatcher,
   enqueueBatches,
   FALLBACK,
   filterGroups,
@@ -117,6 +116,8 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
   const [info, setInfo] = useState<StreamInfo | null>(null)
   const [infoError, setInfoError] = useState<string | null>(null)
   const [qn, setQn] = useState(settings.defaultQn)
+  // 用户手动选过清晰度后，换了第一个选中项也尽量保留
+  const qnPicked = useRef(false)
   const [opts, setOpts] = useState<EditableOptions>(() =>
     audioKind ? { ...settings.defaults, output: 'audio' } : settings.defaults
   )
@@ -149,8 +150,9 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
 
   const statusFor = useMemo(() => downloadStatusMatcher(downloaded ?? []), [downloaded])
   const isDownloaded = useMemo(
-    () => fromSource ? (item: MediaItem) => statusFor(item) === 'downloaded' : downloadedMatcher(downloaded ?? []),
-    [downloaded, fromSource, statusFor]
+    // 多P视频只下载了一部分时不算已下载，“跳过 / 取消已下载”才不会把剩下的分P丢掉
+    () => (item: MediaItem) => statusFor(item) === 'downloaded',
+    [statusFor]
   )
 
   useEffect(() => {
@@ -181,7 +183,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
         if (!alive) return
         setInfo(s)
         const best = bestQuality(s.qualities, isVip, settings.defaultQn)
-        if (best) setQn(best.qn)
+        if (best) setQn((cur) => qnPicked.current && s.qualities.some((q) => q.qn === cur) ? cur : best.qn)
       })
       .catch((e: Error) => alive && setInfoError(e.message))
     return () => {
@@ -487,11 +489,18 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
                 value={range}
                 onChange={(e) => setRange(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const indices = parseRange(range)
-                    lastClicked.current = null
-                    setSelected(new Set(all.filter((i) => indices.has(i.index) && selectable(i)).map((i) => i.key)))
-                  }
+                  // 输入法选词的回车不算；空输入或写错了不改动现有选择
+                  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+                  const indices = parseRange(range)
+                  if (!indices.size) return
+                  lastClicked.current = null
+                  // 只替换看得见的条目的勾选，被筛选隐藏的保持原样，和全选、反选一致
+                  const visibleKeys = new Set(visibleItems.map((i) => i.key))
+                  setSelected((current) => {
+                    const next = new Set([...current].filter((k) => !visibleKeys.has(k)))
+                    for (const i of visibleItems) if (indices.has(i.index) && selectable(i)) next.add(i.key)
+                    return next
+                  })
                 }}
                 placeholder={t('selection.rangePlaceholder')}
                 title={t('selection.rangeTitle')}
@@ -523,7 +532,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
                 )}
                 {g.items.map((item) => {
                   const on = selected.has(item.key) && selectable(item)
-                  const status = fromSource && downloaded ? statusFor(item) : undefined
+                  const status = downloaded ? statusFor(item) : undefined
                   return (
                     <label
                       key={item.key}
@@ -551,7 +560,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
                         <span className="max-w-28 shrink-0 truncate text-xs text-subtle">{item.owner}</span>
                       )}
                       {item.unavailable && <Badge tone="danger">{item.unavailable}</Badge>}
-                      {(fromSource ? status === 'downloaded' : isDownloaded(item)) && (
+                      {status === 'downloaded' && (
                         <Badge tone="success" icon={Check} title={t('selection.downloadedTitle')}>
                           {t('selection.downloaded')}
                         </Badge>
@@ -559,7 +568,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
                       {status === 'parts' && (
                         <Badge tone="info">{t('subs.partsDownloaded')}</Badge>
                       )}
-                      {status === 'missing' && !item.unavailable && (
+                      {fromSource && status === 'missing' && !item.unavailable && (
                         <Badge>{t('subs.notDownloaded')}</Badge>
                       )}
                       {item.badge && <Badge tone="brand">{item.badge}</Badge>}
@@ -625,7 +634,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
                           name="qn"
                           disabled={locked || opts.output === 'audio'}
                           checked={on}
-                          onChange={() => setQn(q.qn)}
+                          onChange={() => { qnPicked.current = true; setQn(q.qn) }}
                           className="accent-bili"
                         />
                         <span className={`flex-1 ${on ? 'font-medium' : ''}`}>{q.label}</span>
@@ -683,7 +692,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
                 size="lg"
                 icon={Download}
                 className="w-full"
-                disabled={!selectedCount || submitting || (fromSource && !downloaded) || (!audioKind && !info && !infoError && opts.output !== 'audio')}
+                disabled={!selectedCount || submitting || (fromSource ? !downloaded : !downloaded && !historyError) || (!audioKind && !info && !infoError && opts.output !== 'audio')}
                 onClick={start}
               >
                 {t('selection.downloadCount', { count: selectedCount })}

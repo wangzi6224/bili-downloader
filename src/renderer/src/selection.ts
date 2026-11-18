@@ -52,11 +52,27 @@ export function filterGroups(groups: MediaGroup[], filter: string): MediaGroup[]
 }
 
 /** 失效的条目不能选 */
+const resultIds = new WeakMap<object, number>()
+let nextResultId = 0
+
+/** 每个解析结果对象一个固定 id，给弹窗当 React key：结果被替换时弹窗重新挂载，不残留旧的选择和分页 */
+export function resultId(result: object): number {
+  let id = resultIds.get(result)
+  if (id === undefined) resultIds.set(result, (id = ++nextResultId))
+  return id
+}
+
 export const selectable = (i: MediaItem): boolean => !i.unavailable
 
 /** 选中且能下载的条目 */
-export const selectedItems = (all: MediaItem[], selected: Set<string>): MediaItem[] =>
-  all.filter((i) => selected.has(i.key) && selectable(i))
+export function selectedItems(all: MediaItem[], selected: Set<string>): MediaItem[] {
+  const seen = new Set<string>()
+  return all.filter((i) => {
+    if (!selected.has(i.key) || !selectable(i) || seen.has(i.key)) return false
+    seen.add(i.key)
+    return true
+  })
+}
 
 export function selectionSummary(items: MediaItem[], selected: Set<string>): { count: number; total: number } {
   let count = 0

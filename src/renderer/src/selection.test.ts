@@ -12,6 +12,7 @@ import {
   filterGroups,
   pathPreview,
   resolveDuplicates,
+  resultId,
   selectable,
   selectedItems,
   selectionSummary,
@@ -447,5 +448,23 @@ describe('subscribable', () => {
 
   it('单个普通视频不能订阅', () => {
     expect(subscribable(result({ input: 'x' }), undefined, 1)).toBe(false)
+  })
+})
+
+describe('resultId', () => {
+  it('同一个解析结果 id 不变，换了结果 id 就不同', () => {
+    const a = {}
+    const b = {}
+    expect(resultId(a)).toBe(resultId(a))
+    expect(resultId(a)).not.toBe(resultId(b))
+  })
+})
+
+describe('selectedItems 去重', () => {
+  it('同一个 key 出现多次只算一项，保持首次出现的顺序', () => {
+    const a = item('ugc:BV1:1')
+    const dup = item('ugc:BV1:1', { title: '重复' })
+    const b = item('ugc:BV2:2')
+    expect(selectedItems([a, b, dup], new Set([a.key, b.key])).map((i) => i.title)).toEqual(['ugc:BV1:1', 'ugc:BV2:2'])
   })
 })

@@ -195,6 +195,41 @@ describe('选择窗口', () => {
     expectSelection([extra.title], [first.title, second.title, invalid.title, last.title])
   })
 
+  it('序号输入框：空输入不清空选择，只替换可见条目，保留隐藏的勾选', async () => {
+    await open(true, { defaultSelected: [last.key] })
+    const input = container.querySelector<HTMLInputElement>('input[placeholder="序号 如 1-5,7"]')!
+    const type = async (value: string): Promise<void> => {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
+    const enter = async (): Promise<void> => {
+      await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+    }
+    await type('')
+    await enter()
+    await type('abc')
+    await enter()
+    expectSelection([last.title], [first.title, second.title, extra.title])
+
+    await filter('第')
+    await type('2')
+    await enter()
+    await filter('')
+    expectSelection([second.title, last.title], [first.title, extra.title])
+  })
+
+  it('普通模式：只下载了部分分P的多P视频不算已下载，取消已下载时保持勾选', async () => {
+    const multi: MediaItem = { key: 'ugc:BV1', kind: 'ugc', title: '多P视频', index: 1, cid: 0, bvid: 'BV1', lazy: true, pages: 3 }
+    const whole: MediaItem = { key: 'ugc:BV2:9', kind: 'ugc', title: '单P视频', index: 2, cid: 9, bvid: 'BV2' }
+    api.history.downloadedKeys.mockResolvedValue(['ugc:BV1:11', 'ugc:BV2:9'])
+    await open(false, { kind: 'ugc', groups: [{ id: 'a', title: '收藏夹', items: [multi, whole] }], defaultSelected: [multi.key, whole.key] })
+    await clickButton('批量选择')
+    await clickButton('去掉已下载')
+    expectSelection([multi.title], [whole.title])
+  })
+
   it('加载下一页后保留旧选择，新条目参与下一次全选和反选', async () => {
     const paging = { source: { type: 'fav' as const, mediaId: 1 }, page: 1, total: 6, hasMore: true }
     await open(true, { paging })

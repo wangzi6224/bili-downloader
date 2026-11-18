@@ -11,6 +11,7 @@ import { UpdateDialog } from './components/UpdateDialog'
 import { UrlInput } from './components/UrlInput'
 import { applyLanguage } from './i18n'
 import { isSettingsShortcut } from './platform'
+import { resultId } from './selection'
 import { api, openLogin, updateAccounts, updateAuth, useStore } from './store'
 
 export default function App() {
@@ -71,7 +72,7 @@ export default function App() {
         {s.view === 'history' && <HistoryPage />}
         {s.view === 'settings' && <SettingsPage />}
       </main>
-      {s.parse && <SelectionDialog result={s.parse} fromSource={s.source !== null} />}
+      {s.parse && <SelectionDialog key={resultId(s.parse)} result={s.parse} fromSource={s.source !== null} />}
       {s.loginOpen && <LoginDialog />}
       {s.closeAsk && <CloseDialog />}
       {/* 不打断正在进行的登录、选择和关闭询问，等它们结束再弹 */}
