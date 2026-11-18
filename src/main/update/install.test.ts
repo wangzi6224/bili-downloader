@@ -263,8 +263,20 @@ describe.runIf(isWindows)('Windows 更新脚本', () => {
     await run(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodeCommand(WINDOWS_UPDATE_SCRIPT)], {
       env: { ...process.env, BILI_UPDATE_PID: exited, BILI_UPDATE_INSTALLER: installer, BILI_UPDATE_APP: appExe, BILI_UPDATE_LOG: log }
     })
-    for (let i = 0; i < 100 && !existsSync(launched); i++) await new Promise((r) => setTimeout(r, 50))
-    return { log: readFileSync(log, 'utf8'), launched: readFileSync(launched, 'utf8').trim() }
+    // 文件刚创建时内容还是空的（批处理先建文件再写入），也可能还被它占着读不了：等到有内容再读
+    const readLaunched = (): string => {
+      try {
+        return readFileSync(launched, 'utf8').trim()
+      } catch {
+        return ''
+      }
+    }
+    let text = readLaunched()
+    for (let i = 0; i < 100 && !text; i++) {
+      await new Promise((r) => setTimeout(r, 50))
+      text = readLaunched()
+    }
+    return { log: readFileSync(log, 'utf8'), launched: text }
   }
 
   it('静默安装后在安装目录里重新打开应用，日志是 UTF-8，环境变量不带给新版本', async () => {
