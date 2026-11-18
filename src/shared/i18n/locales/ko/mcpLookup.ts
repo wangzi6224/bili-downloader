@@ -8,11 +8,15 @@ export default {
   searchVideosTitle: '영상 검색',
   searchVideosDesc:
     '키워드로 빌리빌리 영상을 검색합니다. 결과에는 제목, 업로더, 게시 시간, 길이, 조회수, 카테고리, 태그, 소개 요약이 이미 들어 있어 보통 하나씩 상세 정보를 조회할 필요가 없습니다. ' +
-    '검색은 유사 일치이므로 순위가 낮은 결과는 관련이 없을 수 있으며, 빌리빌리는 최대 {cap}개까지 제공합니다. 결과의 url은 download_batch에 전달할 수 있습니다. {untrusted}',
+    '검색은 유사 일치이므로 순위가 낮은 결과는 관련이 없을 수 있으며, 빌리빌리는 최대 {cap}개까지 제공합니다. 결과의 url은 download_batch에 전달할 수 있습니다. 가장 좋고 볼 만한 영상을 찾을 때는 order=quality(가중 종합 점수)를 사용하세요. {untrusted}',
   searchKeyword: '검색 키워드',
   searchPage: '페이지 번호. 기본값 1',
   searchVideosLimit: '페이지당 개수. 기본값 10. 페이지를 넘길 때는 그대로 유지하세요',
-  searchOrder: '정렬: totalrank 종합(기본값), click 조회수순, pubdate 최신 게시순, dm 탄막 많은 순, stow 즐겨찾기 많은 순',
+  searchOrder:
+    '정렬. totalrank 종합(기본값), click 조회수순(인기), pubdate 최신 게시순, dm 탄막 많은 순, stow 즐겨찾기 많은 순, scores 댓글 많은 순(토론이 많은 영상), quality 종합 품질(가장 좋고 볼 만한 영상을 찾을 때 사용: 관련도, 조회수, 좋아요·즐겨찾기·댓글·탄막 비율, 게시 시점을 가중해 점수화), duration 긴 순(풀 해설), duration_asc 짧은 순(가볍게 볼 영상). quality, duration, duration_asc는 빌리빌리 종합 순위 상위 pool개 후보 안에서만 다시 정렬하며 사이트 전체 순위가 아닙니다. quality 결과에는 score(0~100)가 붙습니다',
+  searchPool: '후보 풀 크기. 기본값 {n}, 범위 10~100. quality, duration, duration_asc는 빌리빌리 종합 순위 상위에서 이 개수만큼 가져온 뒤 다시 정렬합니다. 클수록 더 완전하지만 요청이 늘어납니다(최대 2회)',
+  searchWeights:
+    'order=quality에서만 사용. 점수 가중치를 조정합니다. 바꿀 항목만 지정하면 나머지는 기본값을 유지하고 자동으로 정규화됩니다. relevance 관련도(빌리빌리 종합 순위), play 조회수, like 좋아요 비율, favorite 즐겨찾기 비율, comment 댓글 비율, danmaku 탄막 비율, recency 최신일수록 높음, duration 길수록 높음(기본값은 반영 안 함). 기본값: relevance 0.3, play 0.2, like 0.12, favorite 0.12, comment 0.06, danmaku 0.05, recency 0.15, duration 0. 값은 0~{max}이며, 예를 들어 recency=40이면 최신 영상을 우선합니다',
   searchDuration: '길이: 10분 이내, 10~30분, 30~60분, 60분 이상',
   searchAfter: '게시 날짜가 이 날짜 이후(YYYY-MM-DD, 베이징 시간)',
   searchBefore: '게시 날짜가 이 날짜 이전(YYYY-MM-DD, 베이징 시간, 당일 포함)',
@@ -52,6 +56,11 @@ export default {
   resolveTooMany: '단축 링크와 av 번호는 한 번에 최대 {max}개입니다. 나머지는 BV 번호로 바꾸거나 여러 번에 나눠 제출하세요',
   keywordTooLong: 'keyword는 {max}자를 넘을 수 없습니다',
   dateOrder: 'published_after는 published_before보다 늦을 수 없습니다',
+  poolRanked: 'order={order}는 빌리빌리 종합 순위 상위 {n}개 후보 안에서만 다시 정렬한 것이며 사이트 전체 순위가 아닙니다. 페이지 넘김도 이 후보 안에서 이루어집니다',
+  poolPartial: '후보가 불완전합니다: 상위 {n}개만 가져왔고(뒤쪽 페이지 요청 실패) 정렬은 이 영상들 안에서만 이루어졌습니다. 잠시 후 다시 시도하면 전체 후보를 얻을 수 있습니다',
+  weightUnknown: '{key}.{name}은(는) 조정할 수 있는 가중치가 아닙니다. 사용 가능: {names}',
+  weightValue: '{key}.{name}은(는) 0부터 {max} 사이의 숫자여야 합니다',
+  weightsZero: '{key}의 가중치를 모두 0으로 할 수는 없습니다',
   totalCapped: 'total이 빌리빌리의 상한 {cap}에 도달했으며 실제 총수가 아닙니다',
   downloadTip: '다운로드하려면 url을 download_batch에 전달하고, 영상이 여러 개면 videos에 넣으세요',
   videosMissing: 'videos 매개변수가 없습니다',

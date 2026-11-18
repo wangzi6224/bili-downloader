@@ -33,6 +33,13 @@ export default {
     '사용자가 빌리빌리(Bilibili / B站) 영상 다운로드나 빌리빌리 검색을 원하거나, 빌리빌리 링크나 BV 번호를 주면 {appName}의 MCP 도구(서버 이름 bili-downloader)를 사용합니다. 직접 크롤러를 작성하거나 다른 다운로드 도구로 바꾸지 마세요. ' +
     '{appName}은(는) 사용자 컴퓨터의 데스크톱 앱이며, 파일은 앱에서 설정한 다운로드 폴더에 저장됩니다.',
   skillWorkflow: '사용 절차',
+  skillSearch: '영상 고르기',
+  skillSearchBody:
+    '- 사용자가 “가장 좋은 / 볼 만한 / 추천” 영상을 원할 때: 빌리빌리 기본 종합 순위만 보지 말고 먼저 search_videos를 order=quality로 호출합니다(필요하면 duration이나 published_after로 범위를 좁힙니다).\n' +
+    '- 점수가 높은 상위 3~5개는 get_video_transcript로 AI 요약을, get_video_comments로 댓글 반응을 확인하고(필요하면 get_video_info로 전체 수치도), 내용이 맞고 낚시 제목이 아닌지 확인한 뒤 추천 영상과 조회수·반응 수치, 이유를 사용자에게 알려 줍니다.\n' +
+    '- 키워드가 너무 넓으면 좁히거나 duration, published_after로 거릅니다. quality는 후보 풀(기본 50개) 안에서만 다시 정렬하며 사이트 전체 순위가 아닙니다. 후보가 더 필요하면 pool을 늘리세요.\n' +
+    '- 사용자가 “가장 인기 / 최신 / 가장 토론이 많은 / 탄막이 많은 / 가장 자세한 / 가볍게 볼 수 있는”이라고 하면 search_videos의 order 매개변수 설명에 따라 알맞은 정렬을 고릅니다.\n' +
+    '- 사용자가 영상을 찾기만 원하면 추천과 이유를 알려 준 뒤 다운로드할지 묻습니다. 이미 다운로드를 요청했다면 점수가 가장 높은 영상(또는 지정한 영상)을 download_batch로 다운로드합니다. 검색이 요청 제한에 걸리면 몇 분 기다리고 연속으로 재시도하지 마세요.',
   skillTroubleshoot: '도구를 쓸 수 없을 때',
   skillTroubleshootBody:
     '- 앱이 실행 중이 아니라는 오류: 도구가 {appName}을(를) 백그라운드에서 자동으로 엽니다. 몇 초 기다린 뒤 다시 시도하고, 그래도 안 되면 사용자에게 {appName}을(를) 직접 열어 달라고 합니다.\n' +

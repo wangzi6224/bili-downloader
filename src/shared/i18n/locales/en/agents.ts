@@ -33,6 +33,13 @@ export default {
     'When the user wants to download Bilibili videos, search Bilibili, or gives a Bilibili link or BV id, use the MCP tools of {appName} (server name bili-downloader). Don’t write your own scraper or switch to other download tools. ' +
     '{appName} is a desktop app on the user’s computer; files are saved to the download folder set in it.',
   skillWorkflow: 'Workflow',
+  skillSearch: 'Picking videos',
+  skillSearchBody:
+    '- When the user wants the “best / worth watching / recommended” videos: call search_videos with order=quality first (narrow it with duration or published_after if needed) instead of relying only on Bilibili’s default ranking.\n' +
+    '- For the top 3–5 by score, read the AI summary with get_video_transcript and the comments with get_video_comments (and get_video_info for the full stats) to confirm the content fits and isn’t clickbait. Then tell the user which ones you recommend, with their views, engagement numbers and your reasons.\n' +
+    '- If the keyword is too broad, narrow it or filter with duration / published_after. quality only re-ranks the candidate pool (50 by default), not the whole site; raise pool if you need more candidates.\n' +
+    '- When the user says hottest / newest / most discussed / most danmaku / most complete / short and quick, pick the matching order as described in the order parameter of search_videos.\n' +
+    '- If the user only wants to find videos, report your recommendations and reasons, then ask whether to download; if they already asked to download, download the top-scoring one (or the ones they specified) with download_batch. When search hits Bilibili’s risk control, wait a few minutes instead of retrying.',
   skillTroubleshoot: 'When the tools don’t work',
   skillTroubleshootBody:
     '- The error says the app isn’t running: the tools open {appName} in the background automatically; wait a few seconds and try again. If it still fails, ask the user to open {appName}.\n' +

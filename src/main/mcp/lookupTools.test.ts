@@ -187,6 +187,145 @@ describe('search_videos', () => {
   })
 })
 
+describe('search_videos 排序', () => {
+  const many = (from: number, n: number, over: (i: number) => Partial<SearchVideo> = () => ({})): SearchVideo[] =>
+    Array.from({ length: n }, (_, k) => video({ bvid: `BV${from + k}`, ...over(from + k) }))
+  const bvids = (r: { videos: { bvid: string }[] }): string[] => r.videos.map((v) => v.bvid)
+
+  it('scores（评论多）交给 B站，一次请求，输出 comments', async () => {
+    api.searchVideos.mockResolvedValue({ total: 1, pages: 1, list: [video({ comments: 9 })] })
+    const r = await call('search_videos', { keyword: '猫', order: 'scores' })
+    expect(api.searchVideos).toHaveBeenCalledTimes(1)
+    expect(api.searchVideos.mock.calls[0][0]).toMatchObject({ order: 'scores', page: 1, pageSize: 10 })
+    expect(r.order).toBe('scores')
+    expect(r).not.toHaveProperty('pool_size')
+    expect(r.videos[0].comments).toBe(9)
+    expect(r.videos[0].score).toBeUndefined()
+  })
+
+  it('duration：取两页候选并去重，在池内排序和翻页，换排序和翻页不再请求', async () => {
+    api.searchVideos.mockImplementation(async (q: { page: number }) =>
+      q.page === 1
+        ? { total: 1000, pages: 20, list: many(0, 50, (i) => ({ duration: i })) }
+        : { total: 1000, pages: 20, list: many(49, 50, (i) => ({ duration: i })) }
+    )
+    const r = await call('search_videos', { keyword: '猫', order: 'duration', pool: 100, limit: 3, published_after: '2026-10-01' })
+    expect(api.searchVideos).toHaveBeenCalledTimes(2)
+    const range = { pubBegin: Date.parse('2026-10-01T00:00:00+08:00') / 1000, pubEnd: now / 1000 }
+    expect(api.searchVideos.mock.calls[0][0]).toEqual({ keyword: '猫', duration: undefined, ...range, page: 1, pageSize: 50 })
+    expect(api.searchVideos.mock.calls[1][0]).toMatchObject({ page: 2, pageSize: 50 })
+    expect(api.searchVideos.mock.calls[0][0]).not.toHaveProperty('order')
+    expect(bvids(r)).toEqual(['BV98', 'BV97', 'BV96'])
+    expect(r).toMatchObject({ order: 'duration', total: 1000, pool_size: 99, page: 1, next_page: 2, weights: undefined })
+    expect(r.hint).toContain('99')
+
+    const second = await call('search_videos', { keyword: '猫', order: 'duration', pool: 100, limit: 3, page: 2, published_after: '2026-10-01' })
+    expect(bvids(second)).toEqual(['BV95', 'BV94', 'BV93'])
+    const asc = await call('search_videos', { keyword: '猫', order: 'duration_asc', pool: 100, limit: 3, published_after: '2026-10-01' })
+    expect(bvids(asc)).toEqual(['BV0', 'BV1', 'BV2'])
+    expect(api.searchVideos).toHaveBeenCalledTimes(2)
+    // 池的大小不同就是另一个池
+    await call('search_videos', { keyword: '猫', order: 'duration', pool: 50, published_after: '2026-10-01' })
+    expect(api.searchVideos).toHaveBeenCalledTimes(3)
+  })
+
+  it('池翻到头：next_page 是 null，超出范围的页是空的', async () => {
+    api.searchVideos.mockResolvedValue({ total: 25, pages: 1, list: many(0, 25, (i) => ({ duration: i })) })
+    const last = await call('search_videos', { keyword: '猫', order: 'duration', limit: 20, page: 2 })
+    expect(last).toMatchObject({ next_page: null, pool_size: 25 })
+    expect(last.videos).toHaveLength(5)
+    const beyond = await call('search_videos', { keyword: '猫', order: 'duration', limit: 20, page: 3 })
+    expect(beyond).toMatchObject({ next_page: null, videos: [] })
+  })
+
+  it('只有一页，或池比一页小：不请求第二页', async () => {
+    api.searchVideos.mockResolvedValue({ total: 5, pages: 1, list: many(0, 5) })
+    await call('search_videos', { keyword: '猫', order: 'quality', pool: 100 })
+    expect(api.searchVideos).toHaveBeenCalledTimes(1)
+    api.searchVideos.mockResolvedValue({ total: 500, pages: 50, list: many(0, 30) })
+    await call('search_videos', { keyword: '另一个', order: 'quality', pool: 30 })
+    expect(api.searchVideos).toHaveBeenCalledTimes(2)
+    expect(api.searchVideos.mock.calls[1][0]).toMatchObject({ page: 1, pageSize: 30 })
+  })
+
+  it('池按 pool 截断', async () => {
+    api.searchVideos.mockImplementation(async (q: { page: number }) => ({ total: 500, pages: 10, list: many((q.page - 1) * 50, 50) }))
+    const r = await call('search_videos', { keyword: '猫', order: 'duration', pool: 70 })
+    expect(r.pool_size).toBe(70)
+  })
+
+  it('第二页失败：用第一页排序、提示候选不全，而且不缓存', async () => {
+    api.searchVideos
+      .mockResolvedValueOnce({ total: 500, pages: 10, list: many(0, 50, (i) => ({ duration: i })) })
+      .mockRejectedValueOnce(new Error('boom'))
+    const r = await call('search_videos', { keyword: '猫', order: 'duration', pool: 100, limit: 2 })
+    expect(bvids(r)).toEqual(['BV49', 'BV48'])
+    expect(r.pool_size).toBe(50)
+    expect(r.hint).toContain('候选不全')
+
+    api.searchVideos.mockResolvedValue({ total: 500, pages: 10, list: many(0, 50, (i) => ({ duration: i })) })
+    const again = await call('search_videos', { keyword: '猫', order: 'duration', pool: 100, limit: 2 })
+    expect(again.hint).not.toContain('候选不全')
+    expect(api.searchVideos).toHaveBeenCalledTimes(4)
+  })
+
+  it('第一页失败：照常报错', async () => {
+    api.searchVideos.mockRejectedValue(new Error('boom'))
+    await expect(call('search_videos', { keyword: '猫', order: 'quality' })).rejects.toThrow('boom')
+  })
+
+  it('quality：带 score 和归一化后的权重，同一个池换权重不重新请求', async () => {
+    api.searchVideos.mockResolvedValue({
+      total: 3,
+      pages: 1,
+      list: [
+        video({ bvid: 'BVa', play: 100_000, like: 100, favorites: 10, comments: 5, danmaku: 5, pubdate: now / 1000 - 5 * 365 * 86400 }),
+        video({ bvid: 'BVb', play: 50_000, like: 5000, favorites: 3000, comments: 800, danmaku: 500, pubdate: now / 1000 - 30 * 86400 }),
+        video({ bvid: 'BVc', play: 10, like: 1, favorites: 1, comments: 1, danmaku: 1, pubdate: now / 1000 - 86400 })
+      ]
+    })
+    const r = await call('search_videos', { keyword: '猫', order: 'quality' })
+    expect(bvids(r)[0]).toBe('BVb')
+    expect(r.videos.every((v: { score: number }) => v.score >= 0 && v.score <= 100)).toBe(true)
+    expect(r.videos[0].score).toBeGreaterThan(r.videos[1].score)
+    expect(r.weights).toMatchObject({ relevance: 0.3, play: 0.2, recency: 0.15, duration: 0 })
+    expect(r.hint).toContain('quality')
+
+    const fresh = await call('search_videos', { keyword: '猫', order: 'quality', weights: { recency: 100, relevance: 0, play: 0, like: 0, favorite: 0, comment: 0, danmaku: 0 } })
+    expect(bvids(fresh)[0]).toBe('BVc')
+    expect(fresh.weights).toMatchObject({ recency: 1, relevance: 0 })
+    expect(api.searchVideos).toHaveBeenCalledTimes(1)
+  })
+
+  it('pool 和 weights 的校验', async () => {
+    const bad = (args: Record<string, unknown>) => expect(call('search_videos', { keyword: '猫', ...args })).rejects.toMatchObject({ code: 'INVALID_ARGS' })
+    await bad({ pool: 9 })
+    await bad({ pool: 101 })
+    await bad({ weights: 'recency' })
+    await bad({ weights: ['recency'] })
+    await bad({ weights: { fame: 1 } })
+    await bad({ weights: { recency: '1' } })
+    await bad({ weights: { recency: -1 } })
+    await bad({ weights: { recency: 101 } })
+    await bad({ weights: { recency: Infinity } })
+    await expect(call('search_videos', { keyword: '猫', weights: { fame: 1 } })).rejects.toMatchObject({ message: expect.stringContaining('relevance') })
+    await expect(
+      call('search_videos', { keyword: '猫', weights: { relevance: 0, play: 0, like: 0, favorite: 0, comment: 0, danmaku: 0, recency: 0 } })
+    ).rejects.toMatchObject({ code: 'INVALID_ARGS' })
+    expect(api.searchVideos).not.toHaveBeenCalled()
+  })
+
+  it('schema：order 包含新取值，weights 是一层的对象', () => {
+    const def = lookupDefinitions().find((d) => d.name === 'search_videos')!
+    const props = (def.inputSchema as { properties: Record<string, any> }).properties
+    expect(props.order.enum).toEqual(['totalrank', 'click', 'pubdate', 'dm', 'stow', 'scores', 'duration', 'duration_asc', 'quality'])
+    expect(props.pool).toMatchObject({ type: 'integer', minimum: 10, maximum: 100 })
+    expect(props.weights).toMatchObject({ type: 'object', additionalProperties: false })
+    expect(Object.keys(props.weights.properties)).toEqual(['relevance', 'play', 'like', 'favorite', 'comment', 'danmaku', 'recency', 'duration'])
+    expect(props.order.description).toContain('quality')
+  })
+})
+
 describe('search_users', () => {
   it('输出字段和 space_url', async () => {
     api.searchUsers.mockResolvedValue({

@@ -10,12 +10,15 @@ export default {
   searchVideosTitle: 'Cerca video',
   searchVideosDesc:
     'Cerca video su Bilibili per parola chiave. I risultati includono già titolo, creator, data di pubblicazione, durata, visualizzazioni, categoria, tag ed estratto della descrizione, quindi di solito non serve consultare i dettagli di ciascuno. ' +
-    'La ricerca è approssimativa e i risultati in fondo alla classifica potrebbero non essere pertinenti; Bilibili ne fornisce al massimo {cap}. L’url nei risultati può essere passato a download_batch. {untrusted}',
+    'La ricerca è approssimativa e i risultati in fondo alla classifica potrebbero non essere pertinenti; Bilibili ne fornisce al massimo {cap}. L’url nei risultati può essere passato a download_batch. Per trovare i video migliori e più meritevoli usa order=quality (punteggio complessivo ponderato). {untrusted}',
   searchKeyword: 'Parola chiave di ricerca',
   searchPage: 'Numero di pagina, predefinito 1',
   searchVideosLimit: 'Risultati per pagina, predefinito 10. Mantienilo invariato quando cambi pagina',
   searchOrder:
-    'Ordinamento: totalrank pertinenza generale (predefinito), click più visualizzati, pubdate più recenti, dm più danmaku, stow più salvati nei preferiti',
+    'Ordinamento. totalrank pertinenza generale (predefinito); click più visualizzati (più popolari); pubdate più recenti; dm più danmaku; stow più salvati nei preferiti; scores più commenti (più discussi); quality qualità complessiva (da usare per trovare i video migliori e più meritevoli: punteggio ponderato di pertinenza, visualizzazioni, tassi di like/preferiti/commenti/danmaku e freschezza); duration dal più lungo (spiegazioni complete); duration_asc dal più corto (da vedere al volo). quality, duration e duration_asc riordinano solo i primi pool candidati della classifica generale di Bilibili, non l’intero sito; i risultati di quality includono un score (0–100)',
+  searchPool: 'Dimensione del pool di candidati, predefinita {n}, da 10 a 100. quality, duration e duration_asc prendono prima altrettanti risultati dalla classifica generale di Bilibili e poi li riordinano; più è grande, più è completo, ma servono più richieste (al massimo 2)',
+  searchWeights:
+    'Solo per order=quality: regola i pesi del punteggio. Indica solo le voci da cambiare, le altre restano predefinite e i pesi vengono normalizzati automaticamente. relevance pertinenza (posizione nella classifica generale di Bilibili), play visualizzazioni, like tasso di like, favorite tasso di preferiti, comment tasso di commenti, danmaku tasso di danmaku, recency più recente = più alto, duration più lungo = più alto (disattivato per impostazione predefinita). Valori predefiniti: relevance 0.3, play 0.2, like 0.12, favorite 0.12, comment 0.06, danmaku 0.05, recency 0.15, duration 0. Valori da 0 a {max}; ad esempio recency=40 favorisce i video recenti',
   searchDuration: 'Durata: meno di 10 minuti, 10–30 minuti, 30–60 minuti, oltre 60 minuti',
   searchAfter: 'Data di pubblicazione non precedente a questo giorno (YYYY-MM-DD, ora di Pechino)',
   searchBefore: 'Data di pubblicazione non successiva a questo giorno (YYYY-MM-DD, ora di Pechino, giorno incluso)',
@@ -58,6 +61,11 @@ export default {
   resolveTooMany: 'Al massimo {max} link brevi e codici av per volta: converti gli altri in codici BV o inviali in più blocchi',
   keywordTooLong: 'keyword non può superare {max} caratteri',
   dateOrder: 'published_after non può essere successivo a published_before',
+  poolRanked: 'order={order} riordina solo i primi {n} candidati della classifica generale di Bilibili, non l’intero sito; anche la paginazione resta entro questi candidati',
+  poolPartial: 'Candidati incompleti: sono stati recuperati solo i primi {n} (una pagina successiva non è riuscita) e l’ordinamento riguarda solo questi; riprova più tardi per ottenere il pool completo',
+  weightUnknown: '{key}.{name} non è un peso regolabile; disponibili: {names}',
+  weightValue: '{key}.{name} deve essere un numero tra 0 e {max}',
+  weightsZero: 'I pesi in {key} non possono essere tutti 0',
   totalCapped: 'total ha raggiunto il limite di Bilibili di {cap}: non è il totale reale',
   downloadTip: 'Per scaricare passa url a download_batch; più video vanno in videos',
   videosMissing: 'Parametro mancante: videos',

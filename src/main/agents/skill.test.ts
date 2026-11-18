@@ -23,7 +23,7 @@ const frontmatter = (md: string): Record<string, string> =>
 describe('skill 内容', () => {
   it('description 不超过 1024 字符，常见的中英文说法都在里面', () => {
     expect(SKILL_DESCRIPTION.length).toBeLessThanOrEqual(1024)
-    for (const word of ['B站下载', 'B站下载器', '下载B站视频', 'B站视频下载', 'B站搜索', '搜B站视频', 'UP主', 'BV号', 'b23.tv', 'bilibili', 'Bilibili video download', 'Bilibili search']) {
+    for (const word of ['B站下载', 'B站下载器', '下载B站视频', 'B站视频下载', 'B站搜索', '搜B站视频', 'UP主', 'BV号', 'b23.tv', 'bilibili', 'Bilibili video download', 'Bilibili search', '找最好', '推荐的视频', '按播放量', 'sort by views']) {
       expect(SKILL_DESCRIPTION).toContain(word)
     }
   })
@@ -39,6 +39,27 @@ describe('skill 内容', () => {
     setLanguage('en')
     try {
       expect(skillMarkdown('1.2.3')).toContain('Settings > AI assistants')
+    } finally {
+      setLanguage('zh-CN')
+    }
+  })
+})
+
+describe('搜索选片', () => {
+  it('skill 里有“搜索选片”一节，在使用流程之后、排障之前；MCP 说明里也点名 quality', () => {
+    const md = skillMarkdown('1.2.3')
+    const at = (h: string): number => md.indexOf(`## ${h}`)
+    expect(at('搜索选片')).toBeGreaterThan(at('使用流程'))
+    expect(at('搜索选片')).toBeLessThan(at('工具用不了时'))
+    expect(md).toContain('order=quality')
+    expect(md).toContain('get_video_transcript')
+    expect(md).toContain('检索选片')
+  })
+
+  it('每种语言都有这一节', () => {
+    try {
+      setLanguage('en')
+      expect(skillMarkdown('1.2.3')).toContain('## Picking videos')
     } finally {
       setLanguage('zh-CN')
     }

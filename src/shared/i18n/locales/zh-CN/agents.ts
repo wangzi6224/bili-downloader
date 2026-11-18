@@ -34,6 +34,13 @@ export default {
     '用户想下载 B站视频、在 B站搜索，或者给出 B站链接、BV 号时，用{appName}的 MCP 工具（服务名 bili-downloader）完成，不要自己写爬虫或换别的下载工具。' +
     '{appName}是用户电脑上的桌面应用，文件下载到它设置的下载目录。',
   skillWorkflow: '使用流程',
+  skillSearch: '搜索选片',
+  skillSearchBody:
+    '- 用户要“最好的 / 值得看的 / 推荐”的视频时：先用 search_videos 的 order=quality（需要时加 duration、published_after 缩小范围），不要只看 B站默认的综合排序。\n' +
+    '- 对得分最高的 3～5 条，用 get_video_transcript 看 AI 总结、get_video_comments 看评论风评，必要时用 get_video_info 看完整数据，确认内容对路、不是标题党，再向用户汇报：推荐哪几条，各自的播放量、互动数据和理由。\n' +
+    '- 关键词太宽泛时先收窄关键词，或用 duration、published_after 筛选。quality 只在候选池（默认 50 条）里重排，不是全站排名，需要更多候选时加大 pool。\n' +
+    '- 用户说“最火 / 最新 / 讨论最多 / 弹幕最多 / 讲得最全 / 短平快”时，按 search_videos 的 order 参数说明选对应的排序。\n' +
+    '- 用户只是想找视频时，先把推荐和理由告诉他，再问要不要下载；用户已经说要下载，就直接用 download_batch 下载得分最高的（或他指定的）。搜索遇到风控时等几分钟，不要连续重试。',
   skillTroubleshoot: '工具用不了时',
   skillTroubleshootBody:
     '- 报错说应用没有运行：工具会自动在后台打开{appName}，等几秒再试；还不行就请用户手动打开{appName}。\n' +

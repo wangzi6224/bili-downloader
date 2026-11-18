@@ -51,6 +51,7 @@ export interface SearchQuery {
   keyword: string
   page: number
   pageSize: number
+  /** totalrank click pubdate dm stow scores（评论多） */
   order?: string
   /** 1 十分钟以内、2 十到三十分钟、3 三十到六十分钟、4 六十分钟以上 */
   duration?: number
@@ -92,6 +93,8 @@ interface RawSearchVideo {
   danmaku?: number
   favorites?: number
   like?: number
+  /** 评论数 */
+  review?: number
 }
 
 export interface SearchVideo {
@@ -108,6 +111,7 @@ export interface SearchVideo {
   danmaku?: number
   favorites?: number
   like?: number
+  comments?: number
 }
 
 export async function searchVideos(q: SearchQuery): Promise<SearchPage<SearchVideo>> {
@@ -136,7 +140,8 @@ export async function searchVideos(q: SearchQuery): Promise<SearchPage<SearchVid
             play: v.play,
             danmaku: v.danmaku,
             favorites: v.favorites,
-            like: v.like
+            like: v.like,
+            comments: v.review
           }
         ]
       : []

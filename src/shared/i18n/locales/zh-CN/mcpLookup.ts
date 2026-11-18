@@ -7,11 +7,15 @@ export default {
   searchVideosTitle: '搜索视频',
   searchVideosDesc:
     '按关键词搜索 B站视频，结果已含标题、UP 主、发布时间、时长、播放量、分类、标签和简介摘要，通常不用再逐个查详情。' +
-    '搜索是模糊匹配，排名靠后的结果可能不相关；B站最多给 {cap} 条。结果里的 url 可以传给 download_batch。{untrusted}',
+    '搜索是模糊匹配，排名靠后的结果可能不相关；B站最多给 {cap} 条。结果里的 url 可以传给 download_batch。找最好、最值得看的视频时用 order=quality（加权综合评分）。{untrusted}',
   searchKeyword: '搜索关键词',
   searchPage: '第几页，默认 1',
   searchVideosLimit: '每页多少条，默认 10。翻页时保持不变',
-  searchOrder: '排序：totalrank 综合（默认）、click 播放多、pubdate 最新发布、dm 弹幕多、stow 收藏多',
+  searchOrder:
+    '排序。totalrank 综合（默认）；click 播放多（最火）；pubdate 最新发布；dm 弹幕多；stow 收藏多；scores 评论多（讨论多、有争议）；quality 综合质量（找最好、最值得看的视频用它：把相关度、播放量、点赞/收藏/评论/弹幕的互动率和发布时间加权打分）；duration 时长从长到短（完整讲解）；duration_asc 时长从短到长（短平快）。quality、duration、duration_asc 只在 B站综合排序的前 pool 条候选里重排，不是全站排名；quality 的结果带 score（0～100）',
+  searchPool: '候选池大小，默认 {n}，范围 10～100。quality、duration、duration_asc 会先取 B站综合排序的前这么多条再重排，越大越全，但请求越多（最多 2 次）',
+  searchWeights:
+    '只在 order=quality 时用：调整综合打分的权重。只写要改的项，其余保持默认，会自动归一化。relevance 相关度（B站综合排序的名次）、play 播放量、like 点赞率、favorite 收藏率、comment 评论率、danmaku 弹幕率、recency 发布越新越高、duration 时长越长越高（默认不计）。默认值：relevance 0.3、play 0.2、like 0.12、favorite 0.12、comment 0.06、danmaku 0.05、recency 0.15、duration 0。取值 0～{max}，例如 recency=40 偏向新视频',
   searchDuration: '时长：10 分钟内、10～30 分钟、30～60 分钟、60 分钟以上',
   searchAfter: '发布日期不早于这天（YYYY-MM-DD，北京时间）',
   searchBefore: '发布日期不晚于这天（YYYY-MM-DD，北京时间，包含当天）',
@@ -52,6 +56,11 @@ export default {
   resolveTooMany: '短链和 av 号一次最多 {max} 个，其余的换成 BV 号或分几批提交',
   keywordTooLong: 'keyword 不能超过 {max} 个字',
   dateOrder: 'published_after 不能晚于 published_before',
+  poolRanked: 'order={order} 只在 B站综合排序的前 {n} 条候选里重排，不是全站排名；翻页也在这批候选里进行',
+  poolPartial: '候选不全：只取到前 {n} 条（后面一页请求失败），排序只在这些里进行，稍后重试可得到完整候选',
+  weightUnknown: '{key}.{name} 不是可调的权重，可选：{names}',
+  weightValue: '{key}.{name} 必须是 0 到 {max} 之间的数字',
+  weightsZero: '{key} 里的权重不能全为 0',
   totalCapped: 'total 到了 B站的上限 {cap}，不是真实总数',
   downloadTip: '要下载时把 url 传给 download_batch，多个视频放进 videos',
   videosMissing: '缺少参数 videos',

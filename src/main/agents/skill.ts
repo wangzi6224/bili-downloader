@@ -16,9 +16,9 @@ export const SKILL_DESCRIPTION =
   '用户想下载 B站视频、合集、分P、收藏夹、稍后再看、UP主投稿、番剧、电影、纪录片或音频，' +
   '提到 B站下载、B站下载器、下载B站视频、B站视频下载、保存或批量下载 B站视频，' +
   '或者给出 bilibili.com、b23.tv 链接、BV号、av号、ep号、ss号时，优先使用本技能。' +
-  '也用于 B站搜索：搜B站视频、找UP主、看视频详情和播放量、AI 总结、字幕、章节、评论，以及查看下载进度、失败重试、去水印、登录 B站账号。' +
+  '也用于 B站搜索：搜B站视频、找UP主、找最好 / 最热 / 最新 / 值得看 / 推荐的视频、按播放量 / 评论数 / 时长 / 弹幕数 / 发布时间排序、看视频详情和播放量、AI 总结、字幕、章节、评论，以及查看下载进度、失败重试、去水印、登录 B站账号。' +
   ' Use it for Bilibili video download (bilibili downloader, download bilibili videos, BV ids, b23.tv links),' +
-  ' Bilibili search, uploaders, subtitles, AI summaries and comments.'
+  ' Bilibili search (find the best / most viewed / newest videos, sort by views, comments, duration, danmaku or date), uploaders, subtitles, AI summaries and comments.'
 
 export function skillMarkdown(version: string): string {
   const appName = t('common.appName')
@@ -40,6 +40,10 @@ export function skillMarkdown(version: string): string {
     '',
     t('mcp.instructions', { appName }),
     t('mcpAccounts.instructions'),
+    '',
+    `## ${t('agents.skillSearch')}`,
+    '',
+    t('agents.skillSearchBody'),
     '',
     `## ${t('agents.skillTroubleshoot')}`,
     '',

@@ -176,7 +176,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `control_tasks` | Pause, resume, retry, redownload or remove tasks in bulk (downloaded files are never deleted), or cancel a running watermark removal |
 | `remove_watermark` | Remove the watermark from downloaded videos, fast or with AI refine; can estimate the time first. Re-encodes and replaces the original file |
 | `get_settings` / `update_settings` | Read or change the download folder, concurrency, threads, speed limit, auto-retry, default quality and download options |
-| `search_videos` | Search videos by keyword, with date and duration filters. Results include title, uploader, publish time, duration, play count, category, tags and a short description |
+| `search_videos` | Search videos by keyword, with date and duration filters. Results include title, uploader, publish time, duration, play count, category, tags and a short description. Sorts by overall quality (`quality`) or by views, comments, danmaku, favorites, duration or publish time, to pick out the best videos |
 | `search_users` | Search uploaders by name and return their `mid`, followers, video count and a space link for `parse_link` |
 | `get_video_info` | Details for up to 20 videos at once: stats, tags, description, part count and collection, optionally with related videos |
 | `get_video_transcript` | What a video is about: Bilibili's AI summary and outline, chapters and full subtitles, which can be read in pieces. Availability varies by video, and the AI summary and AI subtitles need a login |

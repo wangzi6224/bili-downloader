@@ -173,7 +173,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `control_tasks` | Mette in pausa, riprende, ritenta, riscarica o rimuove attività in blocco (i file scaricati non vengono mai eliminati), oppure annulla una rimozione della filigrana in corso |
 | `remove_watermark` | Rimuove la filigrana dai video già scaricati, in modalità rapida o con ritocco IA; può prima stimare il tempo. Ricodifica e sostituisce il file originale |
 | `get_settings` / `update_settings` | Legge o modifica cartella di download, download simultanei, thread, limite di velocità, tentativi automatici, qualità e opzioni predefinite |
-| `search_videos` | Cerca video per parola chiave, con filtri per data e durata. I risultati includono titolo, autore, data di pubblicazione, durata, visualizzazioni, categoria, tag e un estratto della descrizione |
+| `search_videos` | Cerca video per parola chiave, con filtri per data e durata. I risultati includono titolo, autore, data di pubblicazione, durata, visualizzazioni, categoria, tag e un estratto della descrizione. Ordina per qualità complessiva (`quality`) o per visualizzazioni, commenti, danmaku, preferiti, durata o data di pubblicazione, per individuare i video migliori |
 | `search_users` | Cerca autori per nome e restituisce `mid`, follower, numero di video e un link allo spazio utilizzabile con `parse_link` |
 | `get_video_info` | Dettagli di massimo 20 video alla volta: statistiche, tag, descrizione, numero di parti e raccolta, con video correlati su richiesta |
 | `get_video_transcript` | Il contenuto di un video: riassunto e scaletta IA di Bilibili, capitoli e sottotitoli completi, leggibili a blocchi. Non sono disponibili per tutti i video, e riassunto e sottotitoli IA richiedono l'accesso |

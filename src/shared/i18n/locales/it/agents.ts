@@ -33,6 +33,13 @@ export default {
     'Quando l’utente vuole scaricare video da Bilibili, cercare su Bilibili o fornisce un link Bilibili o un ID BV, usa gli strumenti MCP di {appName} (server bili-downloader). Non scrivere uno scraper e non passare ad altri strumenti di download. ' +
     '{appName} è un’app desktop sul computer dell’utente; i file vengono salvati nella cartella di download impostata nell’app.',
   skillWorkflow: 'Procedura',
+  skillSearch: 'Scelta dei video',
+  skillSearchBody:
+    '- Quando l’utente vuole i video “migliori / che vale la pena guardare / consigliati”: chiama prima search_videos con order=quality (restringendo se serve con duration o published_after) invece di affidarti solo alla classifica predefinita di Bilibili.\n' +
+    '- Per i primi 3–5 per punteggio, leggi il riassunto IA con get_video_transcript e il giudizio dei commenti con get_video_comments (e get_video_info per tutte le statistiche), per verificare che il contenuto sia adatto e non sia clickbait. Poi di’ all’utente quali consigli, con visualizzazioni, dati di interazione e motivi.\n' +
+    '- Se la parola chiave è troppo generica, restringila o filtra con duration / published_after. quality riordina solo il pool di candidati (50 per impostazione predefinita), non l’intero sito; aumenta pool se servono più candidati.\n' +
+    '- Se l’utente dice più popolari / più recenti / più discussi / più danmaku / più completi / brevi e veloci, scegli l’ordinamento corrispondente in base alla descrizione del parametro order di search_videos.\n' +
+    '- Se l’utente vuole solo trovare video, riporta i consigli e i motivi e poi chiedi se scaricare; se ha già chiesto di scaricare, scarica con download_batch quello con il punteggio più alto (o quelli indicati). Se la ricerca incontra il controllo di rischio di Bilibili, aspetta qualche minuto senza riprovare di continuo.',
   skillTroubleshoot: 'Quando gli strumenti non funzionano',
   skillTroubleshootBody:
     '- L’errore dice che l’app non è in esecuzione: gli strumenti aprono {appName} in background automaticamente; attendi qualche secondo e riprova. Se non funziona ancora, chiedi all’utente di aprire {appName}.\n' +

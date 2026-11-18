@@ -11,11 +11,15 @@ export default {
   searchVideosTitle: 'Search videos',
   searchVideosDesc:
     'Searches Bilibili videos by keyword. Results already include title, uploader, publish time, duration, view count, category, tags and a description excerpt, so you usually don’t need to look up details one by one. ' +
-    'Search is fuzzy, and lower-ranked results may be irrelevant; Bilibili returns at most {cap} results. The url in the results can be passed to download_batch. {untrusted}',
+    'Search is fuzzy, and lower-ranked results may be irrelevant; Bilibili returns at most {cap} results. The url in the results can be passed to download_batch. To find the best, most worth-watching videos, use order=quality (weighted overall score). {untrusted}',
   searchKeyword: 'Search keyword',
   searchPage: 'Page number, default 1',
   searchVideosLimit: 'Results per page, default 10. Keep it the same when paging',
-  searchOrder: 'Sort order: totalrank overall (default), click most viewed, pubdate newest, dm most danmaku, stow most favorited',
+  searchOrder:
+    'Sort order. totalrank overall (default); click most viewed (hottest); pubdate newest; dm most danmaku; stow most favorited; scores most comments (most discussed); quality overall quality (use this to find the best, most worth-watching videos: a weighted score of relevance, views, like/favorite/comment/danmaku rates and recency); duration longest first (full walkthroughs); duration_asc shortest first (quick watches). quality, duration and duration_asc only re-rank the top pool candidates of Bilibili’s overall ranking, not the whole site; quality results carry a score (0–100)',
+  searchPool: 'Candidate pool size, default {n}, range 10–100. quality, duration and duration_asc first take this many results from Bilibili’s overall ranking and then re-rank them; larger is more complete but needs more requests (at most 2)',
+  searchWeights:
+    'Only for order=quality: adjust the scoring weights. Give only the items to change; the rest keep their defaults, and weights are normalized automatically. relevance (rank in Bilibili’s overall ranking), play views, like like rate, favorite favorite rate, comment comment rate, danmaku danmaku rate, recency newer is higher, duration longer is higher (off by default). Defaults: relevance 0.3, play 0.2, like 0.12, favorite 0.12, comment 0.06, danmaku 0.05, recency 0.15, duration 0. Values 0–{max}; for example recency=40 favors new videos',
   searchDuration: 'Duration: under 10 minutes, 10–30 minutes, 30–60 minutes, over 60 minutes',
   searchAfter: 'Published on or after this date (YYYY-MM-DD, Beijing time)',
   searchBefore: 'Published on or before this date (YYYY-MM-DD, Beijing time, inclusive)',
@@ -57,6 +61,11 @@ export default {
   resolveTooMany: 'At most {max} short links and av IDs at a time; convert the rest to BV IDs or submit them in several batches',
   keywordTooLong: 'keyword can’t be longer than {max} characters',
   dateOrder: 'published_after can’t be later than published_before',
+  poolRanked: 'order={order} only re-ranks the top {n} candidates of Bilibili’s overall ranking, not the whole site; paging also stays within these candidates',
+  poolPartial: 'Incomplete candidates: only the top {n} were fetched (a later page failed), and ranking covers only these; retry later for the full pool',
+  weightUnknown: '{key}.{name} is not an adjustable weight; available: {names}',
+  weightValue: '{key}.{name} must be a number between 0 and {max}',
+  weightsZero: 'The weights in {key} can’t all be 0',
   totalCapped: 'total has reached Bilibili’s cap of {cap} and is not the real total',
   downloadTip: 'To download, pass the url to download_batch; put multiple videos in videos',
   videosMissing: 'Missing parameter videos',

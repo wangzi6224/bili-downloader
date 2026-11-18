@@ -56,7 +56,8 @@ describe('searchVideos', () => {
           play: 1,
           danmaku: 2,
           favorites: 3,
-          like: 4
+          like: 4,
+          review: 5
         }
       ]
     })
@@ -83,10 +84,17 @@ describe('searchVideos', () => {
           play: 1,
           danmaku: 2,
           favorites: 3,
-          like: 4
+          like: 4,
+          comments: 5
         }
       ]
     })
+  })
+
+  it('order 可以是 scores（评论多）', async () => {
+    api.mockResolvedValue({ result: [] })
+    await searchVideos({ ...query, order: 'scores' })
+    expect(api.mock.calls.at(-1)![1]).toMatchObject({ order: 'scores' })
   })
 
   it('字段都缺时不出错，没有 bvid 的条目过滤掉', async () => {

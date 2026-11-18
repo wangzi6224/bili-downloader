@@ -11,11 +11,15 @@ export default {
   searchVideosTitle: '動画を検索',
   searchVideosDesc:
     'キーワードでビリビリの動画を検索します。結果にはタイトル、投稿者、公開日時、長さ、再生数、カテゴリ、タグ、概要の抜粋が含まれているため、通常は 1 本ずつ詳細を調べる必要はありません。' +
-    '検索はあいまい一致のため、順位の低い結果は関係ない場合があります。ビリビリが返すのは最大 {cap} 件です。結果の url は download_batch に渡せます。{untrusted}',
+    '検索はあいまい一致のため、順位の低い結果は関係ない場合があります。ビリビリが返すのは最大 {cap} 件です。結果の url は download_batch に渡せます。最良で見る価値の高い動画を探すときは order=quality（重み付けの総合スコア）を使います。{untrusted}',
   searchKeyword: '検索キーワード',
   searchPage: 'ページ番号。デフォルトは 1',
   searchVideosLimit: '1 ページあたりの件数。デフォルトは 10。ページ送りの間は変えないでください',
-  searchOrder: '並べ替え：totalrank 総合（デフォルト）、click 再生数の多い順、pubdate 新着順、dm 弾幕の多い順、stow お気に入りの多い順',
+  searchOrder:
+    '並べ替え。totalrank 総合（デフォルト）、click 再生数の多い順（人気）、pubdate 新着順、dm 弾幕の多い順、stow お気に入りの多い順、scores コメントの多い順（話題・議論が多い）、quality 総合品質（最良で見る価値の高い動画を探すときに使う：関連度、再生数、いいね・お気に入り・コメント・弾幕の率、公開の新しさを重み付けして採点）、duration 長い順（じっくり解説）、duration_asc 短い順（手軽に見たい）。quality・duration・duration_asc はビリビリの総合順位の上位 pool 件の候補内だけで並べ替え直し、サイト全体の順位ではありません。quality の結果には score（0〜100）が付きます',
+  searchPool: '候補プールの大きさ。デフォルト {n}、範囲 10〜100。quality・duration・duration_asc はビリビリの総合順位の上位からこの件数を取ってから並べ替えます。大きいほど網羅的ですがリクエストが増えます（最大 2 回）',
+  searchWeights:
+    'order=quality のときだけ使用。採点の重みを調整します。変えたい項目だけ指定すれば、残りはデフォルトのままで、自動的に正規化されます。relevance 関連度（ビリビリ総合順位の順位）、play 再生数、like いいね率、favorite お気に入り率、comment コメント率、danmaku 弾幕率、recency 新しいほど高い、duration 長いほど高い（デフォルトでは無効）。デフォルト：relevance 0.3、play 0.2、like 0.12、favorite 0.12、comment 0.06、danmaku 0.05、recency 0.15、duration 0。値は 0〜{max}。例：recency=40 で新しい動画を優先',
   searchDuration: '長さ：10 分以内、10～30 分、30～60 分、60 分以上',
   searchAfter: 'この日以降に公開されたもの（YYYY-MM-DD、北京時間）',
   searchBefore: 'この日以前に公開されたもの（YYYY-MM-DD、北京時間、当日を含む）',
@@ -56,6 +60,11 @@ export default {
   resolveTooMany: '短縮リンクと av 番号は 1 回に最大 {max} 個です。残りは BV 番号に置き換えるか、何回かに分けて送信してください',
   keywordTooLong: 'keyword は {max} 文字以内にしてください',
   dateOrder: 'published_after を published_before より後の日付にすることはできません',
+  poolRanked: 'order={order} はビリビリの総合順位の上位 {n} 件の候補内だけで並べ替えており、サイト全体の順位ではありません。ページ送りもこの候補内で行われます',
+  poolPartial: '候補が不完全です：上位 {n} 件しか取得できず（後ろのページの取得に失敗）、並べ替えはこれらだけが対象です。しばらくしてから再試行すると全候補が得られます',
+  weightUnknown: '{key}.{name} は調整できる重みではありません。指定できるもの：{names}',
+  weightValue: '{key}.{name} は 0 から {max} の数値にしてください',
+  weightsZero: '{key} の重みをすべて 0 にすることはできません',
   totalCapped: 'total はビリビリの上限 {cap} に達しています。実際の総数ではありません',
   downloadTip: 'ダウンロードするには url を download_batch に渡してください。複数の動画は videos に入れます',
   videosMissing: 'パラメータ videos がありません',

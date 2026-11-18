@@ -2,7 +2,7 @@ import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
 import type { AuthState } from '@shared/types'
 import { authScope } from '../auth/scope'
-import type { BiliLookup, Comment, VideoDetail } from '../bili/lookup'
+import type { BiliLookup, Comment, SearchVideo, VideoDetail } from '../bili/lookup'
 import type { SubtitleLine, SubtitleTrack, ViewPoint } from '../bili/subtitle'
 import {
   optionalBool,
@@ -18,6 +18,7 @@ import {
 } from './args'
 import { describeError, invalid, joinHints, loginHint, stopsBatch, ToolError } from './format'
 import { Lane, TtlCache } from './lane'
+import { CLIENT_ORDERS, MAX_WEIGHT, normalizeWeights, parseWeights, rankVideos, weightsSchema, type ClientOrder } from './ranking'
 import type { ToolDefinition } from './tools'
 
 /** 放在每个结果最前面：有的客户端不展示 instructions，写在响应里才可靠 */
@@ -47,12 +48,23 @@ const MAX_RESOLVE = 20
 const OUTLINE_MAX = 20
 const CHAPTERS_MAX = 50
 
-const ORDERS = ['totalrank', 'click', 'pubdate', 'dm', 'stow'] as const
+/** 交给 B站排序的；scores 是评论多 */
+const SERVER_ORDERS = ['totalrank', 'click', 'pubdate', 'dm', 'stow', 'scores'] as const
+/** 时长和综合质量 B站不支持，在候选池里自己排，见 ranking.ts */
+const ORDERS = [...SERVER_ORDERS, ...CLIENT_ORDERS] as const
+/** 候选池：B站综合排序的前 pool 条，每页最多要这么多，最多两次请求 */
+const POOL_PAGE = 50
+const POOL_DEFAULT = 50
+const POOL_MIN = 10
+const POOL_MAX = 100
+const POOLS_CACHED = 20
 /** 工具参数 → 搜索接口的 duration */
 const DURATIONS = { under_10m: 1, '10_30m': 2, '30_60m': 3, over_60m: 4 } as const
 const DURATION_NAMES = Object.keys(DURATIONS) as (keyof typeof DURATIONS)[]
 const TRANSCRIPT_PARTS = ['summary', 'chapters', 'subtitle'] as const
 const SORTS = ['hot', 'time'] as const
+
+const isClientOrder = (o: string): o is ClientOrder => (CLIENT_ORDERS as readonly string[]).includes(o)
 
 const videoUrl = (bvid: string): string => `https://www.bilibili.com/video/${bvid}`
 
@@ -103,6 +115,8 @@ export const lookupDefinitions = (): ToolDefinition[] => {
           page: { type: 'integer', minimum: 1, maximum: MAX_PAGE, description: t('mcpLookup.searchPage') },
           limit: { type: 'integer', minimum: 1, maximum: 30, description: t('mcpLookup.searchVideosLimit') },
           order: { type: 'string', enum: ORDERS, description: t('mcpLookup.searchOrder') },
+          pool: { type: 'integer', minimum: POOL_MIN, maximum: POOL_MAX, description: t('mcpLookup.searchPool', { n: POOL_DEFAULT }) },
+          weights: weightsSchema(t('mcpLookup.searchWeights', { max: MAX_WEIGHT })),
           duration: { type: 'string', enum: DURATION_NAMES, description: t('mcpLookup.searchDuration') },
           published_after: { type: 'string', description: t('mcpLookup.searchAfter') },
           published_before: { type: 'string', description: t('mcpLookup.searchBefore') }
@@ -182,6 +196,13 @@ export const lookupDefinitions = (): ToolDefinition[] => {
   ]
 }
 
+/** 排序前的候选池：B站综合排序的前若干条。partial 是后面的页没取全 */
+interface Pool {
+  total: number
+  list: SearchVideo[]
+  partial?: true
+}
+
 interface Player {
   tracks: SubtitleTrack[]
   viewPoints: ViewPoint[]
@@ -194,6 +215,7 @@ export class LookupTools {
   private details: TtlCache<VideoDetail>
   private players: TtlCache<Player>
   private subtitles: TtlCache<SubtitleLine[]>
+  private pools: TtlCache<Pool>
   private handlers: Record<string, (args: Args) => Promise<Record<string, unknown>>> = {
     search_videos: (a) => this.searchVideos(a),
     search_users: (a) => this.searchUsers(a),
@@ -212,6 +234,7 @@ export class LookupTools {
     this.details = new TtlCache(CACHE_TTL, MAX_DETAILS, opts.now)
     this.players = new TtlCache(CACHE_TTL, MAX_DETAILS, opts.now)
     this.subtitles = new TtlCache(CACHE_TTL, MAX_SUBTITLES, opts.now)
+    this.pools = new TtlCache(CACHE_TTL, POOLS_CACHED, opts.now)
   }
 
   handles(name: string): boolean {
@@ -276,33 +299,53 @@ export class LookupTools {
     const page = optionalInt(args, 'page', 1, MAX_PAGE, 1)
     const limit = optionalInt(args, 'limit', 1, 30, 10)
     const order = optionalEnum(args, 'order', ORDERS, 'totalrank')
+    const pool = optionalInt(args, 'pool', POOL_MIN, POOL_MAX, POOL_DEFAULT)
+    const weights = parseWeights(args.weights, 'weights')
     const duration = args.duration === undefined || args.duration === null ? undefined : requireEnum(args, 'duration', DURATION_NAMES)
     const after = optionalDay(args, 'published_after')
     const before = optionalDay(args, 'published_before')
     if (after !== undefined && before !== undefined && after > before) throw invalid(t('mcpLookup.dateOrder'))
     // 接口要同时给起止时间，结束日包含当天；起始时间是 0 时 B站会忽略整个时间筛选，所以没给时用 1
     const ranged = after !== undefined || before !== undefined
-    const r = await this.lane.run(() =>
-      this.api.searchVideos({
-        keyword,
-        page,
-        pageSize: limit,
-        order,
-        duration: duration && DURATIONS[duration],
-        pubBegin: ranged ? (after ?? 1) : undefined,
-        pubEnd: ranged ? (before === undefined ? Math.floor(this.now() / 1000) : before + 86399) : undefined
-      })
-    )
+    const filters = {
+      keyword,
+      duration: duration && DURATIONS[duration],
+      pubBegin: ranged ? (after ?? 1) : undefined,
+      pubEnd: ranged ? (before === undefined ? Math.floor(this.now() / 1000) : before + 86399) : undefined
+    }
     const hints: string[] = []
-    if (r.total >= RESULT_CAP) hints.push(t('mcpLookup.totalCapped', { cap: RESULT_CAP }))
-    if (r.list.length) hints.push(t('mcpLookup.downloadTip'))
+    let total: number
+    let pages: number
+    let videos: { video: SearchVideo; score?: number }[]
+    let extra: Record<string, unknown> = {}
+    if (isClientOrder(order)) {
+      const p = await this.candidates(filters, pool)
+      const ranked = rankVideos(p.list, order, weights, Math.floor(this.now() / 1000))
+      total = p.total
+      pages = Math.ceil(ranked.length / limit)
+      videos = ranked.slice((page - 1) * limit, page * limit)
+      extra = {
+        pool_size: p.list.length,
+        weights: order === 'quality' ? normalizeWeights(weights) : undefined
+      }
+      hints.push(t(p.partial ? 'mcpLookup.poolPartial' : 'mcpLookup.poolRanked', { order, n: p.list.length }))
+    } else {
+      const r = await this.lane.run(() => this.api.searchVideos({ ...filters, page, pageSize: limit, order }))
+      total = r.total
+      pages = r.pages
+      videos = r.list.map((video) => ({ video }))
+    }
+    if (total >= RESULT_CAP) hints.push(t('mcpLookup.totalCapped', { cap: RESULT_CAP }))
+    if (videos.length) hints.push(t('mcpLookup.downloadTip'))
     return {
       content_notice: contentNotice(),
-      total: r.total,
-      total_capped: r.total >= RESULT_CAP || undefined,
+      total,
+      total_capped: total >= RESULT_CAP || undefined,
+      order,
+      ...extra,
       page,
-      next_page: page < r.pages && page < MAX_PAGE ? page + 1 : null,
-      videos: r.list.map((v) => ({
+      next_page: page < pages && page < MAX_PAGE ? page + 1 : null,
+      videos: videos.map(({ video: v, score }) => ({
         bvid: v.bvid,
         url: videoUrl(v.bvid),
         title: v.title,
@@ -315,11 +358,40 @@ export class LookupTools {
         pubdate: beijing(v.pubdate),
         play: v.play,
         danmaku: v.danmaku,
+        comments: v.comments,
         favorites: v.favorites,
-        like: v.like
+        like: v.like,
+        score
       })),
       hint: joinHints(hints)
     }
+  }
+
+  /**
+   * 候选池：按 B站综合排序取前 pool 条，最多两页。缓存的是排序前的列表，
+   * 所以翻页、换排序、调权重都不用再请求。第二页失败时用第一页的结果，并且不缓存这个不完整的池
+   */
+  private async candidates(filters: { keyword: string; duration?: number; pubBegin?: number; pubEnd?: number }, pool: number): Promise<Pool> {
+    const key = JSON.stringify([authScope().partition, filters, pool])
+    const got = await this.pools.get(key, async () => {
+      const pageSize = Math.min(pool, POOL_PAGE)
+      const first = await this.lane.run(() => this.api.searchVideos({ ...filters, page: 1, pageSize }))
+      const list = [...first.list]
+      let partial: true | undefined
+      if (first.pages > 1 && pool > pageSize) {
+        try {
+          const second = await this.lane.run(() => this.api.searchVideos({ ...filters, page: 2, pageSize }))
+          list.push(...second.list)
+        } catch {
+          partial = true
+        }
+      }
+      const seen = new Set<string>()
+      const unique = list.filter((v) => !seen.has(v.bvid) && seen.add(v.bvid)).slice(0, pool)
+      return { total: first.total, list: unique, partial }
+    })
+    if (got.partial) this.pools.delete(key)
+    return got
   }
 
   private async searchUsers(args: Args) {
