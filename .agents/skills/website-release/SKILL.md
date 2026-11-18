@@ -29,15 +29,15 @@ npm version patch --no-git-tag-version
 
 ## 发布
 
-先确认官网目录自上次成功部署以来有改动，并且桌面应用发布流程已经结束。提交并推送官网改动到 `main` 后，从 `website/` 运行：
+先确认官网目录自上次成功部署以来有改动，并且桌面应用发布流程已经结束。提交并推送官网改动到 `master` 后，从 `website/` 运行：
 
 ```bash
 npm run release -- --publish --confirm-website-changes --confirm-separate-from-app
 ```
 
-脚本会重新运行单测和静态构建；通过后检查当前分支为 `main`、工作区干净、本地提交与 `origin/main` 一致、`website/` 相对上次实际 Pages 部署有变动，且应用发布和 Pages 工作流都没有运行。Pages 静态产物会保存上次部署的提交 SHA 和官网版本，作为长期有效的部署基线；工作流记录只在首次升级时作回退。所有检查通过后，脚本仅使用 `gh workflow run` 派发 `.github/workflows/deploy-pages.yml`，不会调用自写 GitHub API，也不会触发应用发布。工作流自身也会校验手动确认及官网文件改动；最终部署 job 与应用 Release job 使用共同的并发锁，避免同时发布。
+脚本会重新运行单测和静态构建；通过后检查当前分支为 `master`、工作区干净、本地提交与 `origin/master` 一致、`website/` 相对上次实际 Pages 部署有变动，且应用发布和 Pages 工作流都没有运行。Pages 静态产物会保存上次部署的提交 SHA 和官网版本，作为长期有效的部署基线；工作流记录只在首次升级时作回退。所有检查通过后，脚本仅使用 `gh workflow run` 派发 `.github/workflows/deploy-pages.yml`，不会调用自写 GitHub API，也不会触发应用发布。工作流自身也会校验手动确认及官网文件改动；最终部署 job 与应用 Release job 使用共同的并发锁，避免同时发布。
 
-官网工作流仍要求两个确认输入为 true，并且只在 `main` 的手动派发中部署。PR 只验证测试和构建。部署后通过 Actions 核对 Pages 工作流结果；桌面包发布和官网部署分别查看各自工作流。
+官网工作流仍要求两个确认输入为 true，并且只在 `master` 的手动派发中部署。PR 只验证测试和构建。部署后通过 Actions 核对 Pages 工作流结果；桌面包发布和官网部署分别查看各自工作流。
 
 ## 不要做
 

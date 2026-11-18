@@ -34,15 +34,15 @@ export function runWebsiteRelease({ args = [], runCommand, cwd, repoCwd, repo = 
   if (!publish) return { published: false }
 
   const branch = runChecked(runCommand, 'git', ['branch', '--show-current'], '检查当前分支', gitCwd).trim()
-  if (branch !== 'main') throw new Error(`网页发布只允许从 main 派发，当前分支是 ${branch || '(detached HEAD)'}`)
+  if (branch !== 'master') throw new Error(`网页发布只允许从 master 派发，当前分支是 ${branch || '(detached HEAD)'}`)
 
   const status = runChecked(runCommand, 'git', ['status', '--porcelain'], '检查工作区', gitCwd)
   if (status.trim()) throw new Error('工作区有未提交改动；请先提交并推送，再发布网页')
 
   const head = runChecked(runCommand, 'git', ['rev-parse', 'HEAD'], '读取本地提交', gitCwd).trim()
-  const remoteRef = runChecked(runCommand, 'git', ['ls-remote', 'origin', 'refs/heads/main'], '检查 origin/main', gitCwd).trim()
+  const remoteRef = runChecked(runCommand, 'git', ['ls-remote', 'origin', 'refs/heads/master'], '检查 origin/master', gitCwd).trim()
   const remoteHead = remoteRef.split(/\s+/)[0]
-  if (!remoteHead || remoteHead !== head) throw new Error('本地 main 与 origin/main 不一致；请先同步后再发布网页')
+  if (!remoteHead || remoteHead !== head) throw new Error('本地 master 与 origin/master 不一致；请先同步后再发布网页')
 
   const websiteRuns = listPageWorkflowRuns({ runCommand, cwd: gitCwd, repo })
   const activeWebsiteRun = websiteRuns.find((run) => ACTIVE_RUN_STATUSES.has(run.status))
@@ -71,7 +71,7 @@ export function runWebsiteRelease({ args = [], runCommand, cwd, repoCwd, repo = 
     runCommand,
     'gh',
     [
-      'workflow', 'run', 'deploy-pages.yml', '--repo', repo, '--ref', 'main',
+      'workflow', 'run', 'deploy-pages.yml', '--repo', repo, '--ref', 'master',
       '-f', 'confirm_website_changes=true',
       '-f', 'confirm_separate_release=true'
     ],

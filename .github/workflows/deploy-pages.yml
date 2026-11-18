@@ -2,7 +2,7 @@ name: Build and publish website to GitHub Pages
 
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
@@ -31,14 +31,14 @@ jobs:
   validate-dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Require confirmed deployment from main
+      - name: Require confirmed deployment from master
         if: github.event_name == 'workflow_dispatch'
         env:
           CONFIRM_WEBSITE_CHANGES: ${{ inputs.confirm_website_changes }}
           CONFIRM_SEPARATE_RELEASE: ${{ inputs.confirm_separate_release }}
         run: |
-          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Website deployment must run from main."
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "::error::Website deployment must run from master."
             exit 1
           fi
           if [[ "$CONFIRM_WEBSITE_CHANGES" != "true" || "$CONFIRM_SEPARATE_RELEASE" != "true" ]]; then
@@ -100,7 +100,7 @@ jobs:
           path: website/out
 
   deploy:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_website_changes && inputs.confirm_separate_release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.confirm_website_changes && inputs.confirm_separate_release
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

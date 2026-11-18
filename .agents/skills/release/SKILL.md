@@ -12,13 +12,13 @@ description: 发布 B站下载器（bili-downloader）的新版本：定版本�
 ## 1. 发布前检查
 
 ```bash
-git switch main && git pull --ff-only
+git switch master && git pull --ff-only
 git status --porcelain                          # 必须没有输出
 gh run list --workflow release.yml --limit 3    # 不能有正在跑的发布
 gh run list --workflow deploy-pages.yml --limit 3 # 不能有正在跑的官网部署
 ```
 
-有未提交的改动、本地和 origin/main 不一致、或者测试没过，先停下来告诉用户，不要自行处理。
+有未提交的改动、本地和 origin/master 不一致、或者测试没过，先停下来告诉用户，不要自行处理。
 
 ## 2. 定版本号
 
@@ -49,12 +49,12 @@ npm run release:preflight
 
 预检先离线检查版本和 CHANGELOG，再在本机当前系统运行完整的 `build:mac`、`build:linux` 或 `build:win`。这些构建会运行类型检查、单元测试、覆盖率门槛并生成当前系统安装包；任何一步失败都不能提交发布 tag。离线检查不请求 GitHub，tag 工作流仍会在构建前用 `gh` 检查版本是否已发布，并在 macOS、Linux、Windows 上分别重新构建。
 
-## 5. 提交并推送 main
+## 5. 提交并推送 master
 
 ```bash
 git add package.json package-lock.json CHANGELOG.md
 git commit -m "chore: 发布 <版本>"
-git push origin main
+git push origin master
 ```
 
 ## 6. 推送 tag（必须先得到用户确认）
@@ -92,17 +92,17 @@ node -e "fetch('https://github.com/wangzi6224/bili-downloader/releases/latest/do
 
 | 情况 | 处理 |
 | --- | --- |
-| “检查版本”这一步失败 | 看日志：tag 和 `package.json` 版本不一致、更新日志里没有这个版本、或已经发布过。修好并推送到 main 后，告诉用户要删掉旧 tag 重打：`git push origin :refs/tags/v<版本> && git tag -d v<版本>`，再回到第 6 步 |
+| “检查版本”这一步失败 | 看日志：tag 和 `package.json` 版本不一致、更新日志里没有这个版本、或已经发布过。修好并推送到 master 后，告诉用户要删掉旧 tag 重打：`git push origin :refs/tags/v<版本> && git tag -d v<版本>`，再回到第 6 步 |
 | 类型检查、测试、覆盖率门槛或打包失败 | 同上：修复 → 删 tag → 在修好的提交上重打 |
 | 网络之类的偶发失败，Release 还没创建 | `gh run rerun <run-id> --failed` |
 | Release 已经创建但有问题 | 用户可能已经更新了，不要删掉后用同一个版本号重发；告诉用户，一般是修好后发一个新的补丁版本 |
 
 ## 只验证打包，不发布
 
-改了 `electron-builder.yml`、`scripts/fetch-ffmpeg.mjs`、依赖等打包相关的内容，推送到 main 后可以先手动跑一次：
+改了 `electron-builder.yml`、`scripts/fetch-ffmpeg.mjs`、依赖等打包相关的内容，推送到 master 后可以先手动跑一次：
 
 ```bash
-gh workflow run release.yml --ref main
+gh workflow run release.yml --ref master
 ```
 
 手动运行只打包不发布，三个系统的安装包和 `update.json` 作为这次运行的产物保留 7 天。

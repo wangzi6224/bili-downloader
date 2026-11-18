@@ -10,8 +10,8 @@ import { siteCopy } from '../lib/site-content';
 
 const REPOSITORY = 'https://github.com/wangzi6224/bili-downloader';
 const RELEASES = REPOSITORY + '/releases/latest';
-const README_ZH = REPOSITORY + '/blob/main/README.zh-CN.md';
-const README_EN = REPOSITORY + '/blob/main/README.md';
+const README_ZH = REPOSITORY + '/blob/master/README.zh-CN.md';
+const README_EN = REPOSITORY + '/blob/master/README.md';
 const ASSET_ROOT = '/bili-downloader/media/';
 const DEMO_SOURCE = 'https://www.bilibili.com/video/BV1vU446BEiU';
 const ISSUES = REPOSITORY + '/issues';

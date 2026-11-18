@@ -60,10 +60,10 @@ test('通过构建、改动、同步和应用空闲检查后才派发 Pages', ()
   const runner = mockRunner([
     { status: 0 }, // npm test
     { status: 0 }, // npm run build
-    { status: 0, stdout: 'main\n' }, // branch
+    { status: 0, stdout: 'master\n' }, // branch
     { status: 0, stdout: '' }, // clean
     { status: 0, stdout: 'local-sha\n' }, // HEAD
-    { status: 0, stdout: 'local-sha\trefs/heads/main\n' }, // origin/main
+    { status: 0, stdout: 'local-sha\trefs/heads/master\n' }, // origin/master
     { status: 0, stdout: '[{"databaseId":100,"headSha":"deployed-sha","status":"completed","conclusion":"success"}]' }, // Pages runs
     { status: 0, stdout: 'Not Found\n404' }, // deployment marker not written by the previous workflow version
     { status: 0, stdout: '{"jobs":[{"name":"deploy","conclusion":"success"}]}' }, // successful deploy job
@@ -74,19 +74,19 @@ test('通过构建、改动、同步和应用空闲检查后才派发 Pages', ()
 
   const result = runWebsiteRelease({ args: publishArgs, runCommand: runner.runCommand, cwd: '/repo/website' })
 
-  assert.deepEqual(result, { published: true, branch: 'main', head: 'local-sha' })
+  assert.deepEqual(result, { published: true, branch: 'master', head: 'local-sha' })
   assert.deepEqual(runner.calls.slice(0, 2).map(({ args }) => args), [['test'], ['run', 'build']])
   assert.equal(runner.calls[0].options.cwd, '/repo/website')
   assert.equal(runner.calls.find(({ args }) => args[0] === 'diff').options.cwd, '/repo')
   assert.deepEqual(runner.calls.at(-1).args, [
-    'workflow', 'run', 'deploy-pages.yml', '--repo', 'wangzi6224/bili-downloader', '--ref', 'main',
+    'workflow', 'run', 'deploy-pages.yml', '--repo', 'wangzi6224/bili-downloader', '--ref', 'master',
     '-f', 'confirm_website_changes=true', '-f', 'confirm_separate_release=true'
   ])
 })
 
 test('工作区未提交时不派发', () => {
   const runner = mockRunner([
-    { status: 0 }, { status: 0 }, { status: 0, stdout: 'main' }, { status: 0, stdout: ' M website/app/page.tsx' }
+    { status: 0 }, { status: 0 }, { status: 0, stdout: 'master' }, { status: 0, stdout: ' M website/app/page.tsx' }
   ])
 
   assert.throws(
@@ -96,23 +96,23 @@ test('工作区未提交时不派发', () => {
   assert.equal(runner.calls.some(({ command, args }) => command === 'gh' && args[0] === 'workflow'), false)
 })
 
-test('本地 main 未同步到 origin/main 时不派发', () => {
+test('本地 master 未同步到 origin/master 时不派发', () => {
   const runner = mockRunner([
-    { status: 0 }, { status: 0 }, { status: 0, stdout: 'main' }, { status: 0 },
-    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'remote-sha\trefs/heads/main' }
+    { status: 0 }, { status: 0 }, { status: 0, stdout: 'master' }, { status: 0 },
+    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'remote-sha\trefs/heads/master' }
   ])
 
   assert.throws(
     () => runWebsiteRelease({ args: publishArgs, runCommand: runner.runCommand }),
-    /本地 main 与 origin\/main 不一致/
+    /本地 master 与 origin\/master 不一致/
   )
   assert.equal(runner.calls.some(({ command }) => command === 'gh'), false)
 })
 
 test('自上次成功部署后没有 website/ 改动时不派发', () => {
   const runner = mockRunner([
-    { status: 0 }, { status: 0 }, { status: 0, stdout: 'main' }, { status: 0, stdout: '' },
-    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/main' },
+    { status: 0 }, { status: 0 }, { status: 0, stdout: 'master' }, { status: 0, stdout: '' },
+    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/master' },
     { status: 0, stdout: '[{"databaseId":100,"headSha":"deployed-sha","status":"completed","conclusion":"success"}]' },
     { status: 0, stdout: 'Not Found\n404' },
     { status: 0, stdout: '{"jobs":[{"name":"deploy","conclusion":"success"}]}' },
@@ -128,8 +128,8 @@ test('自上次成功部署后没有 website/ 改动时不派发', () => {
 
 test('桌面应用发布仍在运行时不派发官网', () => {
   const runner = mockRunner([
-    { status: 0 }, { status: 0 }, { status: 0, stdout: 'main' }, { status: 0 },
-    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/main' },
+    { status: 0 }, { status: 0 }, { status: 0, stdout: 'master' }, { status: 0 },
+    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/master' },
     { status: 0, stdout: '[{"databaseId":100,"headSha":"deployed-sha","status":"completed","conclusion":"success"}]' },
     { status: 0, stdout: 'Not Found\n404' },
     { status: 0, stdout: '{"jobs":[{"name":"deploy","conclusion":"success"}]}' },
@@ -146,8 +146,8 @@ test('桌面应用发布仍在运行时不派发官网', () => {
 
 test('已有 Pages workflow 执行时不派发第二次部署', () => {
   const runner = mockRunner([
-    { status: 0 }, { status: 0 }, { status: 0, stdout: 'main' }, { status: 0 },
-    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/main' },
+    { status: 0 }, { status: 0 }, { status: 0, stdout: 'master' }, { status: 0 },
+    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/master' },
     { status: 0, stdout: '[{"status":"in_progress","conclusion":null}]' }
   ])
 
@@ -160,8 +160,8 @@ test('已有 Pages workflow 执行时不派发第二次部署', () => {
 
 test('有 Pages 历史但找不到实际部署记录时不派发', () => {
   const runner = mockRunner([
-    { status: 0 }, { status: 0 }, { status: 0, stdout: 'main' }, { status: 0 },
-    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/main' },
+    { status: 0 }, { status: 0 }, { status: 0, stdout: 'master' }, { status: 0 },
+    { status: 0, stdout: 'local-sha' }, { status: 0, stdout: 'local-sha refs/heads/master' },
     { status: 0, stdout: '[{"databaseId":101,"headSha":"build-only-sha","status":"completed","conclusion":"success"}]' },
     { status: 0, stdout: 'Not Found\n404' },
     { status: 0, stdout: '{"jobs":[{"name":"build","conclusion":"success"}]}' }
@@ -174,12 +174,12 @@ test('有 Pages 历史但找不到实际部署记录时不派发', () => {
   assert.equal(runner.calls.some(({ command, args }) => command === 'gh' && args[0] === 'workflow'), false)
 })
 
-test('拒绝从非 main 分支发布', () => {
+test('拒绝从非 master 分支发布', () => {
   const runner = mockRunner([{ status: 0 }, { status: 0 }, { status: 0, stdout: 'feature' }])
 
   assert.throws(
     () => runWebsiteRelease({ args: publishArgs, runCommand: runner.runCommand }),
-    /只允许从 main 派发/
+    /只允许从 master 派发/
   )
   assert.equal(runner.calls.some(({ command }) => command === 'gh'), false)
 })
