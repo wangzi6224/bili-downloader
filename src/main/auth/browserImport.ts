@@ -312,39 +312,48 @@ function findProfile(id: string): Found | undefined {
   return profiles.find((f) => f.profile.id === id) ?? profiles.find((f) => f.profile.id === `${key}::` && f.profile.blocked)
 }
 
+/** 从浏览器读哪个网站的登录：只读这些域名的 cookie，key 是代表已登录的那条 cookie */
+export interface CookieSite {
+  host: (host: string) => boolean
+  key: string
+}
+
+export const BILI_SITE: CookieSite = { host: isBiliHost, key: 'SESSDATA' }
+
 interface LoginProbe {
   has: boolean
   /** 有效的 SESSDATA 全是 v20 应用绑定加密：浏览器以外的程序读不出来，导入必然失败 */
   appBound?: boolean
 }
 
-function probeLogin(f: Found): LoginProbe {
+function probeLogin(f: Found, site: CookieSite): LoginProbe {
   const now = Date.now() / 1000
-  if (f.browser === 'safari') return { has: readSafari(f).some((c) => c.name === 'SESSDATA' && c.value && (c.expires ?? Infinity) > now) }
+  if (f.browser === 'safari') return { has: readSafari(f, site).some((c) => c.name === site.key && c.value && (c.expires ?? Infinity) > now) }
   return withDbCopy(f.cookieFile, (db) => {
     if (f.browser === 'firefox') {
-      const rows = db.prepare(`SELECT host, expiry FROM moz_cookies WHERE name = 'SESSDATA'`).all()
-      return { has: rows.some((r) => isBiliHost(String(r.host)) && firefoxExpiry(Number(r.expiry))! > now) }
+      const rows = db.prepare(`SELECT host, expiry FROM moz_cookies WHERE name = ?`).all(site.key)
+      return { has: rows.some((r) => site.host(String(r.host)) && firefoxExpiry(Number(r.expiry))! > now) }
     }
     // 只取密文前 3 字节看前缀，不解密
     const stmt = db.prepare(
-      `SELECT host_key, expires_utc, value, substr(encrypted_value, 1, 3) AS prefix FROM cookies WHERE name = 'SESSDATA'`
+      `SELECT host_key, expires_utc, value, substr(encrypted_value, 1, 3) AS prefix FROM cookies WHERE name = ?`
     )
     stmt.setReadBigInts(true)
-    const valid = stmt.all().filter((r) => {
+    const valid = stmt.all(site.key).filter((r) => {
       const exp = chromeTimeToUnix(r.expires_utc as bigint)
-      return isBiliHost(String(r.host_key)) && (exp === undefined || exp > now)
+      return site.host(String(r.host_key)) && (exp === undefined || exp > now)
     })
     const sealed = (r: CookieRow): boolean => !r.value && r.prefix instanceof Uint8Array && isAppBound(r.prefix)
     return { has: valid.length > 0, appBound: IS_WINDOWS && valid.length > 0 && valid.every(sealed) }
   })
 }
 
-export function listBrowserProfiles(browserKey?: string): BrowserProfile[] {
+/** 列出浏览器配置档；hasBiliLogin 表示有没有 site 的登录（缺省 B站） */
+export function listBrowserProfiles(browserKey?: string, site: CookieSite = BILI_SITE): BrowserProfile[] {
   return findProfiles(browserKey).map((f) => {
     if (f.profile.blocked) return f.profile
     try {
-      const probe = probeLogin(f)
+      const probe = probeLogin(f, site)
       return { ...f.profile, hasBiliLogin: probe.has, appBoundLogin: probe.appBound || undefined }
     } catch (e) {
       // 目录能列出但 Cookies 文件被拦截，同样需要授权
@@ -427,16 +436,16 @@ const chromiumCookie = (r: CookieRow, value: string): PlainCookie => ({
   sameSite: CHROME_SAMESITE[Number(r.samesite)] ?? 'unspecified'
 })
 
-async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<PlainCookie[]> {
+async function readChromium(f: Found & { browser: ChromiumBrowser }, site: CookieSite): Promise<PlainCookie[]> {
   const { version, rows } = withDbCopy(f.cookieFile, (db) => {
     const meta = db.prepare(`SELECT value FROM meta WHERE key = 'version'`).get()
     const stmt = db.prepare(
       `SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, samesite FROM cookies`
     )
     stmt.setReadBigInts(true)
-    return { version: Number(meta?.value ?? 0), rows: stmt.all().filter((r) => isBiliHost(String(r.host_key))) }
+    return { version: Number(meta?.value ?? 0), rows: stmt.all().filter((r) => site.host(String(r.host_key))) }
   })
-  if (IS_WINDOWS) return windowsCookies(f.browser, rows, version)
+  if (IS_WINDOWS) return windowsCookies(f.browser, rows, version, site.key)
   const needsV11 = rows.some((r) => !r.value && encryptedPrefix(r.encrypted_value as Uint8Array) === 'v11')
   const keys = await chromiumKeys(f.browser, needsV11)
   return rows.map((r) =>
@@ -448,11 +457,11 @@ async function readChromium(f: Found & { browser: ChromiumBrowser }): Promise<Pl
  * Windows 上 Cookie 有三种加密：v10 用主密钥做 AES-256-GCM；更早的 Chromium 没有前缀，每条直接用 DPAPI；v20 是应用绑定加密。
  * v20 的跳过（缺了 buvid3 之类的会自动补上），只有 SESSDATA 也是 v20 时才报错
  */
-async function windowsCookies(b: ChromiumBrowser, rows: CookieRow[], version: number): Promise<PlainCookie[]> {
+async function windowsCookies(b: ChromiumBrowser, rows: CookieRow[], version: number, loginKey: string): Promise<PlainCookie[]> {
   const sealed = rows.filter((r) => !r.value && (r.encrypted_value as Uint8Array).length)
   const bound = sealed.filter((r) => isAppBound(r.encrypted_value as Uint8Array))
   // 只有 SESSDATA 全是 v20 时才导不了；还有能解开的（比如另一条过期的 v20 旁边有一条 v10），就跳过 v20 照常导入，和检测时的判断一致
-  const isSess = (r: CookieRow): boolean => r.name === 'SESSDATA'
+  const isSess = (r: CookieRow): boolean => r.name === loginKey
   if (bound.some(isSess) && !rows.some((r) => isSess(r) && !bound.includes(r))) {
     throw new ImportError('app_bound', t('authErr.appBoundCookie'))
   }
@@ -473,12 +482,12 @@ function firefoxExpiry(n: number): number | undefined {
   return n > 1e11 ? Math.floor(n / 1000) : n
 }
 
-function readFirefox(f: Found): PlainCookie[] {
+function readFirefox(f: Found, site: CookieSite): PlainCookie[] {
   return withDbCopy(f.cookieFile, (db) =>
     db
       .prepare(`SELECT host, name, value, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies`)
       .all()
-      .filter((r) => isBiliHost(String(r.host)))
+      .filter((r) => site.host(String(r.host)))
       .map((r) => ({
         domain: String(r.host),
         name: String(r.name),
@@ -492,16 +501,16 @@ function readFirefox(f: Found): PlainCookie[] {
   )
 }
 
-function readSafari(f: Found): PlainCookie[] {
-  return parseBinaryCookies(readFileSync(f.cookieFile)).filter((c) => isBiliHost(c.domain))
+function readSafari(f: Found, site: CookieSite): PlainCookie[] {
+  return parseBinaryCookies(readFileSync(f.cookieFile)).filter((c) => site.host(c.domain))
 }
 
 const lockedMessage = (browser: string): string => t('authErr.browserLocked', { browser })
 
-async function readCookies(f: Found): Promise<PlainCookie[]> {
-  if (f.browser === 'firefox') return readFirefox(f)
-  if (f.browser === 'safari') return readSafari(f)
-  return readChromium(f as Found & { browser: ChromiumBrowser })
+async function readCookies(f: Found, site: CookieSite): Promise<PlainCookie[]> {
+  if (f.browser === 'firefox') return readFirefox(f, site)
+  if (f.browser === 'safari') return readSafari(f, site)
+  return readChromium(f as Found & { browser: ChromiumBrowser }, site)
 }
 
 /** 配置档的 Cookie 文件是否还被浏览器锁着；关闭浏览器时用它判断是否真的关干净了 */
@@ -517,20 +526,26 @@ export function isProfileLocked(id: string): boolean {
 }
 
 /** shouldApply：替换登录前最后再确认一次，读浏览器要等钥匙串授权，等待期间用户可能已经用别的方式登录了 */
-export async function importFromBrowser(id: string, opts: { shouldApply?: () => boolean } = {}): Promise<AuthState> {
+/** 读出配置档里 site 的 cookie；没有登录 cookie 时报错 */
+export async function readBrowserCookies(id: string, site: CookieSite): Promise<PlainCookie[]> {
   const f = findProfile(id)
   if (!f) throw new ImportError('not_found', t('authErr.profileNotFound'))
   if (f.profile.blocked) throw new ImportError('blocked', t('authErr.noPermission', { browser: f.profile.browser }))
   let cookies: PlainCookie[]
   try {
-    cookies = await readCookies(f)
+    cookies = await readCookies(f, site)
   } catch (e) {
     if (isLockedError(e)) throw new ImportError('locked', lockedMessage(f.profile.browser))
     if (isPermissionError(e)) throw new ImportError('blocked', t('authErr.noPermission', { browser: f.profile.browser }))
     throw e
   }
-  if (!cookies.some((c) => c.name === 'SESSDATA' && c.value)) {
+  if (!cookies.some((c) => c.name === site.key && c.value)) {
     throw new ImportError('no_login', t('authErr.noLogin', { browser: f.profile.browser, profile: f.profile.profile }))
   }
+  return cookies
+}
+
+export async function importFromBrowser(id: string, opts: { shouldApply?: () => boolean } = {}): Promise<AuthState> {
+  const cookies = await readBrowserCookies(id, BILI_SITE)
   return replaceLogin(cookies, t('authErr.importedExpired'), opts.shouldApply)
 }

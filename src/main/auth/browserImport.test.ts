@@ -1149,3 +1149,135 @@ describe('Windows browser import', () => {
     expect(bi.isProfileLocked('chrome::Default')).toBe(false)
   })
 })
+
+// ---------- 按站点读取：YouTube 只读 youtube.com 的 cookie，以 SAPISID 判断登录 ----------
+const { YT_SITE } = await import('../youtube/cookies')
+
+describe('按站点读取（YouTube）', () => {
+  const yt = (name: string, value: string, host = '.youtube.com', expires = FUTURE): ChromeRow => ({ host, name, value, expires })
+
+  describe('macOS', () => {
+    beforeEach(() => load('darwin'))
+
+    it('Chromium：以 SAPISID 判断有没有登录，B站的 SESSDATA、过期的、别的域名的都不算', () => {
+      const root = support('Google/Chrome')
+      chromeDb(join(root, 'Default/Cookies'), [yt('SAPISID', 'sap'), sess()])
+      chromeDb(join(root, 'Profile 1/Cookies'), [sess(), yt('SAPISID', 'gsap', '.google.com')])
+      chromeDb(join(root, 'Profile 2/Cookies'), [yt('SAPISID', 'old', '.youtube.com', PAST)])
+      chromeDb(join(root, 'Profile 3/Cookies'), [yt('SAPISID', 'sess-cookie', 'www.youtube.com', 0)])
+      expect(byId(bi.listBrowserProfiles('chrome', YT_SITE)).map((p) => [p.id, p.hasBiliLogin])).toEqual([
+        ['chrome::Default', true],
+        ['chrome::Profile 1', false],
+        ['chrome::Profile 2', false],
+        ['chrome::Profile 3', true]
+      ])
+      // 缺省仍按 B站
+      expect(byId(bi.listBrowserProfiles('chrome')).map((p) => [p.id, p.hasBiliLogin])).toEqual([
+        ['chrome::Default', true],
+        ['chrome::Profile 1', true],
+        ['chrome::Profile 2', false],
+        ['chrome::Profile 3', false]
+      ])
+    })
+
+    it('Chromium：只读 youtube.com 的 cookie（含密文），不含 B站、Google 的', async () => {
+      chromeDb(support('Google/Chrome/Default/Cookies'), [
+        { host: '.youtube.com', name: 'SAPISID', enc: encV24('.youtube.com', 'enc-sap') },
+        yt('LOGIN_INFO', 'li', 'www.youtube.com'),
+        sess(),
+        yt('SAPISID', 'g', '.google.com'),
+        yt('SID', 'evil', '.notyoutube.com')
+      ])
+      const cookies = await bi.readBrowserCookies('chrome::Default', YT_SITE)
+      expect(cookies.map((c) => [c.domain, c.name, c.value])).toEqual([
+        ['.youtube.com', 'SAPISID', 'enc-sap'],
+        ['www.youtube.com', 'LOGIN_INFO', 'li']
+      ])
+      // 只读，不动 B站的登录
+      expect(m.setBiliCookies).not.toHaveBeenCalled()
+      expect(m.clearBiliCookies).not.toHaveBeenCalled()
+    })
+
+    it('Chromium：只有 B站登录、或 SAPISID 为空时抛 no_login', async () => {
+      chromeDb(support('Google/Chrome/Default/Cookies'), [sess(), yt('SAPISID', ''), yt('SID', 's')])
+      // 文案沿用 B站的，界面那边（yt:importBrowser）会换成 YouTube 的
+      await expect(bi.readBrowserCookies('chrome::Default', YT_SITE)).rejects.toMatchObject({
+        code: 'no_login',
+        message: 'Chrome（Default）里没有 B站登录信息'
+      })
+    })
+
+    it('Firefox：以 SAPISID 判断登录，只读 youtube.com 的 cookie', async () => {
+      const profiles = support('Firefox/Profiles')
+      firefoxDb(join(profiles, 'a.yt/cookies.sqlite'), [
+        { host: '.youtube.com', name: 'SAPISID', value: 'ff-sap', expiry: FUTURE * 1000 },
+        { host: 'www.youtube.com', name: 'PREF', value: 'p', expiry: FUTURE },
+        { host: '.bilibili.com', name: 'SESSDATA', value: 's', expiry: FUTURE },
+        { host: '.google.com', name: 'SAPISID', value: 'g', expiry: FUTURE }
+      ])
+      firefoxDb(join(profiles, 'b.bili/cookies.sqlite'), [
+        { host: '.bilibili.com', name: 'SESSDATA', value: 's', expiry: FUTURE },
+        { host: '.youtube.com', name: 'SAPISID', value: 'old', expiry: PAST }
+      ])
+      expect(byId(bi.listBrowserProfiles('firefox', YT_SITE)).map((p) => [p.id, p.hasBiliLogin])).toEqual([
+        ['firefox::a.yt', true],
+        ['firefox::b.bili', false]
+      ])
+      const cookies = await bi.readBrowserCookies('firefox::a.yt', YT_SITE)
+      expect(cookies).toEqual([
+        { domain: '.youtube.com', name: 'SAPISID', value: 'ff-sap', path: '/', secure: true, httpOnly: false, expires: FUTURE, sameSite: 'no_restriction' },
+        expect.objectContaining({ domain: 'www.youtube.com', name: 'PREF' })
+      ])
+      expect(leftovers()).toEqual([])
+    })
+
+    it('Firefox：没有 youtube.com 的 SAPISID 时抛 no_login', async () => {
+      firefoxDb(support('Firefox/Profiles/b.bili/cookies.sqlite'), [
+        { host: '.bilibili.com', name: 'SESSDATA', value: 's', expiry: FUTURE },
+        { host: '.google.com', name: 'SAPISID', value: 'g', expiry: FUTURE }
+      ])
+      await expect(bi.readBrowserCookies('firefox::b.bili', YT_SITE)).rejects.toMatchObject({ code: 'no_login' })
+    })
+
+    it('Safari：以 SAPISID 判断登录，只读 youtube.com 的 cookie', async () => {
+      safari([
+        { domain: '.youtube.com', name: 'SAPISID', value: 'sf-sap' },
+        { domain: '.bilibili.com', name: 'SESSDATA', value: 's' },
+        { domain: '.google.com', name: 'SAPISID', value: 'g' }
+      ])
+      expect(bi.listBrowserProfiles('safari', YT_SITE).map((p) => [p.id, p.hasBiliLogin])).toEqual([['safari::Default', true]])
+      const cookies = await bi.readBrowserCookies('safari::Default', YT_SITE)
+      expect(cookies.map((c) => [c.domain, c.name, c.value])).toEqual([['.youtube.com', 'SAPISID', 'sf-sap']])
+    })
+
+    it('找不到配置档时报 not_found', async () => {
+      await expect(bi.readBrowserCookies('chrome::Nope', YT_SITE)).rejects.toMatchObject({ code: 'not_found' })
+    })
+  })
+
+  describe('Windows', () => {
+    beforeEach(() => load('win32'))
+    const chromeRoot = (): string => localAppData('Google/Chrome/User Data')
+
+    it('SAPISID 全是应用绑定加密时检测出来、导入时报 app_bound；B站的 SESSDATA 是 v20 不影响', async () => {
+      chromeDb(join(chromeRoot(), 'Default/Cookies'), [
+        { host: '.youtube.com', name: 'SAPISID', enc: Buffer.from('v20bound-cookie') },
+        { host: '.bilibili.com', name: 'SESSDATA', value: 's' }
+      ])
+      chromeDb(localAppData('Microsoft/Edge/User Data/Default/Cookies'), [
+        yt('SAPISID', 'edge-sap'),
+        { host: '.youtube.com', name: 'SID', enc: Buffer.from('v20bound-cookie') },
+        { host: '.bilibili.com', name: 'SESSDATA', enc: Buffer.from('v20bound-cookie') }
+      ])
+      expect(byId(bi.listBrowserProfiles(undefined, YT_SITE)).map((p) => [p.id, p.hasBiliLogin, p.appBoundLogin])).toEqual([
+        ['chrome::Default', true, true],
+        ['edge::Default', true, undefined]
+      ])
+      await expect(bi.readBrowserCookies('chrome::Default', YT_SITE)).rejects.toMatchObject({ code: 'app_bound' })
+      // v20 的 SID 跳过，照样读出 SAPISID
+      const cookies = await bi.readBrowserCookies('edge::Default', YT_SITE)
+      expect(cookies.map((c) => [c.name, c.value])).toEqual([['SAPISID', 'edge-sap']])
+      expect(m.unprotect).not.toHaveBeenCalled()
+    })
+  })
+})
