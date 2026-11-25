@@ -3,8 +3,10 @@ import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { downloadedMatcher, downloadStatusMatcher } from '@shared/downloaded'
+import { siteOf } from '@shared/site'
 import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
+import { parseYtInput, ytTargetUrl } from '@shared/ytUrl'
 import type {
   DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, SourceDownloadChoice, SourceDownloadResult, Subscription
 } from '@shared/types'
@@ -17,6 +19,7 @@ import { resolveInput } from './bili/resolve'
 import { downloadedKeys } from './history'
 import { prepareEnqueueItems } from './enqueue'
 import { readJsonArray, writeJson } from './store'
+import { youtube } from './youtube/service'
 
 const TICK_MS = 60_000
 
@@ -24,7 +27,13 @@ const isAscendingTarget = (target: Target | null): boolean => target?.type === '
 /** 记住的已见条目上限，防止大收藏夹让文件无限变大 */
 const MAX_SEEN = 5000
 const DEFAULT_INTERVAL = 360
-const sourceKey = (input: string): string => JSON.stringify(parseInput(input) ?? input.trim())
+/** 同一来源的不同写法算同一个：B站按识别结果，YouTube 按规范链接 */
+const sourceKey = (input: string): string => {
+  const yt = parseYtInput(input)
+  return JSON.stringify(parseInput(input) ?? (yt ? ytTargetUrl(yt) : input.trim()))
+}
+/** YouTube 播放列表一次最多读这么多项来找新内容 */
+const YT_PLAYLIST_SCAN = 5000
 
 interface SourceDownload {
   input: string
@@ -97,7 +106,7 @@ export class SubscriptionManager extends EventEmitter {
   assignLegacy(mid: number): void {
     let changed = false
     for (const sub of this.subs) {
-      if (sub.accountMid !== undefined) continue
+      if (sub.accountMid !== undefined || siteOf(sub) !== 'bili') continue
       sub.accountMid = mid
       // 旧的「稍后再看」可能查过别的账号。绑定后用新账号的列表建立基线。
       if (parseInput(sub.input)?.type === 'watchlater') {
@@ -204,10 +213,12 @@ export class SubscriptionManager extends EventEmitter {
     candidates: MediaItem[],
     options: DownloadOptions,
     beforeQueue: () => void,
-    accountMid?: number
+    accountMid?: number,
+    ytAccount?: string
   ): Promise<{ count: number; pending: MediaItem[]; note?: string }> {
     const unique = new Map(candidates.map((item) => [item.key, item]))
-    const { items, failed, note } = await prepareEnqueueItems([...unique.values()])
+    const list = [...unique.values()]
+    const { items, failed, note } = await (ytAccount === undefined ? prepareEnqueueItems(list) : prepareEnqueueItems(list, ytAccount))
     beforeQueue()
     const history = new Set(downloadedKeys())
     const missing = items.filter((item) => !history.has(item.key))
@@ -218,7 +229,8 @@ export class SubscriptionManager extends EventEmitter {
       meta: result.meta,
       items: missing,
       options,
-      accountMid
+      accountMid,
+      ytAccount
     }) : 0
     const failedKeys = new Set(failed.map((item) => item.key))
     return { count, pending: [...unique.values()].filter((item) => failedKeys.has(item.key)), note }
@@ -319,6 +331,7 @@ export class SubscriptionManager extends EventEmitter {
   async check(id: string): Promise<Subscription[]> {
     const sub = this.subs.find((x) => x.id === id)
     if (!sub) return this.subs
+    if (siteOf(sub) === 'youtube') return this.checkYoutube(sub)
     if (!this.accounts) return this.checkSource(sub)
     const { accountMid } = sub
     if (accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(accountMid))) return this.subs
@@ -402,12 +415,63 @@ export class SubscriptionManager extends EventEmitter {
     return this.subs
   }
 
+  /**
+   * YouTube 订阅：频道和个人列表新内容在最前，从第一页往后翻到见过的为止；
+   * 播放列表新视频一般加在最后、顺序也不固定，整个读一遍（最多 5000 项）再比对
+   */
+  private async checkYoutube(sub: Subscription): Promise<Subscription[]> {
+    const { id } = sub
+    if (this.checking.has(id) || this.downloading.has(this.workKey(sub.input, undefined)) || !this.subs.includes(sub)) return this.subs
+    this.checking.add(id)
+    try {
+      const service = youtube()
+      const account = service.currentAccount()
+      let r = await service.parse(sub.input)
+      if (!r) throw new Error(t('yt.notYoutubeLink'))
+      const seen = new Set(sub.seen)
+      const wasSeen = (item: MediaItem): boolean => seen.has(item.key)
+      const isDownloaded = downloadedMatcher(downloadedKeys())
+      let items = r.groups.flatMap((g) => g.items)
+      if (r.paging?.hasMore) {
+        if (parseYtInput(sub.input)?.type === 'playlist') {
+          const all = await loadAllPages(r, { maxItems: YT_PLAYLIST_SCAN })
+          r = all.result
+          items = r.groups.flatMap((g) => g.items)
+        } else if (!items.some(wasSeen)) {
+          items = [...items, ...await loadHeadPages(r.paging, wasSeen)]
+        }
+      }
+      if (!this.subs.includes(sub)) return this.subs
+      const pending = sub.pending ?? []
+      const retry = new Set(pending.map((item) => item.key))
+      const byKey = new Map(pending.map((item) => [item.key, item]))
+      for (const item of items) if (retry.has(item.key) || !(wasSeen(item) || isDownloaded(item))) byKey.set(item.key, item)
+      const candidates = sub.resetBaseline ? [] : [...byKey.values()].filter((item) => !item.unavailable)
+      const prepared = await this.prepareAndEnqueue(r, candidates, sub.options, () => {
+        if (!this.subs.includes(sub)) throw new Error(t('subs.sourceUnavailable'))
+      }, undefined, account)
+      if (prepared.count) this.emit('found', { title: sub.title, count: prepared.count, note: prepared.note })
+      this.remember(sub, [...items, ...byKey.values()], prepared.pending)
+      sub.resetBaseline = undefined
+      sub.lastNew = prepared.count
+      sub.lastError = prepared.note
+    } catch (e) {
+      if (!this.subs.includes(sub)) return this.subs
+      sub.lastError = e instanceof Error ? e.message : String(e)
+    } finally {
+      this.checking.delete(id)
+    }
+    sub.lastCheck = Date.now()
+    this.save()
+    return this.subs
+  }
+
   private workKey(input: string, mid: number | undefined): string {
     return this.accounts ? `${mid ?? ''}:${sourceKey(input)}` : sourceKey(input)
   }
 
   private due(sub: Subscription): boolean {
-    if (this.accounts) {
+    if (this.accounts && siteOf(sub) === 'bili') {
       if (sub.accountMid === undefined) return false
       if (['expired', 'removed'].includes(this.accounts.status(sub.accountMid))) return false
     }

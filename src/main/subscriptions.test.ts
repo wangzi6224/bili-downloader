@@ -29,6 +29,7 @@ vi.mock('./enqueue', () => ({ prepareEnqueueItems: h.prepare }))
 vi.mock('./auth/authGuard', () => ({ getAuthState: h.auth }))
 const { SubscriptionManager } = await import('./subscriptions')
 const { AuthExpiredError } = await import('./bili/http')
+const { setYoutube } = await import('./youtube/service')
 
 const OPTIONS = normalizeOptions({}, 80)
 const item = (key: string, extra: Partial<MediaItem> = {}): MediaItem => ({ key, kind: 'ugc', title: key, index: 1, cid: 1, ...extra })
@@ -671,5 +672,248 @@ describe('定时检查', () => {
     m.stop()
     await vi.advanceTimersByTimeAsync(5 * 60_000)
     expect(h.resolveInput).toHaveBeenCalledOnce()
+  })
+})
+
+describe('YouTube 订阅', () => {
+  const CHANNEL = 'https://www.youtube.com/@abc'
+  const PLAYLIST = 'https://www.youtube.com/playlist?list=PLabcdefghijk'
+  const yt = (id: string, extra: Partial<MediaItem> = {}): MediaItem => ({ key: `yt:${id}`, kind: 'youtube', title: id, index: 1, cid: 0, ytId: id, ...extra })
+  const ytResult = (items: MediaItem[], hasMore = false): ParseResult => ({
+    ...result(items),
+    kind: 'youtube',
+    title: '频道',
+    ...(hasMore ? { paging: { source: { type: 'yt' } as never, page: 1, total: 0, hasMore: true } } : {})
+  })
+  const ytSub = (o: Partial<Subscription> = {}): Subscription => sub({ id: 'y', input: CHANNEL, kind: 'youtube', ...o })
+  const service = { currentAccount: vi.fn<() => string | undefined>(), parse: vi.fn<(input: string) => Promise<ParseResult | undefined>>() }
+
+  beforeEach(() => {
+    service.currentAccount.mockReset().mockReturnValue('acc1')
+    service.parse.mockReset()
+    setYoutube(service as never)
+  })
+  afterEach(() => setYoutube(undefined))
+
+  it('只下载没见过、没下载过、还能下载的视频；入队和展开都带当前 YouTube 账号', async () => {
+    m.replaceAll([ytSub({ seen: ['yt:old'] })])
+    h.downloadedKeys.mockReturnValue(['yt:done'])
+    service.parse.mockResolvedValue(ytResult([yt('new'), yt('old'), yt('done'), yt('gone', { unavailable: '已删除' })]))
+    const found = vi.fn()
+    m.on('found', found)
+    const [s] = await m.check('y')
+    expect(service.parse).toHaveBeenCalledWith(CHANNEL)
+    expect(h.prepare).toHaveBeenCalledWith([yt('new')], 'acc1')
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ kind: 'youtube', items: [yt('new')], options: OPTIONS, accountMid: undefined, ytAccount: 'acc1' }))
+    expect(found).toHaveBeenCalledWith({ title: 't', count: 1, note: undefined })
+    expect(s).toMatchObject({ lastNew: 1, lastError: undefined })
+    expect(s.seen).toEqual(['yt:new', 'yt:old', 'yt:done', 'yt:gone'])
+    expect(s.lastCheck).toBeGreaterThan(0)
+    expect(saved()[0].seen).toEqual(s.seen)
+    expect(h.loadHeadPages).not.toHaveBeenCalled()
+  })
+
+  it('没选 YouTube 账号时不带账号', async () => {
+    service.currentAccount.mockReturnValue(undefined)
+    m.replaceAll([ytSub()])
+    service.parse.mockResolvedValue(ytResult([yt('new')]))
+    await m.check('y')
+    expect(h.prepare.mock.calls).toEqual([[[yt('new')]]])
+    expect(enqueue.mock.calls[0][0].ytAccount).toBeUndefined()
+  })
+
+  it('频道首页全是新视频时往后翻到见过的为止；首页有见过的就不翻', async () => {
+    m.replaceAll([ytSub({ seen: ['yt:old'] })])
+    service.parse.mockResolvedValue(ytResult([yt('n1'), yt('n2')], true))
+    h.loadHeadPages.mockResolvedValueOnce([yt('n3')])
+    await m.check('y')
+    const [paging, isSeen] = h.loadHeadPages.mock.calls[0]
+    expect(paging).toMatchObject({ page: 1, hasMore: true })
+    expect(isSeen(yt('old'))).toBe(true)
+    expect(isSeen(yt('n1'))).toBe(false)
+    expect(h.loadAllPages).not.toHaveBeenCalled()
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [yt('n1'), yt('n2'), yt('n3')] }))
+
+    h.loadHeadPages.mockClear()
+    service.parse.mockResolvedValue(ytResult([yt('n4'), yt('n1')], true))
+    await m.check('y')
+    expect(h.loadHeadPages).not.toHaveBeenCalled()
+    expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ items: [yt('n4')] }))
+  })
+
+  it('播放列表整个读一遍（最多 5000 项）再比对，新视频加在最后也能找到', async () => {
+    m.replaceAll([ytSub({ input: PLAYLIST, seen: ['yt:a'] })])
+    const first = ytResult([yt('a')], true)
+    service.parse.mockResolvedValue(first)
+    h.loadAllPages.mockResolvedValueOnce({ result: ytResult([yt('a'), yt('b'), yt('c')]), complete: true })
+    const [s] = await m.check('y')
+    expect(h.loadAllPages).toHaveBeenCalledWith(first, { maxItems: 5000 })
+    expect(h.loadHeadPages).not.toHaveBeenCalled()
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ items: [yt('b'), yt('c')] }))
+    expect(s.seen).toEqual(['yt:a', 'yt:b', 'yt:c'])
+  })
+
+  it('上次没加进去的待重试条目再试一次，展开失败的留到下次，说明记进 lastError', async () => {
+    const retry = yt('retry')
+    m.replaceAll([ytSub({ seen: ['yt:old'], pending: [retry] })])
+    service.parse.mockResolvedValue(ytResult([yt('old'), yt('new')]))
+    h.prepare.mockResolvedValueOnce({ items: [yt('new')], failed: [retry], note: '有 1 个没展开' })
+    const found = vi.fn()
+    m.on('found', found)
+    const [s] = await m.check('y')
+    expect(h.prepare).toHaveBeenCalledWith([retry, yt('new')], 'acc1')
+    expect(found).toHaveBeenCalledWith({ title: 't', count: 1, note: '有 1 个没展开' })
+    expect(s).toMatchObject({ lastNew: 1, lastError: '有 1 个没展开', pending: [retry] })
+    expect(s.seen).toEqual(['yt:old', 'yt:new'])
+  })
+
+  it('需要重建基线时只记为已见，不入队', async () => {
+    m.replaceAll([ytSub({ resetBaseline: true })])
+    service.parse.mockResolvedValue(ytResult([yt('a'), yt('b')]))
+    const [s] = await m.check('y')
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(s).toMatchObject({ seen: ['yt:a', 'yt:b'], lastNew: 0, resetBaseline: undefined })
+  })
+
+  it('不是 YouTube 链接或解析失败时记下原因，已见记录不变', async () => {
+    m.replaceAll([ytSub({ seen: ['yt:old'] })])
+    service.parse.mockResolvedValueOnce(undefined)
+    let [s] = await m.check('y')
+    expect(s.lastError).toBe('这不是 YouTube 链接')
+    service.parse.mockRejectedValueOnce(new Error('需要登录'))
+    ;[s] = await m.check('y')
+    expect(s.lastError).toBe('需要登录')
+    service.parse.mockRejectedValueOnce('网络断开')
+    ;[s] = await m.check('y')
+    expect(s).toMatchObject({ lastError: '网络断开', seen: ['yt:old'] })
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(saved()[0].lastError).toBe('网络断开')
+  })
+
+  it('读取期间订阅被删除：丢弃结果，不入队也不写回', async () => {
+    m.replaceAll([ytSub()])
+    service.parse.mockImplementation(async () => {
+      m.remove('y')
+      return ytResult([yt('a')])
+    })
+    expect(await m.check('y')).toEqual([])
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(saved()).toEqual([])
+  })
+
+  it('准备条目期间订阅被删除：不入队', async () => {
+    m.replaceAll([ytSub()])
+    service.parse.mockResolvedValue(ytResult([yt('a')]))
+    h.prepare.mockImplementationOnce(async (items: MediaItem[]) => {
+      m.remove('y')
+      return { items, failed: [] }
+    })
+    expect(await m.check('y')).toEqual([])
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('读取失败时订阅已被删除：不记错误', async () => {
+    m.replaceAll([ytSub()])
+    service.parse.mockImplementation(async () => {
+      m.remove('y')
+      throw new Error('失败')
+    })
+    expect(await m.check('y')).toEqual([])
+    expect(saved()).toEqual([])
+  })
+
+  it('同一个订阅正在检查时，再检查直接返回', async () => {
+    m.replaceAll([ytSub()])
+    let finish!: (r: ParseResult) => void
+    service.parse.mockReturnValue(new Promise<ParseResult>((r) => (finish = r)))
+    const first = m.check('y')
+    await m.check('y')
+    expect(service.parse).toHaveBeenCalledOnce()
+    finish(ytResult([]))
+    await first
+    await m.check('y')
+    expect(service.parse).toHaveBeenCalledTimes(2)
+  })
+
+  it('同一来源正在一键下载时跳过检查', async () => {
+    m.replaceAll([ytSub()])
+    let finish!: (r: ParseResult) => void
+    h.resolveInput.mockReturnValue(new Promise<ParseResult>((r) => (finish = r)))
+    const quick = m.downloadSource({ input: 'youtube.com/@abc/videos', defaults: OPTIONS, verifyAccount: vi.fn() })
+    await m.check('y')
+    expect(service.parse).not.toHaveBeenCalled()
+    finish(ytResult([]))
+    await quick
+  })
+
+  it('同一个频道、播放列表的不同写法算同一个来源，不能订阅两次', async () => {
+    await m.add(newSub({ input: CHANNEL, kind: 'youtube', currentKeys: [] }))
+    await expect(m.add(newSub({ input: 'youtube.com/@abc/videos', kind: 'youtube' }))).rejects.toThrow('已经订阅过这个来源')
+    await m.add(newSub({ input: PLAYLIST, kind: 'youtube' }))
+    await expect(m.add(newSub({ input: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabcdefghijk', kind: 'youtube' })))
+      .rejects.toThrow('已经订阅过这个来源')
+    expect(m.list()).toHaveLength(2)
+  })
+
+  it('有多账号时 YouTube 订阅不要求 B站账号，到期照常检查；B站订阅没绑账号或账号失效时不检查', async () => {
+    vi.useFakeTimers()
+    const status = (mid: number) => (mid === 9 ? 'expired' : 'ready') as 'expired' | 'ready'
+    const run = vi.fn(async (_mid: number | undefined): Promise<unknown> => [])
+    m = new SubscriptionManager(enqueue, { status, run: run as never })
+    m.replaceAll([ytSub(), sub({ id: 'none', input: 'none' }), sub({ id: 'exp', input: 'exp', accountMid: 9 }), sub({ id: 'ok', input: 'ok', accountMid: 8 })])
+    service.parse.mockResolvedValue(ytResult([]))
+    m.start()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(service.parse).toHaveBeenCalledWith(CHANNEL)
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(run.mock.calls.map((c) => c[0])).toEqual([8])
+  })
+
+  it('旧订阅绑定 B站账号时跳过 YouTube 订阅；稍后再看清空基线，没有要绑的就不保存', () => {
+    m.replaceAll([ytSub(), sub({ id: 'b', input: 'fav', seen: ['x'] }), sub({ id: 'w', input: 'watchlater', seen: ['x'], pending: [item('p')] })])
+    const update = vi.fn()
+    m.on('update', update)
+    m.assignLegacy(7)
+    expect(m.list()[0].accountMid).toBeUndefined()
+    expect(m.list()).toMatchObject([
+      { id: 'y' },
+      { id: 'b', accountMid: 7, seen: ['x'] },
+      { id: 'w', accountMid: 7, seen: [], pending: undefined, resetBaseline: true }
+    ])
+    expect(update).toHaveBeenCalledOnce()
+    m.assignLegacy(8)
+    expect(update).toHaveBeenCalledOnce()
+  })
+})
+
+describe('按账号检查', () => {
+  it('账号就绪时只在它名下有到期订阅时检查一轮', async () => {
+    const run = vi.fn(async (_mid: number | undefined): Promise<unknown> => [])
+    m = new SubscriptionManager(enqueue, { status: () => 'ready', run: run as never })
+    m.replaceAll([sub({ id: 'a', input: 'a', accountMid: 1 }), sub({ id: 'b', input: 'b', accountMid: 2, lastCheck: Date.now() })])
+    await m.accountReady(2)
+    expect(run).not.toHaveBeenCalled()
+    vi.useFakeTimers()
+    const ready = m.accountReady(1)
+    await vi.advanceTimersByTimeAsync(2000)
+    await ready
+    expect(run.mock.calls.map((c) => c[0])).toEqual([1])
+  })
+
+  it('检查出错时记下原因；登录过期或订阅已删除时不记', async () => {
+    const run = vi.fn()
+    m = new SubscriptionManager(enqueue, { status: () => 'ready', run })
+    m.replaceAll([sub({ id: 'a', input: 'a', accountMid: 1 })])
+    run.mockRejectedValueOnce(new Error('风控'))
+    expect((await m.check('a'))[0]).toMatchObject({ lastError: '风控' })
+    run.mockRejectedValueOnce('断网')
+    expect((await m.check('a'))[0].lastError).toBe('断网')
+    run.mockRejectedValueOnce(new AuthExpiredError())
+    expect((await m.check('a'))[0].lastError).toBe('断网')
+    run.mockImplementationOnce(async () => {
+      m.remove('a')
+      throw new Error('x')
+    })
+    expect(await m.check('a')).toEqual([])
   })
 })
