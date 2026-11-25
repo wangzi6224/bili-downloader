@@ -106,6 +106,8 @@ Quando chiudi la finestra e l'app resta in background, fai clic sulla sua icona 
 
 Una volta installata, l'app controlla da sola gli aggiornamenti. L'app per macOS, il programma di installazione per Windows e l'AppImage per Linux li installano direttamente; la versione deb mostra le note di rilascio e ti rimanda alla pagina di download.
 
+Chi usa Windows con la versione 0.20.1 o precedente deve installare manualmente [la 0.20.2](https://github.com/wangzi6224/bili-downloader/releases/tag/v0.20.2) una volta; da quel momento gli aggiornamenti automatici funzioneranno normalmente. Se l'installazione di un aggiornamento Windows non riesce, la finestra di aggiornamento ne mostra il motivo.
+
 ## Rimozione della filigrana con IA
 
 Filigrana dell'autore piantata nell'angolo? Ci sono due modi per toglierla:

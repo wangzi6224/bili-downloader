@@ -26,4 +26,4 @@ The script rebuilds locally, then verifies that the worktree is clean, local `ma
 
 The website version in this directory is independent of the desktop app version at the repository root; app release tags never deploy the website. The desktop release workflow and this website workflow do not share version numbers or artifacts.
 
-The branch explorer is an illustrative client-side interaction. It does not parse links or download content in the browser; those actions belong to the desktop app.
+The branch explorer is an illustrative client-side interaction. It does not parse links or download content in the browser; those actions belong to the desktop app, whose current features and setup are documented in the root [README](../README.md) and [release notes](../CHANGELOG.md).

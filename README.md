@@ -106,6 +106,8 @@ When the window is closed to the background, click the tray icon to bring it bac
 
 Once installed, the app checks for updates itself. The macOS app, Windows installer and Linux AppImage install updates in place; the deb version shows the release notes and points you to the download page.
 
+Windows users on 0.20.1 or earlier need to install [0.20.2 manually once](https://github.com/wangzi6224/bili-downloader/releases/tag/v0.20.2); after that, automatic updates work normally. If a Windows update fails to install, the update window now shows the reason.
+
 ## AI watermark removal
 
 Uploader watermark stuck in the corner? There are two ways to get rid of it:

@@ -104,6 +104,8 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 
 安装后应用会自动检查更新。macOS 版、Windows 安装器和 Linux 的 AppImage 版可以直接下载安装新版本；deb 版会显示更新说明，并引导你前往下载页面。
 
+Windows 用户如果当前是 0.20.1 或更早版本，需要从 [0.20.2 发布页](https://github.com/wangzi6224/bili-downloader/releases/tag/v0.20.2) 手动安装一次，之后即可正常自动更新。若 Windows 自动安装失败，更新窗口现在会显示失败原因。
+
 ## AI 去水印
 
 视频角落挂着 UP 主水印，看着碍眼？两种去法任你选：

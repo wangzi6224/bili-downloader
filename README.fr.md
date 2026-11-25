@@ -106,6 +106,8 @@ Quand la fenêtre est fermée et que l'application continue en arrière-plan, cl
 
 Une fois installée, l'application vérifie elle-même les mises à jour. L'application macOS, le programme d'installation Windows et l'AppImage Linux les installent directement ; la version deb affiche les notes de version et vous renvoie vers la page de téléchargement.
 
+Les utilisateurs de Windows sous la version 0.20.1 ou antérieure doivent installer manuellement la [version 0.20.2](https://github.com/wangzi6224/bili-downloader/releases/tag/v0.20.2) une fois ; les mises à jour automatiques fonctionneront ensuite normalement. Si l'installation d'une mise à jour Windows échoue, la fenêtre de mise à jour indique désormais la raison.
+
 ## Suppression du filigrane par IA
 
 Le filigrane du créateur squatte un coin de l'image ? Deux façons de s'en débarrasser :
