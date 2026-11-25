@@ -43,6 +43,7 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | **Max out the quality** <br> 8K, Dolby Vision, HDR: if your account can watch it, you can download it. Pick AVC / HEVC / AV1, get audio up to Dolby Atmos and Hi-Res FLAC, and keep the original streams with no re-encoding by default. | **Just drop a link** <br> Single videos, multi-part videos, collections, anime, movies, courses, favorites, Watch Later, uploader pages, audio, rankings… whole lists parse in one go, and b23.tv short links and share text work too. |
 | **AI watermark removal** <br> Corner watermarks get spotted automatically, or draw a box yourself; turn on “AI refine” and it repaints what's underneath, frame by frame. | **Subtitles, danmaku, the lot** <br> CC subtitles as `.srt` or embedded in the video, danmaku as `.ass` / `.xml`, plus chapters, covers and NFO for Kodi / Jellyfin. |
 | **Queue it and walk away** <br> Resumable, multi-threaded downloads with speed limits, auto-retry and naming templates; subscribe to uploaders, favorites or collections and new uploads download themselves. | **Let AI do it for you** <br> A built-in local MCP server lets Claude and other AI clients search, parse links, queue downloads, remove watermarks and keep an eye on progress. |
+| **YouTube too** <br> Videos, Shorts, playlists, channels and YouTube Music, up to 8K / HDR, with manual and auto-generated subtitles, chapters, SponsorBlock segment marks, and channel subscriptions that download new videos for you. | **Switch platforms in one click** <br> Click at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y) to switch between Bilibili and YouTube: two interfaces, and downloads on either side keep running. |
 
 > [!NOTE]
 > This is an unofficial project and is not affiliated with or endorsed by bilibili. Only download content your own account is allowed to watch, for personal use, and respect the rights of creators and bilibili's terms of service.
@@ -119,6 +120,22 @@ Uploader watermark stuck in the corner? There are two ways to get rid of it:
 - AI refine shows an estimated time before it starts and uses the GPU when one is available. The model (~200 MB) is not in the installer; it is downloaded the first time you use AI refine and checked against its SHA-256.
 - Removing a watermark re-encodes the video. HDR and Dolby Vision videos are skipped.
 
+## YouTube downloads
+
+Click **YouTube** at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y) to switch to the YouTube interface, then paste a link. Switching only changes the interface: Bilibili and YouTube each have their own download list, parse history and subscriptions, downloads on the other side keep running, and the switcher shows how many are still going there.
+
+- **Links**: videos (including youtu.be), Shorts, live replays, playlists, channels (@handle, /channel/…, with the Videos / Shorts / Live / Playlists tabs), YouTube Music; after importing a login, also Watch Later, Liked videos, Subscriptions and History
+- **Quality and formats**: up to 8K, HDR and 60 fps; codec priority AVC / VP9 / AV1; Opus or AAC audio; MP4 / MKV / WebM; audio only or video only
+- **Extras**: manual and auto-generated subtitles (choose languages, save as `.srt` or embed), chapters, sponsor segments marked as chapters with [SponsorBlock](https://sponsor.ajay.app), covers, NFO
+- **Queue**: shares the download queue with Bilibili, so pause, resume, resumable downloads, auto-retry and skip-downloaded all work the same; YouTube has its own download folder and its own limit on simultaneous downloads
+- **Subscriptions**: subscribe to a playlist or channel and new videos download automatically
+
+YouTube support is built on the open-source [yt-dlp](https://github.com/yt-dlp/yt-dlp). It is downloaded the first time you switch to YouTube (about 50 MB, from the official GitHub releases, verified with sha256) and updated automatically in the background, so the installer stays the same size; audio and video are still merged with the bundled ffmpeg.
+
+**Signing in** (optional): under **Settings → General → YouTube accounts**, import your YouTube login from a browser or paste cookies (`cookies.txt` or Cookie-Editor JSON). Signing in lets you download members-only and age-restricted videos and your own lists, and makes YouTube's “confirm you're not a bot” checks less likely. Only `youtube.com` cookies are kept, encrypted on your computer with the system's secure storage (macOS Keychain, Windows DPAPI).
+
+**Network**: the proxy under **Settings → Network & advanced** applies to YouTube as well. With the system proxy, YouTube's address is resolved on its own (so PAC rules that send Bilibili direct and YouTube through a proxy work), and a manual SOCKS proxy works for YouTube.
+
 ## Let AI do the downloading (MCP)
 
 Switch on the app's local [Model Context Protocol](https://modelcontextprotocol.io) server and AI clients like Claude can search bilibili, queue downloads and track progress for you. Once it's set up, just say what you want:
@@ -184,6 +201,22 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | Import a browser login or use `method=qr`. Use `mode=add` to add an account or `mode=reauth` with `account_mid` to sign a specific account back in |
 | `get_login_status` | Track a login, check a specified account, or list local browsers. Pass `wait_seconds` to wait for the scan to complete |
 
+YouTube tools (batch, task, settings and history tools are shared; pass `platform` to look at one platform only):
+
+| Tool | Description |
+| --- | --- |
+| `youtube_get_status` | YouTube component (yt-dlp) version and updates, login, proxy, and a summary of the YouTube queue |
+| `youtube_parse_link` | Parse videos, Shorts, playlists, channels, YouTube Music and personal lists; lists are paged automatically and can be read in chunks |
+| `youtube_download_batch` | Download the videos in a link (`url` with `ids` or `all`) or a list of videos (`videos`) as one batch; `quality` is the maximum height, and `options` sets codecs, container, audio, subtitle languages, SponsorBlock and more |
+| `youtube_search_videos` / `youtube_search_channels` | Search videos (sorted by relevance, upload date, views or rating, filtered by upload time and duration) and channels |
+| `youtube_get_video_info` | Details for up to 20 videos: views, likes, comments, tags, description, chapters, downloadable qualities and subtitle languages |
+| `youtube_get_video_transcript` | Full subtitles with timestamps and chapters, manual subtitles first, choose a language, read in chunks |
+| `youtube_get_video_comments` | Comments and replies, top or newest, paged |
+| `youtube_get_download_quality` | Check which qualities can be downloaded signed out and with each YouTube account |
+| `youtube_start_login` / `youtube_get_login_status` | Import the YouTube login from a browser and check the login |
+| `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | List, switch or remove YouTube accounts; removing needs the user to confirm in a dialog |
+| `youtube_update_engine` | Install or update the YouTube component |
+
 </details>
 
 Parsing, downloading, and Bilibili lookup tools accept `account_mid` and default to the sidebar account. Batch, task, and history queries show all accounts when the field is omitted. Pass `null` to find older records with unknown ownership. Download settings apply to all accounts.
@@ -243,6 +276,18 @@ The server listens only on `127.0.0.1` (the port is configurable), requires the 
 - Subscriptions: check favorites, collections or uploaders on a schedule and download new items automatically
 - Parse history, clipboard watching, light / dark theme, run in the background, import / export settings
 - In-app updates from GitHub Releases, with release notes and an option to skip a version
+
+</details>
+
+<details>
+<summary>YouTube</summary>
+
+- Videos, Shorts, live replays, playlists, every channel tab, YouTube Music; Watch Later, Liked videos, Subscriptions and History when signed in
+- Up to 8K / HDR / 60 fps, codec priority AVC / VP9 / AV1, Opus / AAC audio, MP4 / MKV / WebM
+- Manual and auto-generated subtitles (choose languages), chapters, SponsorBlock segment marks, covers, NFO
+- Multiple YouTube accounts; compare downloadable quality per account
+- Subscribe to playlists and channels; separate download folder and simultaneous download limit
+- Switch between the Bilibili and YouTube interfaces in one click, downloads on both sides are unaffected
 
 </details>
 
@@ -320,6 +365,7 @@ Yes. Since v0.13.0, the interface supports English, Simplified Chinese, Japanese
 ## Limitations
 
 - DRM-protected content, region-locked content, and content your account is not allowed to watch cannot be downloaded. Those tasks are marked as **无法下载** (cannot be downloaded) with the reason.
+- YouTube: DRM content such as YouTube Movies and Premium-only content are not supported; live streams can be downloaded after they end; auto-translated subtitles are often rate-limited by YouTube, retry later if they fail.
 - Windows x64, macOS x64 / arm64 and Linux x64 are supported. Windows and Linux ARM builds are not provided.
 
 ## Building from source
@@ -366,6 +412,7 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 ## Acknowledgements
 
 - [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) for its documentation of the bilibili APIs
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) for YouTube parsing and downloading, and [SponsorBlock](https://sponsor.ajay.app) for sponsor segment data
 - [FFmpeg](https://ffmpeg.org) and [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
 - [Electron](https://www.electronjs.org), [electron-vite](https://electron-vite.org), [electron-builder](https://www.electron.build)
 - [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [zustand](https://github.com/pmndrs/zustand), [Lucide](https://lucide.dev)

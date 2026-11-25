@@ -41,8 +41,9 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | | |
 | --- | --- |
 | **화질은 끝까지** <br> 8K, Dolby Vision, HDR: 내 계정으로 볼 수 있으면 받을 수 있어요. AVC / HEVC / AV1 중에 고르고, 오디오는 Dolby Atmos와 Hi-Res FLAC까지. 기본은 재인코딩 없이 원본 스트림 그대로예요. | **링크만 던지면 끝** <br> 단일 동영상, 여러 파트로 된 동영상, 컬렉션, 애니메이션, 영화, 강좌, 즐겨찾기, 나중에 보기, 업로더 페이지, 오디오, 랭킹… 목록도 통째로 한 번에 분석하고, b23.tv 단축 링크나 공유 문구도 그대로 돼요. |
-| **AI 워터마크 제거** <br> 모서리 워터마크는 알아서 찾아내고, 직접 박스를 그려도 돼요. 'AI 보정'을 켜면 그 아래 화면을 프레임마다 다시 그려 줘요. | **자막, 탄막, 전부 다** <br> CC 자막은 `.srt`로 따로 저장하거나 영상에 삽입, 탄막은 `.ass` / `.xml`, 여기에 챕터, 커버, Kodi / Jellyfin용 NFO까지. |
-| **대기열에 넣고 딴 거 하세요** <br> 이어받기, 멀티스레드 다운로드, 속도 제한, 자동 재시도, 이름 템플릿까지. 업로더, 즐겨찾기, 컬렉션을 구독해 두면 새 업로드는 알아서 받아져요. | **AI한테 시키세요** <br> 내장 로컬 MCP 서버 덕분에 Claude 같은 AI 클라이언트가 검색, 링크 분석, 다운로드 추가, 워터마크 제거, 진행 상황 체크까지 해 줘요. |
+| **AI 워터마크 제거** <br> 모서리 워터마크는 알아서 찾아내고, 직접 박스를 그려도 돼요. 'AI 보정'을 켜면 그 아래 화면을 프레임마다 다시 그려 줘요. | **자막, 탄막, 전부 다** <br> CC 자막은 `.srt`로 따로 저장하거나 영상에 삽입, 탄막은 `.ass` / `.xml`, 여기에 챕터, 표지, Kodi / Jellyfin용 NFO까지. |
+| **대기열에 넣고 딴 거 하세요** <br> 이어받기, 멀티스레드 다운로드, 속도 제한, 자동 재시도, 이름 템플릿까지. 업로더, 즐겨찾기, 컬렉션을 구독하면 새 업로드가 자동으로 다운로드돼요. | **AI한테 시키세요** <br> 내장 로컬 MCP 서버 덕분에 Claude 같은 AI 클라이언트가 검색, 링크 분석, 다운로드 추가, 워터마크 제거, 진행 상황 체크까지 해 줘요. |
+| **YouTube도 돼요** <br> 동영상, Shorts, 재생목록, 채널, YouTube Music을 최대 8K / HDR로. 직접 만든 자막과 자동 생성 자막, 챕터, SponsorBlock 구간 표시까지. 채널을 구독하면 새 동영상이 자동으로 다운로드돼요. | **클릭 한 번으로 플랫폼 전환** <br> 사이드바 맨 위를 클릭하거나 ⌘⇧Y / Ctrl+Shift+Y를 누르면 bilibili와 YouTube를 오가요. 화면은 두 개, 양쪽 다운로드는 서로 영향 없이 계속돼요. |
 
 > [!NOTE]
 > 이 프로젝트는 비공식 도구이며 bilibili와 아무런 관련이 없고 승인을 받지도 않았습니다. 본인 계정으로 시청 권한이 있는 콘텐츠만 개인 용도로 다운로드하고, 창작자의 권리와 bilibili 이용약관을 존중해 주세요.
@@ -119,6 +120,22 @@ macOS 12 이상이 필요합니다.
 - AI 보정은 시작 전에 예상 소요 시간을 보여 주며, GPU가 있으면 GPU를 사용합니다. 모델(약 200MB)은 설치 파일에 들어 있지 않으며, AI 보정을 처음 쓸 때 다운로드되고 SHA-256으로 검증됩니다.
 - 워터마크를 제거하면 영상을 재인코딩합니다. HDR과 Dolby Vision 영상은 건너뜁니다.
 
+## YouTube 다운로드
+
+사이드바 맨 위의 **YouTube**를 클릭하거나 ⌘⇧Y / Ctrl+Shift+Y를 누르면 YouTube 화면으로 바뀌고, 링크를 붙여넣기만 하면 돼요. 바뀌는 건 화면뿐이에요. bilibili와 YouTube는 다운로드 목록, 분석 기록, 구독을 각자 따로 갖고, 다른 쪽에서 진행 중인 다운로드는 그대로 계속돼요. 전환 버튼에는 그쪽에서 아직 받고 있는 개수가 표시돼요.
+
+- **지원하는 링크**: 동영상(youtu.be 포함), Shorts, 라이브 다시보기, 재생목록, 채널(@handle, /channel/…, 동영상 / Shorts / 라이브 / 재생목록 탭), YouTube Music. 로그인을 가져오면 나중에 볼 동영상, 좋아요 표시한 동영상, 구독, 시청 기록도
+- **화질과 포맷**: 최대 8K, HDR, 60fps. 코덱 우선순위 AVC / VP9 / AV1, 오디오 Opus 또는 AAC, 컨테이너 MP4 / MKV / WebM. 오디오만 또는 영상만도 가능
+- **추가 콘텐츠**: 직접 만든 자막과 자동 생성 자막(언어 선택, `.srt`로 저장하거나 영상에 삽입), 챕터, [SponsorBlock](https://sponsor.ajay.app)으로 스폰서 구간을 챕터로 표시, 표지 이미지, NFO
+- **대기열**: bilibili와 다운로드 대기열을 함께 쓰므로 일시정지, 재개, 이어받기, 자동 재시도, 이미 받은 항목 건너뛰기가 모두 똑같이 동작. YouTube 전용 다운로드 폴더와 동시 다운로드 수 제한도 따로 있음
+- **구독**: 재생목록이나 채널을 구독하면 새 동영상을 자동으로 다운로드
+
+YouTube 지원은 오픈소스 [yt-dlp](https://github.com/yt-dlp/yt-dlp)를 기반으로 해요. 처음 YouTube로 전환할 때 내려받고(약 50 MB, GitHub 공식 릴리스에서 받아 sha256으로 검증) 이후에는 백그라운드에서 자동으로 업데이트되므로 설치 파일 크기는 그대로예요. 오디오와 영상을 합치는 건 여전히 내장 ffmpeg가 맡아요.
+
+**로그인**(선택): **설정 → 일반 → YouTube 계정**에서 브라우저의 YouTube 로그인을 가져오거나 쿠키를 붙여넣으세요(`cookies.txt` 또는 Cookie-Editor JSON). 로그인하면 회원 전용 동영상, 연령 제한 동영상과 내 목록도 받을 수 있고, YouTube의 '로봇이 아닙니다' 확인도 덜 받아요. `youtube.com` 쿠키만 보관하며, 시스템 보안 저장소(macOS 키체인, Windows DPAPI)로 암호화해 이 컴퓨터에 저장해요.
+
+**네트워크**: **설정 → 네트워크 및 고급**의 프록시는 YouTube에도 똑같이 적용돼요. 시스템 프록시를 쓰면 YouTube 주소를 따로 판단하고(bilibili는 직접 연결, YouTube는 프록시를 거치는 PAC 규칙도 문제없어요), 수동 설정에서는 YouTube에 SOCKS 프록시도 쓸 수 있어요.
+
 ## 다운로드는 AI한테 맡기기 (MCP)
 
 앱의 로컬 [Model Context Protocol](https://modelcontextprotocol.io) 서버를 켜면 Claude 같은 AI 클라이언트가 bilibili 검색, 다운로드 추가, 진행 상황 확인을 대신 해 줘요. 한 번 설정해 두면 원하는 걸 그냥 말하면 돼요:
@@ -181,6 +198,22 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | 앱이 로그인되어 있지 않을 때 로그인: 사용자 브라우저의 로그인 정보를 가져오거나(Chrome 우선, 읽을 수 있는 브라우저부터 사용) `method=qr`로 로그인 창을 열어 QR 코드를 스캔 |
 | `get_login_status` | 로그인 진행 상황 확인, 이 컴퓨터의 브라우저 목록 조회. `wait_seconds`를 주면 로그인에 성공하는 즉시 반환되므로 에이전트가 스캔 완료를 알 수 있음 |
 
+YouTube 도구(배치, 작업, 설정, 기록 도구는 양쪽이 함께 쓰며, `platform`을 주면 한 플랫폼만 볼 수 있음):
+
+| 도구 | 설명 |
+| --- | --- |
+| `youtube_get_status` | YouTube 구성 요소(yt-dlp) 버전과 업데이트, 로그인, 프록시, YouTube 대기열 요약 |
+| `youtube_parse_link` | 동영상, Shorts, 재생목록, 채널, YouTube Music, 개인 목록 분석. 목록은 자동으로 페이지를 넘기고 나눠서 읽을 수 있음 |
+| `youtube_download_batch` | 링크 안의 동영상(`url`과 `ids` 또는 `all`)이나 동영상 목록(`videos`)을 하나의 배치로 다운로드. `quality`는 영상의 최대 세로 픽셀 수이고, `options`로 코덱, 컨테이너, 오디오, 자막 언어, SponsorBlock 등을 설정 |
+| `youtube_search_videos` / `youtube_search_channels` | 동영상(관련도, 업로드 날짜, 조회수, 평점순 정렬, 업로드 시기와 길이로 필터) 및 채널 검색 |
+| `youtube_get_video_info` | 최대 20개 동영상의 상세 정보: 조회수, 좋아요 수, 댓글 수, 태그, 설명, 챕터, 다운로드 가능한 화질, 자막 언어 |
+| `youtube_get_video_transcript` | 타임스탬프가 붙은 자막 전문과 챕터. 직접 만든 자막 우선, 언어 지정 가능, 나눠서 읽기 |
+| `youtube_get_video_comments` | 댓글과 답글을 인기순 또는 최신순으로, 페이지 단위로 읽기 |
+| `youtube_get_download_quality` | 로그인 없이, 그리고 YouTube 계정별로 다운로드할 수 있는 화질 확인 |
+| `youtube_start_login` / `youtube_get_login_status` | 브라우저에서 YouTube 로그인 가져오기, 로그인 상태 확인 |
+| `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | YouTube 계정 조회, 전환, 제거. 제거하려면 사용자가 직접 대화 상자에서 확인해야 함 |
+| `youtube_update_engine` | YouTube 구성 요소 설치 또는 업데이트 |
+
 </details>
 
 서버는 `127.0.0.1`에서만 수신하며(포트 변경 가능), Bearer 토큰이 필수이고, DNS 리바인딩을 막기 위해 `Host` / `Origin` 헤더를 검사합니다. 토큰은 언제든 다시 생성할 수 있습니다.
@@ -211,7 +244,7 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 <details>
 <summary>추가 콘텐츠</summary>
 
-- 커버: 이미지로 저장하거나 파일에 삽입
+- 표지: 이미지로 저장하거나 파일에 삽입
 - CC 자막: `.srt`로 저장하거나 동영상에 삽입
 - 탄막(댓글): `.ass` 및/또는 `.xml`, 글꼴 크기·불투명도·표시 시간 조절 가능
 - bilibili 진행 바의 구간을 실제 챕터로 기록
@@ -238,6 +271,18 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 - 구독: 즐겨찾기, 컬렉션, 업로더 등을 주기적으로 확인해 새 콘텐츠를 자동으로 다운로드
 - 분석 기록, 클립보드 감시, 라이트 / 다크 테마, 백그라운드 실행, 설정 가져오기 / 내보내기
 - GitHub Releases를 통한 앱 내 업데이트(업데이트 내용 표시, 특정 버전 건너뛰기 지원)
+
+</details>
+
+<details>
+<summary>YouTube</summary>
+
+- 동영상, Shorts, 라이브 다시보기, 재생목록, 채널의 모든 탭, YouTube Music. 로그인하면 나중에 볼 동영상, 좋아요 표시한 동영상, 구독, 시청 기록도
+- 최대 8K / HDR / 60fps, 코덱 우선순위 AVC / VP9 / AV1, Opus / AAC 오디오, MP4 / MKV / WebM
+- 직접 만든 자막과 자동 생성 자막(언어 선택), 챕터, SponsorBlock 구간 표시, 표지 이미지, NFO
+- 여러 YouTube 계정 지원, 계정별 다운로드 가능 화질 비교
+- 재생목록과 채널 구독, 별도의 다운로드 폴더와 동시 다운로드 수 제한
+- 클릭 한 번으로 bilibili / YouTube 화면 전환, 양쪽 다운로드에는 영향 없음
 
 </details>
 
@@ -315,6 +360,7 @@ AI 보정은 모든 프레임을 다시 그리기 때문에, 특히 GPU가 없�
 ## 제한 사항
 
 - DRM으로 보호된 콘텐츠, 지역 제한 콘텐츠, 계정에 시청 권한이 없는 콘텐츠는 다운로드할 수 없습니다. 이런 작업은 **无法下载**(다운로드 불가)로 표시되고 이유가 함께 나옵니다.
+- YouTube: YouTube Movies 같은 DRM 콘텐츠와 Premium 전용 콘텐츠는 지원하지 않습니다. 라이브 방송은 끝난 뒤에 다운로드할 수 있습니다. 자동 번역 자막은 YouTube가 요청을 자주 제한하므로, 실패하면 잠시 후 다시 시도하세요.
 - Windows x64, macOS x64 / arm64, Linux x64를 지원합니다. Windows와 Linux용 ARM 버전은 제공하지 않습니다.
 
 ## 소스에서 빌드
@@ -340,7 +386,7 @@ npm run build:win    # Windows에서 실행: dist/에 x64용 NSIS 설치 프로�
 ```
 src/main/auth               로그인: 쿠키 저장, 앱 내 로그인 창, 브라우저에서 가져오기, 만료 감지
 src/main/bili               bilibili API: WBI 서명, 동영상 / 애니메이션 / 강좌 / 목록 분석, 스트림, 자막, 탄막
-src/main/download           다운로드 대기열, 이어받기, ffmpeg 병합, 추가 콘텐츠(커버, 자막, NFO…)
+src/main/download           다운로드 대기열, 이어받기, ffmpeg 병합, 추가 콘텐츠(표지, 자막, NFO…)
 src/main/watermark          워터마크 감지와 제거(ffmpeg delogo), ai/는 AI 보정(onnxruntime 위의 LaMa 모델)
 src/main/net                프록시와 CDN 선택
 src/main/update             앱 내 업데이트: update.json 확인, 다운로드 검증, .app / AppImage / NSIS 업데이트 설치
@@ -361,6 +407,7 @@ website                     제품 웹사이트(Next.js, GitHub Pages에 배포)
 ## 감사의 말
 
 - bilibili API 문서를 정리한 [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)
+- YouTube 분석과 다운로드를 맡는 [yt-dlp](https://github.com/yt-dlp/yt-dlp), 스폰서 구간 데이터를 제공하는 [SponsorBlock](https://sponsor.ajay.app)
 - [FFmpeg](https://ffmpeg.org)와 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
 - [Electron](https://www.electronjs.org), [electron-vite](https://electron-vite.org), [electron-builder](https://www.electron.build)
 - [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [zustand](https://github.com/pmndrs/zustand), [Lucide](https://lucide.dev)

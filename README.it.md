@@ -42,7 +42,8 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | --- | --- |
 | **Qualità al massimo** <br> 8K, Dolby Vision, HDR: se il tuo account può guardarlo, puoi scaricarlo. Scegli tra AVC / HEVC / AV1, audio fino a Dolby Atmos e FLAC Hi-Res, e di default tieni i flussi originali, senza ricodifica. | **Basta un link** <br> Video singoli, video in più parti, raccolte, anime, film, corsi, preferiti, «Guarda più tardi», pagine degli autori, audio, classifiche… interi elenchi analizzati in un colpo solo, e funzionano anche i link brevi b23.tv e i testi di condivisione. |
 | **Rimozione della filigrana con IA** <br> Le filigrane negli angoli vengono trovate in automatico, oppure tracci tu un riquadro; attiva il «Ritocco IA» e ricostruisce ciò che sta sotto, fotogramma per fotogramma. | **Sottotitoli, danmaku e tutto il resto** <br> Sottotitoli CC in `.srt` o incorporati nel video, danmaku in `.ass` / `.xml`, più capitoli, copertine e NFO per Kodi / Jellyfin. |
-| **Metti in coda e pensa ad altro** <br> Download multithread con ripresa, limite di velocità, nuovi tentativi automatici e modelli di denominazione; abbonati ad autori, preferiti o raccolte e i nuovi caricamenti si scaricano da soli. | **Lascia fare all'IA** <br> Un server MCP locale integrato permette a Claude e ad altri client IA di cercare, analizzare link, mettere in coda download, rimuovere filigrane e tenere d'occhio l'avanzamento. |
+| **Metti in coda e pensa ad altro** <br> Download multithread con ripresa, limite di velocità, nuovi tentativi automatici e modelli di denominazione; iscriviti agli aggiornamenti di autori, preferiti o raccolte e i nuovi caricamenti si scaricano da soli. | **Lascia fare all'IA** <br> Un server MCP locale integrato permette a Claude e ad altri client IA di cercare, analizzare link, mettere in coda download, rimuovere filigrane e tenere d'occhio l'avanzamento. |
+| **Anche YouTube** <br> Video, Shorts, playlist, canali e YouTube Music, fino a 8K / HDR, con sottotitoli manuali e generati automaticamente, capitoli, segmenti SponsorBlock contrassegnati e iscrizioni ai canali per scaricare automaticamente i nuovi video. | **Cambia piattaforma con un clic** <br> Fai clic in cima alla barra laterale (o premi ⌘⇧Y / Ctrl+Shift+Y) per passare da Bilibili a YouTube e viceversa: due interfacce, e i download di entrambe le parti continuano. |
 
 > [!NOTE]
 > Questo è un progetto non ufficiale, non affiliato né approvato da bilibili. Scarica solo contenuti che il tuo account è autorizzato a guardare, per uso personale, nel rispetto dei diritti dei creatori e dei termini di servizio di bilibili.
@@ -119,6 +120,22 @@ Filigrana dell'autore piantata nell'angolo? Ci sono due modi per toglierla:
 - Il ritocco IA mostra una stima del tempo prima di iniziare e usa la GPU quando è disponibile. Il modello (circa 200 MB) non è incluso nel programma di installazione: viene scaricato al primo utilizzo del ritocco IA e verificato tramite il suo SHA-256.
 - La rimozione della filigrana ricodifica il video. I video HDR e Dolby Vision vengono saltati.
 
+## Download da YouTube
+
+Fai clic su **YouTube** in cima alla barra laterale (o premi ⌘⇧Y / Ctrl+Shift+Y) per passare all'interfaccia di YouTube, poi incolla un link. Il passaggio cambia solo l'interfaccia: Bilibili e YouTube hanno ciascuno il proprio elenco dei download, la propria cronologia delle analisi e le proprie iscrizioni agli aggiornamenti, i download dell'altra parte continuano, e il selettore mostra quanti ce ne sono ancora in corso.
+
+- **Link**: video (anche youtu.be), Shorts, registrazioni delle dirette, playlist, canali (@handle, /channel/…, con le schede Video / Shorts / Live / Playlist), YouTube Music; dopo aver importato un accesso, anche «Guarda più tardi», «Video piaciuti», «Iscrizioni» e «Cronologia»
+- **Qualità e formati**: fino a 8K, HDR e 60 fps; priorità dei codec AVC / VP9 / AV1; audio Opus o AAC; MP4 / MKV / WebM; solo audio o solo video
+- **Contenuti extra**: sottotitoli manuali e generati automaticamente (lingue a scelta, salvati in `.srt` o incorporati nel video), capitoli, segmenti sponsorizzati contrassegnati come capitoli con [SponsorBlock](https://sponsor.ajay.app), copertine, NFO
+- **Coda**: condivisa con Bilibili, quindi pausa, ripresa, download riprendibili, nuovi tentativi automatici e salto dei contenuti già scaricati funzionano allo stesso modo; YouTube ha una propria cartella di download e un proprio limite di download simultanei
+- **Iscrizioni**: iscriviti agli aggiornamenti di una playlist o di un canale per scaricare automaticamente i nuovi video
+
+Il supporto a YouTube si basa sul progetto open source [yt-dlp](https://github.com/yt-dlp/yt-dlp). Viene scaricato la prima volta che passi a YouTube (circa 50 MB, dalle release ufficiali su GitHub, verificato con sha256) e poi aggiornato automaticamente in background, così l'installer resta delle stesse dimensioni; audio e video vengono comunque uniti con il ffmpeg incluso.
+
+**Accesso** (facoltativo): in **Impostazioni → Generali → Account YouTube** importa l'accesso a YouTube da un browser oppure incolla i cookie (`cookies.txt` o JSON di Cookie-Editor). Con l'accesso puoi scaricare i video riservati agli abbonati al canale o con limiti di età e i tuoi elenchi personali, e YouTube ti chiederà meno spesso di «confermare che non sei un bot». Vengono conservati solo i cookie di `youtube.com`, crittografati sul tuo computer con l'archivio sicuro del sistema (Portachiavi di macOS, DPAPI di Windows).
+
+**Rete**: il proxy in **Impostazioni → Rete e avanzate** vale anche per YouTube. Con l'opzione «Come il sistema», le regole PAC vengono valutate separatamente per YouTube: possono quindi prevedere una connessione diretta per Bilibili e una connessione tramite proxy per YouTube. Per YouTube funziona anche un proxy SOCKS configurato manualmente.
+
 ## Fai scaricare all'IA (MCP)
 
 Attiva il server [Model Context Protocol](https://modelcontextprotocol.io) locale dell'app e i client IA come Claude possono cercare su bilibili, mettere in coda i download e seguire l'avanzamento per te. Una volta configurato, ti basta dire cosa vuoi:
@@ -181,6 +198,22 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | Accede quando l'app non è connessa: importa l'accesso dal browser dell'utente (prima Chrome, usando i browser leggibili) oppure apre la finestra di accesso per scansionare il codice QR con `method=qr` |
 | `get_login_status` | Segue l'accesso o elenca i browser del computer. Con `wait_seconds` risponde nel momento in cui l'accesso riesce: è così che l'agente sa che la scansione è finita |
 
+Strumenti per YouTube (gli strumenti per batch, attività, impostazioni e cronologia sono condivisi; passa `platform` per vedere una sola piattaforma):
+
+| Strumento | Descrizione |
+| --- | --- |
+| `youtube_get_status` | Versione e aggiornamenti del componente YouTube (yt-dlp), accesso, proxy e riepilogo della coda di YouTube |
+| `youtube_parse_link` | Analizza video, Shorts, playlist, canali, YouTube Music ed elenchi personali; gli elenchi vengono sfogliati automaticamente e si possono leggere a blocchi |
+| `youtube_download_batch` | Scarica in un unico batch i video di un link (`url` con `ids` o `all`) o un elenco di video (`videos`); `quality` indica l'altezza massima del video in pixel e `options` imposta codec, contenitore, audio, lingue dei sottotitoli, SponsorBlock e altro |
+| `youtube_search_videos` / `youtube_search_channels` | Cerca video (ordinati per pertinenza, data di caricamento, visualizzazioni o valutazione, filtrabili per data di caricamento e durata) e canali |
+| `youtube_get_video_info` | Dettagli di un massimo di 20 video: visualizzazioni, like, commenti, tag, descrizione, capitoli, qualità scaricabili e lingue dei sottotitoli |
+| `youtube_get_video_transcript` | Sottotitoli completi con timestamp e capitoli, prima i sottotitoli manuali, lingua a scelta, lettura a blocchi |
+| `youtube_get_video_comments` | Commenti e risposte, più popolari o più recenti, con paginazione |
+| `youtube_get_download_quality` | Controlla quali qualità si possono scaricare senza accesso e con ciascun account YouTube |
+| `youtube_start_login` / `youtube_get_login_status` | Importa l'accesso a YouTube da un browser e ne controlla lo stato |
+| `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | Elenca, cambia o rimuove gli account YouTube; la rimozione deve essere confermata dall'utente in una finestra di dialogo |
+| `youtube_update_engine` | Installa o aggiorna il componente YouTube |
+
 </details>
 
 Il server ascolta solo su `127.0.0.1` (la porta è configurabile), richiede il token Bearer e controlla le intestazioni `Host` / `Origin` per prevenire il DNS rebinding. Puoi rigenerare il token in qualsiasi momento.
@@ -235,9 +268,21 @@ Il server ascolta solo su `127.0.0.1` (la porta è configurabile), richiede il t
 
 - Modelli di denominazione con variabili (`{title}`, `{series}`, `{index:03}`, `{pubdate:YYYY-MM-DD}`, …), segmenti opzionali e livelli di cartelle, impostabili separatamente per video singoli, raccolte e anime
 - Riconosce i contenuti già scaricati e chiede / salta / scarica di nuovo
-- Abbonamenti: controlla periodicamente preferiti, raccolte o autori e scarica automaticamente le novità
+- Iscrizioni: controlla periodicamente preferiti, raccolte o autori e scarica automaticamente le novità
 - Cronologia delle analisi, monitoraggio degli appunti, tema chiaro / scuro, esecuzione in background, importazione / esportazione delle impostazioni
 - Aggiornamenti integrati da GitHub Releases, con note di rilascio e possibilità di saltare una versione
+
+</details>
+
+<details>
+<summary>YouTube</summary>
+
+- Video, Shorts, registrazioni delle dirette, playlist, tutte le schede di un canale, YouTube Music; «Guarda più tardi», «Video piaciuti», «Iscrizioni» e «Cronologia» con l'accesso
+- Fino a 8K / HDR / 60 fps, priorità dei codec AVC / VP9 / AV1, audio Opus / AAC, MP4 / MKV / WebM
+- Sottotitoli manuali e generati automaticamente (lingue a scelta), capitoli, segmenti SponsorBlock contrassegnati, copertine, NFO
+- Più account YouTube; confronto delle qualità scaricabili per account
+- Iscrizioni agli aggiornamenti di playlist e canali; cartella di download e limite di download simultanei separati
+- Passaggio tra le interfacce di Bilibili e YouTube con un clic, senza effetti sui download di entrambe le parti
 
 </details>
 
@@ -315,6 +360,7 @@ Sì. Dalla v0.13.0 l'interfaccia supporta l'italiano e altre sette lingue. Segue
 ## Limitazioni
 
 - Non è possibile scaricare contenuti protetti da DRM, con restrizioni geografiche o che il tuo account non è autorizzato a guardare. Queste attività vengono contrassegnate come **无法下载** (impossibile scaricare) con il motivo.
+- YouTube: i contenuti protetti da DRM, come i film della sezione «Film e TV», e i contenuti riservati a YouTube Premium non sono supportati; le dirette si possono scaricare al termine; YouTube limita spesso la frequenza delle richieste per i sottotitoli tradotti automaticamente, se il download non riesce riprova più tardi.
 - Sono supportati Windows x64, macOS x64 / arm64 e Linux x64. Non sono disponibili versioni ARM per Windows e Linux.
 
 ## Compilare dai sorgenti
@@ -347,7 +393,7 @@ src/main/update             Aggiornamenti integrati: controllo di update.json, v
 src/main/mcp                Server MCP locale
 src/main/agents             Installazione con un clic del server MCP e della skill negli assistenti AI
 src/bridge                  Bridge stdio avviato dagli assistenti AI per raggiungere il server MCP
-src/main/subscriptions.ts   Abbonamenti
+src/main/subscriptions.ts   Iscrizioni
 src/shared                  Tipi, analisi dei link e modelli di denominazione condivisi tra i processi
 src/renderer                Interfaccia (React + Tailwind CSS + zustand)
 scripts                     Download di ffmpeg, generazione delle icone, pubblicazione dei rilasci
@@ -361,6 +407,7 @@ Issue e pull request sono benvenute. Leggi prima [CONTRIBUTING.md](CONTRIBUTING.
 ## Ringraziamenti
 
 - [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) per la documentazione delle API di bilibili
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) per l'analisi e il download da YouTube, e [SponsorBlock](https://sponsor.ajay.app) per i dati sui segmenti sponsorizzati
 - [FFmpeg](https://ffmpeg.org) e [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
 - [Electron](https://www.electronjs.org), [electron-vite](https://electron-vite.org), [electron-builder](https://www.electron.build)
 - [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [zustand](https://github.com/pmndrs/zustand), [Lucide](https://lucide.dev)

@@ -41,6 +41,7 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | **画质拉满** <br> 8K、杜比视界、HDR，账号能看什么就能下什么。AVC / HEVC / AV1 随你挑，音轨最高杜比全景声和 Hi-Res 无损 FLAC，默认原样封装、不重新编码。 | **丢个链接就行** <br> 单个视频、分P、合集、番剧、电影、课程、收藏夹、稍后再看、UP 主投稿、音频、排行榜……整个列表一次解析，b23.tv 短链和分享文案也认。 |
 | **AI 去水印** <br> 角落水印自动识别，也能自己框；打开“AI 精修”，逐帧把水印下面的画面补回来。 | **字幕弹幕全都要** <br> CC 字幕存成 `.srt` 或直接写进视频，弹幕存成 `.ass` / `.xml`，还有章节、封面，以及给 Kodi / Jellyfin 用的 NFO。 |
 | **挂着就能下完** <br> 断点续传、多线程分段、限速、自动重试、命名模板；订阅喜欢的 UP 主、收藏夹或合集，有新投稿自动下。 | **让 AI 替你下** <br> 内置本地 MCP 服务，Claude 等 AI 客户端可以帮你搜视频、解析链接、排队下载、去水印、盯进度。 |
+| **YouTube 也能下** <br> 视频、Shorts、播放列表、频道、YouTube Music，最高 8K / HDR，人工和自动字幕、章节、SponsorBlock 片段标记，订阅频道自动下新视频。 | **一键切换两个平台** <br> 侧栏顶部点一下（或按 ⌘⇧Y / Ctrl+Shift+Y）在 B站和 YouTube 之间切换，两套界面，两边的下载互不影响。 |
 
 > [!NOTE]
 > 本项目是非官方工具，与哔哩哔哩无关，也未获其认可。请只下载你本人账号有权观看的内容，仅用于个人用途，并尊重创作者的权益和 B站的用户协议。
@@ -117,6 +118,22 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 - AI 精修开始前会给出预计耗时，有显卡时用显卡加速。模型约 200 MB，不随安装包分发，第一次使用时下载并校验 SHA-256。
 - 去水印会重新编码视频；HDR 和杜比视界视频不处理。
 
+## YouTube 下载
+
+点侧栏顶部的 **YouTube**（或按 ⌘⇧Y / Ctrl+Shift+Y）切到 YouTube 界面，粘贴链接就能下。切换只换界面：B站和 YouTube 各有自己的下载列表、解析记录和订阅，另一边正在下载的照常进行，侧栏的切换按钮上会显示它还有几个在下。
+
+- **支持的链接**：视频（含 youtu.be 短链）、Shorts、直播回放、播放列表、频道（@handle、/channel/…，视频 / Shorts / 直播 / 播放列表页）、YouTube Music；导入登录后还有稍后观看、喜欢的视频、订阅内容和观看记录
+- **画质和格式**：最高 8K、HDR、60 帧；编码优先级 AVC / VP9 / AV1；音轨 Opus 或 AAC；封装 MP4 / MKV / WebM；也可以只要音频或只要画面
+- **附加内容**：人工字幕和自动生成的字幕（可选语言，另存 `.srt` 或写进视频）、章节、用 [SponsorBlock](https://sponsor.ajay.app) 把赞助片段标成章节、封面、NFO
+- **队列**：和 B站共用一个下载队列，暂停、继续、断点续传、自动重试、跳过已下载都一样；可以单独限制 YouTube 同时下载的数量，并有单独的下载目录
+- **订阅**：订阅播放列表或频道，有新视频自动下载
+
+YouTube 的解析和下载用的是开源的 [yt-dlp](https://github.com/yt-dlp/yt-dlp)。第一次切到 YouTube 时会自动下载它（约 50 MB，从 GitHub 官方发布页下载并校验 sha256），之后在后台自动更新，安装包大小不变；合并音视频仍然用应用自带的 ffmpeg。
+
+**登录**（可选）：在 **设置 → 常规 → YouTube 账号** 里从浏览器导入 YouTube 登录，或手动粘贴 Cookie（`cookies.txt`、Cookie-Editor 导出的 JSON 都行）。登录后可以下载会员、年龄限制的视频和你的个人列表，也不容易被 YouTube 要求验证“不是机器人”。只保存 `youtube.com` 的 Cookie，用系统的安全存储（macOS 钥匙串、Windows DPAPI）加密保存在本机。
+
+**网络**：在中国大陆访问 YouTube 需要代理。**设置 → 网络与高级** 里的代理对 YouTube 同样生效；选“系统代理”时会按 YouTube 的地址单独判断（PAC 规则对 B站直连、对 YouTube 走代理也没问题），手动填写时 YouTube 还支持 SOCKS 代理。
+
 ## 让 AI 帮你下（MCP）
 
 打开应用里的本地 [Model Context Protocol](https://modelcontextprotocol.io) 服务，Claude 等 AI 客户端就能替你搜视频、排队下载、盯进度。配好之后，跟 AI 说一句话就行，比如：
@@ -182,6 +199,22 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | 导入浏览器登录或用 `method=qr` 扫码；`mode=add` 添加账号，`mode=reauth` 配合 `account_mid` 重新登录指定账号 |
 | `get_login_status` | 跟踪登录进度、查询指定账号或列出本机浏览器。可传 `wait_seconds` 等待扫码完成 |
 
+YouTube 工具（批次、任务、设置、历史这些工具两边共用，可以传 `platform` 只看某个平台）：
+
+| 工具 | 说明 |
+| --- | --- |
+| `youtube_get_status` | YouTube 组件（yt-dlp）版本和更新、登录、代理、YouTube 队列汇总 |
+| `youtube_parse_link` | 解析视频、Shorts、播放列表、频道、YouTube Music 和个人列表，列表自动翻页，可分段读取 |
+| `youtube_download_batch` | 把链接里的视频（`url` 配 `ids` 或 `all`）或一组视频（`videos`）作为一个批次下载；`quality` 是最大高度，`options` 可设编码、封装、音频、字幕语言、SponsorBlock 等 |
+| `youtube_search_videos` / `youtube_search_channels` | 搜索视频（按相关度、上传日期、观看次数、评分排序，可按上传时间、时长筛选）和频道 |
+| `youtube_get_video_info` | 一次查询最多 20 个视频的详情：观看点赞评论数、标签、简介、章节、可下载的画质、字幕语言 |
+| `youtube_get_video_transcript` | 读取字幕全文（带时间戳）和章节，优先人工字幕，可指定语言，分段读取 |
+| `youtube_get_video_comments` | 读取评论和回复，按热门或最新排序，分页 |
+| `youtube_get_download_quality` | 分别用不登录和每个 YouTube 账号查询能下载的画质 |
+| `youtube_start_login` / `youtube_get_login_status` | 从浏览器导入 YouTube 登录、查看登录状态 |
+| `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | 查看、切换、移除 YouTube 账号；移除要用户本人在弹窗里确认 |
+| `youtube_update_engine` | 安装或更新 YouTube 组件 |
+
 </details>
 
 解析、下载和 B 站检索工具可以传 `account_mid`，省略时使用侧栏当前账号。批次、任务和历史查询省略该参数时返回全部账号，传 `null` 查归属未知的旧记录。全局下载设置由所有账号共用。
@@ -241,6 +274,18 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 - 订阅：定期检查收藏夹、合集、UP 主等来源，有新内容就自动下载
 - 解析记录、剪贴板监听、浅色 / 深色主题、后台运行、设置导入导出
 - 应用内更新：从 GitHub Releases 获取新版本，显示更新说明，可以跳过某个版本
+
+</details>
+
+<details>
+<summary>YouTube</summary>
+
+- 视频、Shorts、直播回放、播放列表、频道各页、YouTube Music；登录后的稍后观看、喜欢的视频、订阅内容、观看记录
+- 最高 8K / HDR / 60 帧，AVC / VP9 / AV1 编码优先级，Opus / AAC 音轨，MP4 / MKV / WebM
+- 人工字幕、自动字幕（可选语言）、章节、SponsorBlock 片段标记、封面、NFO
+- 多个 YouTube 账号；按账号对比可下载的画质
+- 订阅播放列表和频道；单独的下载目录和同时下载数
+- 一键切换 B站 / YouTube 界面，两边的下载互不影响
 
 </details>
 
@@ -318,6 +363,7 @@ AI 精修要逐帧重绘，比快速模式慢很多，没有显卡时更明显�
 ## 限制
 
 - 不支持带 DRM 加密的片源、地区限制的内容，以及账号没有权限观看的内容。这些任务会标为 **无法下载** 并写明原因。
+- YouTube：不支持 YouTube Movies 等 DRM 内容和 Premium 专享内容；正在进行的直播要等结束后才能下载回放；自动翻译的字幕容易被 YouTube 限流，下不来时可以稍后重试。
 - 支持 Windows x64、macOS x64 / arm64 和 Linux x64；不提供 Windows 或 Linux ARM 版本。
 
 ## 从源码构建
@@ -364,6 +410,7 @@ website                     产品官网（Next.js，部署到 GitHub Pages）
 ## 致谢
 
 - [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) 整理的 B站接口文档
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)：YouTube 的解析和下载；[SponsorBlock](https://sponsor.ajay.app)：赞助片段数据
 - [FFmpeg](https://ffmpeg.org) 和 [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
 - [Electron](https://www.electronjs.org)、[electron-vite](https://electron-vite.org)、[electron-builder](https://www.electron.build)
 - [React](https://react.dev)、[Tailwind CSS](https://tailwindcss.com)、[zustand](https://github.com/pmndrs/zustand)、[Lucide](https://lucide.dev)

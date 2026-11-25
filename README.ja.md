@@ -42,7 +42,8 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | --- | --- |
 | **画質は限界まで** <br> 8K、Dolby Vision、HDR：アカウントで観られるなら、そのままダウンロードできます。AVC / HEVC / AV1 から選べて、音声は Dolby Atmos や Hi-Res FLAC まで。デフォルトでは再エンコードせず、元のストリームのまま保存します。 | **リンクを貼るだけ** <br> 単体動画、複数パート動画、コレクション、アニメ、映画、講座、お気に入り、「あとで見る」、投稿者ページ、音声、ランキング…一覧ごと一発で解析。b23.tv の短縮リンクや共有テキストも OK です。 |
 | **AI ウォーターマーク除去** <br> 隅のウォーターマークは自動で見つけてくれるし、自分で範囲を囲んでも OK。「AI 補正」をオンにすれば、その下の映像をフレームごとに描き直します。 | **字幕も弾幕も、まるっと** <br> CC 字幕は `.srt` か動画への埋め込み、弾幕は `.ass` / `.xml`。チャプター、カバー画像、Kodi / Jellyfin 用の NFO も付きます。 |
-| **キューに入れたら放置で OK** <br> レジューム対応のマルチスレッドダウンロードに、速度制限、自動リトライ、命名テンプレートも。投稿者・お気に入り・コレクションを購読しておけば、新着は勝手にダウンロードされます。 | **AI にまかせちゃおう** <br> ローカル MCP サーバーを内蔵。Claude などの AI クライアントが、検索、リンク解析、ダウンロードの追加、ウォーターマーク除去、進捗チェックまでやってくれます。 |
+| **キューに入れたら放置で OK** <br> レジューム対応のマルチスレッドダウンロードに、速度制限、自動リトライ、命名テンプレートも。投稿者・お気に入り・コレクションを購読すると、新着を自動でダウンロードします。 | **AI にまかせちゃおう** <br> ローカル MCP サーバーを内蔵。Claude などの AI クライアントが、検索、リンク解析、ダウンロードの追加、ウォーターマーク除去、進捗チェックまでやってくれます。 |
+| **YouTube にも対応** <br> 動画、Shorts、再生リスト、チャンネル、YouTube Music を最高 8K / HDR で。手動字幕も自動生成字幕も、チャプター、SponsorBlock の区間マークも。チャンネルを購読すると、新着動画を自動でダウンロードします。 | **ワンクリックでプラットフォーム切り替え** <br> サイドバー上部をクリック（または ⌘⇧Y / Ctrl+Shift+Y）で bilibili と YouTube を行き来できます。画面は 2 つ、どちらのダウンロードも止まらず進みます。 |
 
 > [!NOTE]
 > 本プロジェクトは非公式のツールであり、bilibili とは一切関係がなく、承認も受けていません。ご自身のアカウントで視聴権限のあるコンテンツのみを個人利用の範囲でダウンロードし、クリエイターの権利と bilibili の利用規約を尊重してください。
@@ -119,6 +120,22 @@ macOS 12 以降が必要です。
 - AI 補正は開始前に所要時間の目安を表示し、GPU があれば GPU を使います。モデル（約 200 MB）はインストーラーに含まれず、初めて AI 補正を使うときにダウンロードされ、SHA-256 で検証されます。
 - ウォーターマークを除去すると映像は再エンコードされます。HDR と Dolby Vision の動画は対象外です。
 
+## YouTube のダウンロード
+
+サイドバー上部の **YouTube** をクリック（または ⌘⇧Y / Ctrl+Shift+Y）すると YouTube の画面に切り替わり、あとはリンクを貼り付けるだけ。切り替わるのは画面だけです。bilibili と YouTube はそれぞれ専用のダウンロード一覧、解析履歴、購読を持ち、もう一方で進行中のダウンロードはそのまま続きます。切り替えボタンには、もう一方でまだダウンロード中の件数が表示されます。
+
+- **対応リンク**：動画（youtu.be を含む）、Shorts、ライブのアーカイブ、再生リスト、チャンネル（@handle、/channel/…。動画 / Shorts / ライブ / 再生リストの各タブ）、YouTube Music。ログインをインポートすれば「後で見る」、高く評価した動画、登録チャンネル、再生履歴も
+- **画質とフォーマット**：最高 8K、HDR、60 fps。コーデックの優先順位は AVC / VP9 / AV1、音声は Opus または AAC、コンテナは MP4 / MKV / WebM。音声のみ・映像のみも可能
+- **追加コンテンツ**：手動字幕と自動生成字幕（言語を選択、`.srt` で保存または動画に埋め込み）、チャプター、[SponsorBlock](https://sponsor.ajay.app) によるスポンサー区間のチャプター化、カバー画像、NFO
+- **キュー**：bilibili とダウンロードキューを共有するので、一時停止、再開、レジューム、自動リトライ、ダウンロード済みのスキップはすべて同じように動きます。YouTube 専用のダウンロード先と同時ダウンロード数の上限もあります
+- **購読**：再生リストやチャンネルを購読すれば、新しい動画が自動でダウンロードされます
+
+YouTube 対応は、オープンソースの [yt-dlp](https://github.com/yt-dlp/yt-dlp) をベースにしています。初めて YouTube に切り替えたときにダウンロードされ（約 50 MB。GitHub の公式リリースから取得し、sha256 で検証）、以降はバックグラウンドで自動更新されるため、インストーラーのサイズは変わりません。音声と映像の結合には、引き続き同梱の ffmpeg を使います。
+
+**ログイン**（任意）：**設定 → 一般 → YouTube アカウント** で、ブラウザから YouTube のログインをインポートするか、Cookie を貼り付けます（`cookies.txt` または Cookie-Editor の JSON）。ログインすると、メンバー限定や年齢制限のある動画、自分のリストもダウンロードでき、YouTube の「ロボットではないことを確認」も求められにくくなります。保存するのは `youtube.com` の Cookie だけで、システムの安全な保管領域（macOS キーチェーン、Windows DPAPI）で暗号化してこのパソコンに保存します。
+
+**ネットワーク**：**設定 → ネットワークと詳細** のプロキシは YouTube にも適用されます。システムのプロキシを使う場合は YouTube のアドレスで個別に判定するので（bilibili は直接接続、YouTube はプロキシ経由、という PAC ルールでも大丈夫）、手動設定では YouTube で SOCKS プロキシも使えます。
+
 ## ダウンロードは AI におまかせ（MCP）
 
 アプリのローカル [Model Context Protocol](https://modelcontextprotocol.io) サーバーをオンにすれば、Claude などの AI クライアントが bilibili の検索、ダウンロードの追加、進捗の確認を代わりにやってくれます。設定が済んだら、やりたいことを言うだけ。たとえば：
@@ -181,6 +198,22 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 | `start_login` | アプリが未ログインのときにログインする。ユーザーのブラウザからログイン情報をインポートする（Chrome を優先し、読み取れるブラウザを先に使う）か、`method=qr` でログインウィンドウを開いて QR コードをスキャンしてもらう |
 | `get_login_status` | ログインの進行状況を確認し、このパソコンのブラウザも一覧できる。`wait_seconds` を指定するとログイン成功の瞬間に返るので、エージェントはスキャン完了を知ることができる |
 
+YouTube 用のツール（バッチ、タスク、設定、履歴のツールは両方で共通。`platform` を指定すると片方のプラットフォームだけを対象にできる）：
+
+| ツール | 説明 |
+| --- | --- |
+| `youtube_get_status` | YouTube コンポーネント（yt-dlp）のバージョンと更新、ログイン、プロキシ、YouTube キューの概要 |
+| `youtube_parse_link` | 動画、Shorts、再生リスト、チャンネル、YouTube Music、個人のリストを解析。一覧は自動でページをめくり、分けて読み込める |
+| `youtube_download_batch` | リンク内の動画（`url` と `ids` または `all`）や動画のリスト（`videos`）を 1 つのバッチとしてダウンロード。`quality` は映像の高さの上限（ピクセル単位）で、`options` でコーデック、コンテナ、音声、字幕の言語、SponsorBlock などを指定できる |
+| `youtube_search_videos` / `youtube_search_channels` | 動画（関連度、アップロード日、視聴回数、評価で並べ替え、アップロード時期と長さで絞り込み）とチャンネルを検索 |
+| `youtube_get_video_info` | 最大 20 本の動画の詳細：視聴回数、高評価数、コメント数、タグ、説明文、チャプター、ダウンロード可能な画質、字幕の言語 |
+| `youtube_get_video_transcript` | タイムスタンプ付きの字幕全文とチャプター。手動字幕を優先し、言語を指定でき、分割して読める |
+| `youtube_get_video_comments` | コメントと返信を人気順または新着順で、ページ送りしながら取得 |
+| `youtube_get_download_quality` | ログインなしと各 YouTube アカウントで、それぞれダウンロードできる画質を確認 |
+| `youtube_start_login` / `youtube_get_login_status` | ブラウザから YouTube のログインをインポートし、ログイン状態を確認 |
+| `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | YouTube アカウントの一覧、切り替え、削除。削除にはユーザー本人によるダイアログでの確認が必要 |
+| `youtube_update_engine` | YouTube コンポーネントをインストールまたは更新 |
+
 </details>
 
 サーバーは `127.0.0.1` のみで待ち受け（ポートは変更可能）、Bearer トークンが必須で、DNS リバインディング対策として `Host` / `Origin` ヘッダーを検証します。トークンはいつでも再生成できます。
@@ -238,6 +271,18 @@ claude mcp add --transport http bili-downloader http://127.0.0.1:39231/mcp --hea
 - 購読：お気に入り、コレクション、投稿者を定期的にチェックし、新しいコンテンツを自動でダウンロード
 - 解析履歴、クリップボード監視、ライト／ダークテーマ、バックグラウンド実行、設定のインポート／エクスポート
 - GitHub Releases からのアプリ内アップデート（更新内容の表示、特定バージョンのスキップに対応）
+
+</details>
+
+<details>
+<summary>YouTube</summary>
+
+- 動画、Shorts、ライブのアーカイブ、再生リスト、チャンネルの全タブ、YouTube Music。ログイン時は「後で見る」、高く評価した動画、登録チャンネル、再生履歴も
+- 最高 8K / HDR / 60 fps、コーデックの優先順位 AVC / VP9 / AV1、Opus / AAC 音声、MP4 / MKV / WebM
+- 手動字幕と自動生成字幕（言語を選択）、チャプター、SponsorBlock の区間マーク、カバー画像、NFO
+- 複数の YouTube アカウント。アカウントごとにダウンロード可能な画質を比較
+- 再生リストとチャンネルの購読。専用のダウンロード先と同時ダウンロード数の上限
+- bilibili と YouTube の画面をワンクリックで切り替え。どちらのダウンロードにも影響しません
 
 </details>
 
@@ -315,6 +360,7 @@ AI 補正はすべてのフレームを描き直すため、高速モードよ�
 ## 制限事項
 
 - DRM で保護されたコンテンツ、地域制限のあるコンテンツ、アカウントに視聴権限のないコンテンツはダウンロードできません。これらのタスクは **无法下载**（ダウンロード不可）と表示され、理由が示されます。
+- YouTube：YouTube Movies などの DRM コンテンツと Premium 限定コンテンツには対応していません。ライブ配信は終了後にダウンロードできます。自動翻訳字幕の取得は YouTube のレート制限を受けやすいため、失敗した場合はしばらくしてから再試行してください。
 - 対応 OS は Windows x64、macOS x64 / arm64、Linux x64 です。Windows と Linux の ARM 版は提供していません。
 
 ## ソースからのビルド
@@ -361,6 +407,7 @@ Issue やプルリクエストを歓迎します。事前に [CONTRIBUTING.md](C
 ## 謝辞
 
 - bilibili API のドキュメントをまとめた [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)
+- YouTube の解析とダウンロードを担う [yt-dlp](https://github.com/yt-dlp/yt-dlp)、スポンサー区間のデータを提供する [SponsorBlock](https://sponsor.ajay.app)
 - [FFmpeg](https://ffmpeg.org) と [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
 - [Electron](https://www.electronjs.org)、[electron-vite](https://electron-vite.org)、[electron-builder](https://www.electron.build)
 - [React](https://react.dev)、[Tailwind CSS](https://tailwindcss.com)、[zustand](https://github.com/pmndrs/zustand)、[Lucide](https://lucide.dev)
