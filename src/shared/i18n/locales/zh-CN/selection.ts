@@ -7,6 +7,7 @@ export default {
   kindPgc: '番剧 / 影视',
   kindCheese: '课程',
   kindAudio: '音频',
+  kindYoutube: 'YouTube',
   sources: '{count} 个来源',
   loadedOf: '已加载 {count} / {total} 项',
   totalItems: '共 {count} 项',

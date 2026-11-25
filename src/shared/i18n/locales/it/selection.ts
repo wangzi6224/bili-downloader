@@ -9,6 +9,7 @@ export default {
   kindPgc: 'Anime / film e serie',
   kindCheese: 'Corso',
   kindAudio: 'Audio',
+  kindYoutube: 'YouTube',
   sources: { one: '{count} fonte', other: '{count} fonti' },
   loadedOf: 'Caricati {count} / {total} elementi',
   totalItems: { one: '{count} elemento in totale', other: '{count} elementi in totale' },

@@ -9,6 +9,7 @@ export default {
   kindPgc: 'Anime / TV',
   kindCheese: 'Course',
   kindAudio: 'Audio',
+  kindYoutube: 'YouTube',
   sources: { one: '{count} source', other: '{count} sources' },
   loadedOf: '{count} / {total} items loaded',
   totalItems: { one: '{count} item', other: '{count} items' },

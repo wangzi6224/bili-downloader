@@ -9,6 +9,7 @@ export default {
   kindPgc: 'Аниме / фильмы и сериалы',
   kindCheese: 'Курс',
   kindAudio: 'Аудио',
+  kindYoutube: 'YouTube',
   sources: {
     one: '{count} источник',
     few: '{count} источника',

@@ -9,6 +9,7 @@ export default {
   kindPgc: 'एनीमे / फ़िल्में और सीरीज़',
   kindCheese: 'कोर्स',
   kindAudio: 'ऑडियो',
+  kindYoutube: 'YouTube',
   sources: '{count} स्रोत',
   loadedOf: '{count} / {total} आइटम लोड हुए',
   totalItems: 'कुल {count} आइटम',

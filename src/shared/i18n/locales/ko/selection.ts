@@ -9,6 +9,7 @@ export default {
   kindPgc: '애니메이션 / 영화·드라마',
   kindCheese: '강의',
   kindAudio: '오디오',
+  kindYoutube: 'YouTube',
   sources: '소스 {count}개',
   loadedOf: '{count} / {total}개 항목 불러옴',
   totalItems: '총 {count}개 항목',
