@@ -133,3 +133,31 @@ describe('updateSettings', () => {
     expect(fn).not.toHaveBeenCalled()
   })
 })
+
+describe('YouTube 设置', () => {
+  it('默认显示 B站界面；YouTube 下载到单独的目录，画质最高、同时 2 个、自动更新 yt-dlp', () => {
+    const s = settings.getSettings()
+    expect(s.uiSite).toBe('bili')
+    expect(s.youtube).toMatchObject({ downloadDir: join(h.downloads, 'YouTube'), defaultQn: 0, concurrency: 2, autoUpdate: true })
+    expect(s.youtube.defaults.yt).toMatchObject({ codecOrder: ['avc', 'vp9', 'av1'], container: 'mp4' })
+  })
+
+  it('旧版设置文件没有 YouTube 部分时补齐；坏掉的取值换成默认或收进范围', async () => {
+    writeFileSync(file(), JSON.stringify({ uiSite: 'x', youtube: { downloadDir: '', concurrency: 9, defaultQn: -1, autoUpdate: false, defaults: { yt: { container: 'webm' } } } }))
+    await restart()
+    const s = settings.getSettings()
+    expect(s.uiSite).toBe('bili')
+    expect(s.youtube).toMatchObject({ downloadDir: join(h.downloads, 'YouTube'), concurrency: 5, defaultQn: 0, autoUpdate: false })
+    expect(s.youtube.defaults).toMatchObject({ output: 'full', yt: { container: 'webm', codecOrder: ['avc', 'vp9', 'av1'] } })
+    expect(s.youtube.defaults).not.toHaveProperty('qn')
+  })
+
+  it('只改 YouTube 的其中几项，其余保持；切换界面平台', () => {
+    const before = settings.getSettings().youtube
+    const next = settings.updateSettings({ uiSite: 'youtube', youtube: { concurrency: 0 } as never })
+    expect(next.uiSite).toBe('youtube')
+    expect(next.youtube).toEqual({ ...before, concurrency: 1 })
+    expect(settings.updateSettings({ uiSite: 'nope' as never }).uiSite).toBe('youtube')
+    expect(saved().uiSite).toBe('youtube')
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_OPTIONS, normalizeOptions } from './options'
+import { DEFAULT_OPTIONS, normalizeOptions, DEFAULT_YT_OPTIONS, normalizeYtOptions } from './options'
 import type { CodecPref } from './types'
 
 describe('normalizeOptions', () => {
@@ -45,5 +45,49 @@ describe('normalizeOptions', () => {
     normalizeOptions(raw).codecOrder.reverse()
     expect(raw).toEqual(before)
     expect(DEFAULT_OPTIONS).toEqual(defaults)
+  })
+})
+
+describe('normalizeYtOptions', () => {
+  it('空的补齐默认值，不修改默认值', () => {
+    const o = normalizeYtOptions()
+    expect(o).toEqual(DEFAULT_YT_OPTIONS)
+    o.codecOrder.reverse()
+    expect(DEFAULT_YT_OPTIONS.codecOrder).toEqual(['avc', 'vp9', 'av1'])
+  })
+
+  it('编码去重、补齐；不认识的取值退回默认', () => {
+    expect(normalizeYtOptions({
+      codecOrder: ['av1', 'av1', 'hevc' as 'avc'],
+      audio: 'flac' as 'best',
+      container: 'avi' as 'mp4',
+      sponsorblock: 'cut' as 'off'
+    })).toMatchObject({ codecOrder: ['av1', 'avc', 'vp9'], audio: 'best', container: 'mp4', sponsorblock: 'off' })
+  })
+
+  it('字幕语言只留合法的语言代码，去重', () => {
+    expect(normalizeYtOptions({ subtitleLangs: ['en', 'zh-Hans', 'en', '', 'a b', 3 as unknown as string, 'x'.repeat(21)] }).subtitleLangs)
+      .toEqual(['en', 'zh-Hans'])
+    expect(normalizeYtOptions({ subtitleLangs: 'en' as unknown as string[] }).subtitleLangs).toEqual([])
+  })
+
+  it('合法的取值原样保留；编码顺序缺失时按默认顺序', () => {
+    expect(normalizeYtOptions({
+      codecOrder: undefined,
+      audio: 'opus',
+      container: 'mkv',
+      sponsorblock: 'mark',
+      autoSubs: true,
+      hdr: true
+    })).toEqual({ ...DEFAULT_YT_OPTIONS, audio: 'opus', container: 'mkv', sponsorblock: 'mark', autoSubs: true, hdr: true })
+  })
+
+  it('旧数据里编码顺序为空时按默认顺序补齐（normalizeOptions）', () => {
+    expect(normalizeOptions({ codecOrder: undefined }).codecOrder).toEqual(['avc', 'hevc', 'av1'])
+  })
+
+  it('normalizeOptions 带 yt 时一并规范化，没有时不加', () => {
+    expect(normalizeOptions({}).yt).toBeUndefined()
+    expect(normalizeOptions({ yt: { container: 'webm' } as never }).yt).toEqual({ ...DEFAULT_YT_OPTIONS, container: 'webm' })
   })
 })

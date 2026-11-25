@@ -41,8 +41,11 @@ export interface BrowserProfile {
   appBoundLogin?: boolean
 }
 
-/** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区 */
-export type MediaKind = 'ugc' | 'pgc' | 'cheese' | 'audio'
+/** 平台：B站、YouTube。界面一次显示一个平台，下载队列两边共用 */
+export type Site = 'bili' | 'youtube'
+
+/** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区（以上是 B站）；youtube 是 YouTube 的视频（含 Shorts、直播回放、Music 单曲） */
+export type MediaKind = 'ugc' | 'pgc' | 'cheese' | 'audio' | 'youtube'
 
 /** 一个可下载的单元：普通视频的一个分P，或番剧/电影的一集 */
 export interface MediaItem {
@@ -73,6 +76,10 @@ export interface MediaItem {
    */
   lazy?: boolean
   pages?: number
+  /** YouTube 视频 id（kind 为 youtube 时）；B站条目的 cid 填 0 */
+  ytId?: string
+  /** YouTube 作者频道 id（UC…） */
+  channelId?: string
 }
 
 export interface MediaGroup {
@@ -89,6 +96,8 @@ export type PagedSource =
   | { type: 'space'; mid: number; keyword?: string }
   | { type: 'spaceSeason'; mid: number; seasonId: number }
   | { type: 'spaceSeries'; mid: number; seriesId: number }
+  /** YouTube 播放列表、频道、个人列表：url 是交给 yt-dlp 的规范链接 */
+  | { type: 'yt'; url: string }
 
 export interface Paging {
   source: PagedSource
@@ -140,8 +149,8 @@ export interface QualityOption {
   label: string
   needVip: boolean
   needLogin: boolean
-  /** 这个清晰度实际提供的编码；空数组表示当前账号拿不到 */
-  codecs: CodecPref[]
+  /** 这个清晰度实际提供的编码；空数组表示当前账号拿不到（YouTube 的编码里有 vp9） */
+  codecs: (CodecPref | YtCodec)[]
 }
 
 /** best：完整视频优先杜比，其次最高码率 AAC；仅音频优先无损 */
@@ -158,6 +167,21 @@ export interface StreamInfo {
   audios: AudioOption[]
   /** 没有独立音轨（例如静音视频） */
   hasAudio: boolean
+  /** YouTube 视频才有 */
+  yt?: YtStreamExtras
+}
+
+export interface YtStreamExtras {
+  audios: { id: YtAudioPref; label: string; available: boolean }[]
+  /** 有 HDR 版本 */
+  hdr: boolean
+  /** 人工字幕 */
+  subtitles: { lang: string; name: string; auto: boolean }[]
+  /** 自动生成字幕的原始语言（不是机器翻译的） */
+  autoLang?: string
+  chapters: number
+  /** 各画质的视频流大小（字节，估算），按高度 */
+  size: Record<number, number>
 }
 
 /** 下载结果：完整视频 / 仅音频 / 仅视频（无声） */
@@ -188,9 +212,33 @@ export interface DownloadOptions {
   nfo: boolean
   /** 去水印：下载后自动识别画面角落的水印并去掉（要重新编码视频）。auto 是快速（delogo），ai 是 AI 精修 */
   watermark: WatermarkMode
+  /** 只有 YouTube 任务有 */
+  yt?: YtOptions
 }
 
 export type WatermarkMode = 'off' | 'auto' | 'ai'
+
+export type YtCodec = 'avc' | 'vp9' | 'av1'
+/** best：码率最高的；opus、aac 优先对应编码，没有就退回 best */
+export type YtAudioPref = 'best' | 'opus' | 'aac'
+export type YtContainer = 'mp4' | 'mkv' | 'webm'
+/** SponsorBlock：off 不处理；mark 把赞助、自我推广、片头片尾这些片段标成章节，播放时可以跳过 */
+export type SponsorBlockMode = 'off' | 'mark'
+
+/** YouTube 专有的下载选项；画质仍用 DownloadOptions.qn，表示最大高度（1080、2160…） */
+export interface YtOptions {
+  /** 编码优先级，从前往后尝试 */
+  codecOrder: YtCodec[]
+  audio: YtAudioPref
+  container: YtContainer
+  /** 字幕语言，例如 en、zh-Hans、ja；空数组表示按界面语言挑 */
+  subtitleLangs: string[]
+  /** 没有人工字幕的语言用 YouTube 自动生成的字幕 */
+  autoSubs: boolean
+  sponsorblock: SponsorBlockMode
+  /** 有 HDR 版本时优先 HDR */
+  hdr: boolean
+}
 
 /** 水印区域：视频显示方向（已按旋转转正）下原分辨率的像素坐标 */
 export interface WatermarkRegion {
@@ -308,6 +356,8 @@ export interface EnqueueRequest {
   /** 加入后先暂停，不开始下载 */
   paused?: boolean
   accountMid?: number
+  /** YouTube 下载用的账号；空为不登录 */
+  ytAccount?: string
 }
 
 export type TaskStatus =
@@ -329,7 +379,10 @@ export interface TaskInfo {
   title: string
   groupTitle: string
   item: MediaItem
+  /** B站任务所属的账号 */
   accountMid?: number
+  /** YouTube 任务用的账号（cookie 档案 id）；空为不登录 */
+  ytAccount?: string
   options: DownloadOptions
   /** 输出文件不含扩展名的相对路径（相对下载目录）；合并时会按实际画质重新计算 */
   relBase: string
@@ -366,6 +419,8 @@ export interface TaskInfo {
   watermark?: WatermarkState
   /** 正在去水印时的阶段和进度 */
   processing?: ProcessingInfo
+  /** YouTube：第一次取流时选定的格式（视频+音频的 format_id），继续下载时沿用，保证续传的是同一份文件 */
+  ytFormat?: string
   createdAt: number
 }
 
@@ -533,6 +588,58 @@ export interface Settings {
   autoCheckUpdate: boolean
   /** 界面语言，system 跟随系统（系统语言不支持时用英语） */
   language: LanguageSetting
+  /** 界面当前显示哪个平台；只影响界面，下载队列两边一起跑 */
+  uiSite: Site
+  youtube: YoutubeSettings
+}
+
+/** 导入到应用里的 YouTube 登录（cookie 加密保存在本机） */
+export interface YtAccount {
+  id: string
+  name: string
+  /** @handle */
+  handle?: string
+  avatar?: string
+  addedAt: number
+  checkedAt?: number
+  /** expired：cookie 已失效，要重新导入 */
+  status: 'ready' | 'expired' | 'unchecked'
+}
+
+export interface YtAccountsSnapshot {
+  /** 当前账号；空为不登录 */
+  current?: string
+  accounts: YtAccount[]
+}
+
+/** YouTube 组件（yt-dlp）的状态；第一次用 YouTube 时下载，之后自动更新 */
+export interface YtEngineStatus {
+  state: 'missing' | 'downloading' | 'ready' | 'error'
+  /** 当前可用的版本 */
+  version?: string
+  /** 检查到的最新版本 */
+  latest?: string
+  /** 下载中的阶段：下载、校验、解压、首次运行 */
+  stage?: 'download' | 'verify' | 'extract' | 'warmup'
+  done?: number
+  size?: number
+  /** 已有可用的版本，正在后台换新版本 */
+  updating?: boolean
+  message?: string
+  /** 上次检查更新的时间戳 */
+  checkedAt?: number
+}
+
+export interface YoutubeSettings {
+  downloadDir: string
+  /** 默认最大高度（1080、2160…），0 为最高 */
+  defaultQn: number
+  /** YouTube 任务最多同时下载几个（同时计入总的同时下载数）：太多容易触发机器人验证 */
+  concurrency: number
+  /** 新建 YouTube 下载时的默认选项 */
+  defaults: Omit<DownloadOptions, 'qn'> & { yt: YtOptions }
+  /** 自动更新 yt-dlp */
+  autoUpdate: boolean
 }
 
 /** 某个版本的更新说明（Markdown） */
@@ -596,9 +703,40 @@ export interface NetworkStatus {
   error: boolean
 }
 
+export interface YoutubeApi {
+  engine: {
+    status(): Promise<YtEngineStatus>
+    /** 没装就下载安装，装好后返回状态 */
+    prepare(): Promise<YtEngineStatus>
+    /** 立即检查更新 */
+    check(): Promise<YtEngineStatus>
+    cancel(): Promise<void>
+    onStatus(cb: (s: YtEngineStatus) => void): () => void
+  }
+  parse(input: string): Promise<ParseResult>
+  /** 播放列表、频道的第 page 页（url 是 paging.source.url） */
+  parseMore(url: string, page: number): Promise<PageResult>
+  parseBatch(inputs: string[]): Promise<ParseResult>
+  streamInfo(item: MediaItem): Promise<StreamInfo>
+  /** 用当前 YouTube 账号加入下载队列；返回提示（例如有的播放列表展开失败） */
+  enqueue(req: EnqueueRequest): Promise<string | undefined>
+  accounts(): Promise<YtAccountsSnapshot>
+  onAccountsChanged(cb: (s: YtAccountsSnapshot) => void): () => void
+  /** 浏览器配置档；hasBiliLogin 表示有没有 YouTube 登录 */
+  listBrowsers(browserKey?: string): Promise<BrowserProfile[]>
+  importBrowser(id: string): Promise<YtAccount>
+  /** 手动粘贴：cookies.txt、插件导出的 JSON 或 “a=b; c=d” */
+  importCookie(text: string): Promise<YtAccount>
+  /** 空为不登录 */
+  selectAccount(id?: string): Promise<void>
+  removeAccount(id: string): Promise<void>
+  checkAccount(id: string): Promise<YtAccount>
+}
+
 export interface BiliApi {
   /** 主进程的 process.platform，界面按它调整文案和布局 */
   platform: string
+  yt: YoutubeApi
   auth: {
     check(): Promise<AuthState>
     accounts(): Promise<AccountState>
@@ -682,7 +820,8 @@ export interface BiliApi {
     clearDownloads(): Promise<void>
     parses(): Promise<ParseRecord[]>
     removeParse(input: string, accountMid?: number | null): Promise<ParseRecord[]>
-    clearParses(): Promise<void>
+    /** 指定平台时只清那个平台的 */
+    clearParses(site?: Site): Promise<void>
   }
   i18n: {
     /** 实际生效的界面语言 */
@@ -692,7 +831,8 @@ export interface BiliApi {
   settings: {
     get(): Promise<Settings>
     set(patch: Partial<Settings>): Promise<Settings>
-    chooseDir(): Promise<Settings>
+    /** site 为 youtube 时选的是 YouTube 的下载目录 */
+    chooseDir(site?: Site): Promise<Settings>
     /** 设置在别处（例如 MCP）被修改 */
     onChanged(cb: (settings: Settings) => void): () => void
   }

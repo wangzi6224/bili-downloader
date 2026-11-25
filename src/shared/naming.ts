@@ -1,5 +1,6 @@
 import { sanitize } from './filename'
 import { t, type Key } from './i18n'
+import type { MediaKind } from './types'
 
 /**
  * 命名模板：
@@ -7,6 +8,9 @@ import { t, type Key } from './i18n'
  * - <…> 是可选段：段内任一变量为空时整段去掉，一条规则可以同时适配单个视频和合集
  * - / 分隔目录层级，空的层级自动省略
  */
+
+/** 文件名模板的 {type}：影响已下载文件的命名和跳过判断，保持中文，不随界面语言变 */
+export const KIND_TYPE_LABEL: Record<MediaKind, string> = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频', youtube: 'YouTube' }
 
 export type NamingKind = 'text' | 'number' | 'date'
 

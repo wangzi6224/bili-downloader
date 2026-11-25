@@ -3,8 +3,9 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import { isLanguageSetting, t } from '@shared/i18n'
 import { DEFAULT_TEMPLATES, validateTemplate } from '@shared/naming'
-import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
-import type { CodecPref, Settings } from '@shared/types'
+import { DEFAULT_OPTIONS, DEFAULT_YT_OPTIONS, normalizeOptions, normalizeYtOptions } from '@shared/options'
+import { isSite } from '@shared/site'
+import type { CodecPref, Settings, YoutubeSettings } from '@shared/types'
 import { readJson, writeJson } from './store'
 
 function defaults(): Settings {
@@ -29,7 +30,30 @@ function defaults(): Settings {
     cdn: '',
     mcp: { enabled: false, port: 39231, token: randomBytes(24).toString('hex') },
     autoCheckUpdate: true,
-    language: 'system'
+    language: 'system',
+    uiSite: 'bili',
+    youtube: {
+      downloadDir: join(app.getPath('downloads'), 'YouTube'),
+      defaultQn: 0,
+      concurrency: 2,
+      defaults: { ...DEFAULT_OPTIONS, yt: { ...DEFAULT_YT_OPTIONS } },
+      autoUpdate: true
+    }
+  }
+}
+
+const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Math.round(n) || lo))
+
+/** YouTube 设置：补齐缺省字段并把取值收进范围 */
+function normalizeYoutube(saved: Partial<YoutubeSettings> | undefined, d: YoutubeSettings): YoutubeSettings {
+  const y = { ...d, ...saved }
+  const { qn: _qn, ...opts } = normalizeOptions({ ...y.defaults })
+  return {
+    downloadDir: typeof y.downloadDir === 'string' && y.downloadDir ? y.downloadDir : d.downloadDir,
+    defaultQn: Math.max(0, Math.round(y.defaultQn) || 0),
+    concurrency: clamp(y.concurrency, 1, 5),
+    defaults: { ...opts, yt: normalizeYtOptions(y.defaults?.yt) },
+    autoUpdate: y.autoUpdate !== false
   }
 }
 
@@ -65,7 +89,9 @@ function migrate(saved: Partial<Settings> & LegacySettings, d: Settings): Settin
     danmaku: { ...d.danmaku, ...saved.danmaku },
     proxy: { ...d.proxy, ...saved.proxy },
     mcp: { ...d.mcp, ...saved.mcp },
-    language: isLanguageSetting(saved.language) ? saved.language : d.language
+    language: isLanguageSetting(saved.language) ? saved.language : d.language,
+    uiSite: isSite(saved.uiSite) ? saved.uiSite : d.uiSite,
+    youtube: normalizeYoutube(saved.youtube, d.youtube)
   }
 }
 
@@ -80,14 +106,17 @@ export function getSettings(): Settings {
 }
 
 export function updateSettings(patch: Partial<Settings>): Settings {
-  const next = { ...getSettings(), ...patch }
-  const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Math.round(n) || lo))
+  const prev = getSettings()
+  const next = { ...prev, ...patch }
   next.concurrency = clamp(next.concurrency, 1, 5)
   next.threads = clamp(next.threads, 1, 8)
   next.autoRetry = clamp(next.autoRetry, 0, 20)
   next.speedLimit = Math.max(0, Math.round(next.speedLimit) || 0)
   next.mcp = { ...next.mcp, port: clamp(next.mcp.port, 1024, 65535) }
   if (!isLanguageSetting(next.language)) next.language = 'system'
+  if (!isSite(next.uiSite)) next.uiSite = prev.uiSite
+  // 只改了其中几项时，其余的保持原样
+  if (patch.youtube) next.youtube = normalizeYoutube({ ...prev.youtube, ...patch.youtube }, prev.youtube)
   if (patch.defaults) {
     const { qn: _qn, ...opts } = normalizeOptions(patch.defaults)
     next.defaults = opts
