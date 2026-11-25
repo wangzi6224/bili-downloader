@@ -37,6 +37,8 @@ export interface TaskQueue {
 export interface Batch {
   id: string
   accountMid?: number
+  /** YouTube 批次用的账号（cookie 档案 id）；空为不登录 */
+  ytAccount?: string
   requestId?: string
   /** 链接、选择、选项、目录相同的请求算出同样的指纹，用来识别重复提交 */
   fingerprint: string
@@ -73,7 +75,7 @@ export interface Batch {
 
 export type NewBatch = Pick<
   Batch,
-  'requestId' | 'fingerprint' | 'url' | 'title' | 'cover' | 'kind' | 'meta' | 'options' | 'dir' | 'skipDownloaded' | 'accountMid'
+  'requestId' | 'fingerprint' | 'url' | 'title' | 'cover' | 'kind' | 'meta' | 'options' | 'dir' | 'skipDownloaded' | 'accountMid' | 'ytAccount'
 > & {
   items: MediaItem[]
   skipped: { downloaded: number; unavailable: number }
@@ -458,6 +460,7 @@ export class BatchManager extends EventEmitter {
       options: b.options,
       batchId: b.id,
       accountMid: b.accountMid,
+      ytAccount: b.ytAccount,
       dir: b.dir,
       multi: b.multi,
       // 按批次暂停后加入的任务直接是暂停状态，不会先启动再被打断

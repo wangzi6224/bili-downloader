@@ -6,7 +6,8 @@ import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
 import { joinList, t, translate, type Key } from '@shared/i18n'
 import { normalizeOptions } from '@shared/options'
-import type { AuthState, HistoryEntry, MediaItem, ParseRecord, ParseResult, Settings, TaskInfo } from '@shared/types'
+import { isSite, siteOf, siteOfKind } from '@shared/site'
+import type { AuthState, HistoryEntry, MediaItem, ParseRecord, ParseResult, Settings, Site, TaskInfo } from '@shared/types'
 import { AuthExpiredError } from '../bili/http'
 import { lazyVideo } from '../bili/lists'
 import type { BiliLookup } from '../bili/lookup'
@@ -51,6 +52,7 @@ import type { LoginFlow } from './loginFlow'
 import { activeScope, authScope, inAuthScope, isRetired } from '../auth/scope'
 import { loginDefinitions, LoginTools } from './loginTools'
 import { lookupDefinitions, LookupTools } from './lookupTools'
+import { definitions as youtubeDefinitions, parseYtArgs, YoutubeTools, ytOptionsOut, type YoutubeMcpDeps } from './youtubeTools'
 import { ParseCache } from './parseCache'
 import { batchWatermark, METHODS, plannedWatermark, removeTargets, removeWatermark, watermarkStatus, type WatermarkDeps } from './watermark'
 
@@ -77,7 +79,58 @@ export interface McpDeps {
   login: LoginFlow
   /** 去水印：估算耗时、AI 模型状态、识别已下载视频的水印 */
   watermark: WatermarkDeps
+  /** YouTube 工具（youtube_*）用的服务；不传时没有这组工具 */
+  youtube?: YoutubeMcpDeps
 }
+
+/** 这些工具可以按平台筛选：platform 为 bili 或 youtube，不传表示两边都算 */
+const PLATFORM_TOOLS = new Set(['list_tasks', 'control_tasks', 'list_batches', 'list_download_history', 'list_parse_history', 'remove_watermark'])
+
+function withPlatformInput(def: ToolDefinition): ToolDefinition {
+  const schema = def.inputSchema as { properties?: Record<string, unknown> }
+  if (def.name === 'update_settings') {
+    return {
+      ...def,
+      inputSchema: {
+        ...def.inputSchema,
+        properties: {
+          ...schema.properties,
+          ui_platform: { type: 'string', enum: ['bili', 'youtube'], description: t('mcpYoutube.argUiPlatform') },
+          youtube: {
+            type: 'object',
+            description: t('mcpYoutube.argYoutubeSettings'),
+            properties: {
+              download_dir: { type: 'string' },
+              concurrency: { type: 'integer', minimum: 1, maximum: 5 },
+              default_quality: { type: 'integer', minimum: 0, description: t('mcpYoutube.argQuality') },
+              auto_update: { type: 'boolean' },
+              defaults: { type: 'object', description: t('mcpYoutube.optionsDesc') }
+            },
+            additionalProperties: false
+          }
+        }
+      }
+    }
+  }
+  if (!PLATFORM_TOOLS.has(def.name)) return def
+  return {
+    ...def,
+    inputSchema: {
+      ...def.inputSchema,
+      properties: { ...schema.properties, platform: { type: 'string', enum: ['bili', 'youtube'], description: t('mcpYoutube.argPlatform') } }
+    }
+  }
+}
+
+/** 按平台筛选（不传时不筛选） */
+function platformFilter(args: Args): Site | undefined {
+  const v = args.platform
+  if (v === undefined || v === null) return undefined
+  if (!isSite(v)) throw invalid(t('mcpYoutube.badPlatform'))
+  return v
+}
+
+const inPlatform = (site: Site | undefined, kindOrSite: Site): boolean => !site || site === kindOrSite
 
 export interface ToolDefinition {
   name: string
@@ -396,6 +449,7 @@ export class McpTools implements ToolSet {
   private cache: ParseCache
   private lookup: LookupTools
   private login: LoginTools
+  private yt?: YoutubeTools
 
   constructor(
     private deps: McpDeps,
@@ -406,15 +460,25 @@ export class McpTools implements ToolSet {
     this.lookup = new LookupTools(deps.lookup, deps.authState, { now })
     this.login = new LoginTools(deps.login, (mid) => this.batches.list()
       .filter((b) => b.accountMid === mid && this.batches.state(b) === 'interrupted').map((b) => b.id), deps.accounts)
+    if (deps.youtube) {
+      this.yt = new YoutubeTools(deps.youtube, {
+        findDuplicate: (requestId, fingerprint) => this.batches.findDuplicate(requestId, fingerprint, undefined),
+        submit: (n) => this.submitted(this.batches.submit(n)),
+        deduplicated: (b) => this.deduplicated(b)
+      })
+    }
   }
 
   definitions(): ToolDefinition[] {
-    return [...definitions(), ...loginDefinitions(), ...lookupDefinitions(), ...accountDefinitions()].map(withAccountInput)
+    const shared = [...definitions(), ...loginDefinitions(), ...lookupDefinitions(), ...accountDefinitions()].map(withAccountInput).map(withPlatformInput)
+    return this.yt ? [...shared, ...youtubeDefinitions()] : shared
   }
 
   async call(name: string, args: Args): Promise<ToolResult> {
     let mid: number | undefined
     try {
+      // YouTube 工具不用 B站账号，也不进 B站的会话作用域
+      if (this.yt?.handles(name)) return result(await this.yt.call(name, args))
       if (this.login.handles(name)) return result(await this.login.call(name, args))
       if (usesBiliAccount(name)) {
         mid = requestedMid(args)
@@ -448,8 +512,14 @@ export class McpTools implements ToolSet {
       case 'list_accounts': return this.listAccounts()
       case 'switch_account':
       case 'logout_account': return this.changeAccount(name, requestedMid(args, true)!)
-      case 'list_download_history': return historyPage(args, this.deps.downloadRecords(), this.deps.accounts)
-      case 'list_parse_history': return historyPage(args, this.deps.parseRecords(), this.deps.accounts)
+      case 'list_download_history': {
+        const site = platformFilter(args)
+        return historyPage(args, this.deps.downloadRecords().filter((r) => inPlatform(site, r.key.startsWith('yt:') ? 'youtube' : 'bili')), this.deps.accounts)
+      }
+      case 'list_parse_history': {
+        const site = platformFilter(args)
+        return historyPage(args, this.deps.parseRecords().filter((r) => inPlatform(site, siteOfKind(r.kind))), this.deps.accounts)
+      }
       case 'get_download_quality':
         return compareQuality(this.deps.accounts, this.deps.probeQuality, requireString(args, 'url'), optionalString(args, 'item_id'), requestedMid(args))
       default:
@@ -523,6 +593,11 @@ export class McpTools implements ToolSet {
       active_account_mid: registry?.snapshot().activeMid ?? null,
       login,
       queue: { total: tasks.length, ...counts, speed_bps: totalSpeed(tasks) },
+      queue_by_platform: this.yt ? (['bili', 'youtube'] as const).map((site) => {
+        const group = tasks.filter((task) => siteOf(task) === site)
+        return { platform: site, total: group.length, ...countStatuses(group) }
+      }) : undefined,
+      youtube_hint: this.yt ? t('mcpYoutube.statusPointer') : undefined,
       queue_by_account: registry ? Array.from(countByAccount(tasks), ([account_mid, group]) => ({
         account_mid: account_mid ?? null, total: group.length, ...countStatuses(group)
       })) : undefined,
@@ -837,7 +912,8 @@ export class McpTools implements ToolSet {
   private listBatches(args: Args) {
     const limit = optionalInt(args, 'limit', 1, 50, 20)
     const filter = accountFilter(args)
-    const list = this.batches.list().filter((b) => matchesAccount(b.accountMid, filter))
+    const site = platformFilter(args)
+    const list = this.batches.list().filter((b) => matchesAccount(b.accountMid, filter) && inPlatform(site, siteOfKind(b.kind)))
     return { total: list.length, batches: list.slice(-limit).reverse().map((b) => this.batches.brief(b)) }
   }
 
@@ -849,12 +925,14 @@ export class McpTools implements ToolSet {
     const limit = optionalInt(args, 'limit', 1, 500, 50)
     const fields = optionalEnums(args, 'fields', TASK_FIELDS)
     const filter = accountFilter(args)
+    const site = platformFilter(args)
     const inBatch = this.batchTaskIds(batchId)
     const tasks = this.deps.queue
       .list()
       .filter(
         (t) =>
           matchesAccount(t.accountMid, filter) &&
+          inPlatform(site, siteOf(t)) &&
           (!inBatch || inBatch.has(t.id)) &&
           (!want || want.has(mcpStatus(t))) &&
           (!query || t.title.toLowerCase().includes(query) || t.groupTitle.toLowerCase().includes(query))
@@ -877,12 +955,13 @@ export class McpTools implements ToolSet {
     const batchId = optionalString(args, 'batch_id')
     const statuses = optionalEnums(args, 'status', STATUS_FILTER)
     const filter = accountFilter(args)
-    if (!taskIds && !batchId && !statuses && filter === undefined) throw invalid(t('mcpTools.controlScope'))
+    const site = platformFilter(args)
+    if (!taskIds && !batchId && !statuses && filter === undefined && !site) throw invalid(t('mcpTools.controlScope'))
     const batch = batchId ? this.findBatch(args) : undefined
     const want = statusSet(statuses)
     const idSet = taskIds && new Set(taskIds)
     const inBatch = this.batchTaskIds(batchId)
-    const all = this.deps.queue.list().filter((task) => matchesAccount(task.accountMid, filter))
+    const all = this.deps.queue.list().filter((task) => matchesAccount(task.accountMid, filter) && inPlatform(site, siteOf(task)))
     const matched = all.filter(
       (t) => (!idSet || idSet.has(t.id)) && (!inBatch || inBatch.has(t.id)) && (!want || want.has(mcpStatus(t)))
     )
@@ -961,8 +1040,9 @@ export class McpTools implements ToolSet {
       const tasks = queue.list().filter((t) => t.batchId === id && matchesAccount(t.accountMid, filter))
       return tasks.length ? tasks : undefined
     })
+    const site = platformFilter(args)
     return removeWatermark(args, ids, {
-      list: () => queue.list().filter((task) => matchesAccount(task.accountMid, filter)),
+      list: () => queue.list().filter((task) => matchesAccount(task.accountMid, filter) && inPlatform(site, siteOf(task))),
       startWatermark: (id, region, method) => queue.startWatermark(id, region, method)
     }, this.deps.watermark)
   }
@@ -984,7 +1064,15 @@ export class McpTools implements ToolSet {
       speed_limit_kbps: s.speedLimit,
       auto_retry: s.autoRetry,
       default_qn: s.defaultQn,
-      defaults: optionsOut(s.defaults)
+      defaults: optionsOut(s.defaults),
+      ui_platform: s.uiSite,
+      youtube: {
+        download_dir: s.youtube.downloadDir,
+        concurrency: s.youtube.concurrency,
+        default_quality: s.youtube.defaultQn,
+        auto_update: s.youtube.autoUpdate,
+        defaults: ytOptionsOut(s.youtube.defaults)
+      }
     }
   }
 
@@ -1011,8 +1099,30 @@ export class McpTools implements ToolSet {
       const { qn: _qn, ...opts } = normalizeOptions({ ...cur.defaults, ...parseOptions(args.defaults, 'defaults') })
       set('defaults', 'defaults', opts)
     }
-    if (!changed.length) throw invalid(t('mcpTools.nothingToUpdate', { names: joinList(Object.keys(SETTING_EFFECTS)) }))
+    if (args.ui_platform !== undefined) {
+      if (!isSite(args.ui_platform)) throw invalid(t('mcpYoutube.badPlatform'))
+      set('ui_platform', 'uiSite', args.ui_platform)
+    }
+    if (args.youtube !== undefined) set('youtube', 'youtube', this.youtubePatch(args.youtube, cur))
+    if (!changed.length) throw invalid(t('mcpTools.nothingToUpdate', { names: joinList([...Object.keys(SETTING_EFFECTS), 'ui_platform', 'youtube']) }))
     const next = this.deps.updateSettings(patch)
-    return { settings: this.settingsOut(next), effects: Object.fromEntries(changed.map((k) => [k, t(SETTING_EFFECTS[k])])) }
+    return { settings: this.settingsOut(next), effects: Object.fromEntries(changed.map((k) => [k, t(SETTING_EFFECTS[k] ?? 'mcpTools.effectNow')])) }
+  }
+
+  /** update_settings 的 youtube 段：只改传了的字段 */
+  private youtubePatch(raw: unknown, cur: Settings): Settings['youtube'] {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw invalid(t('mcpYoutube.badYoutubeSettings'))
+    const y = raw as Args
+    const known = new Set(['download_dir', 'concurrency', 'default_quality', 'auto_update', 'defaults'])
+    const extra = Object.keys(y).filter((k) => !known.has(k))
+    if (extra.length) throw invalid(t('mcpYoutube.unknownOptions', { keys: extra.join(', '), allowed: [...known].join(', ') }))
+    const next = { ...cur.youtube }
+    const dir = optionalString(y, 'download_dir')
+    if (dir !== undefined) next.downloadDir = prepareDir(dir)
+    if (y.concurrency !== undefined) next.concurrency = optionalInt(y, 'concurrency', 1, 5, next.concurrency)
+    if (y.default_quality !== undefined) next.defaultQn = optionalInt(y, 'default_quality', 0, 10000, next.defaultQn)
+    if (y.auto_update !== undefined) next.autoUpdate = optionalBool(y, 'auto_update', next.autoUpdate)
+    if (y.defaults !== undefined) next.defaults = parseYtArgs(y.defaults, { ...next.defaults, yt: next.defaults.yt })
+    return next
   }
 }

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setLanguage } from '@shared/i18n'
 import { DICTS } from '@shared/i18n/locales'
-import { DEFAULT_OPTIONS, normalizeOptions } from '@shared/options'
+import { DEFAULT_OPTIONS, normalizeOptions, DEFAULT_YT_OPTIONS } from '@shared/options'
 import type { AccountState, AuthState, BiliAccount, MediaItem, ParseResult, Settings } from '@shared/types'
 import { fakeWatermark, FakeQueue, makeTask, mediaItem, WM_REGION } from '../../test/fakeQueue'
 import { activeScope, authScope, inAuthScope, setActiveScope } from '../auth/scope'
@@ -132,7 +132,15 @@ beforeEach(() => {
     speedLimit: 0,
     autoRetry: 5,
     defaultQn: 80,
-    defaults: { ...DEFAULT_OPTIONS, subtitle: false }
+    defaults: { ...DEFAULT_OPTIONS, subtitle: false },
+    uiSite: 'bili',
+    youtube: {
+      downloadDir: join(dir, 'yt'),
+      defaultQn: 0,
+      concurrency: 2,
+      defaults: { ...DEFAULT_OPTIONS, yt: { ...DEFAULT_YT_OPTIONS } },
+      autoUpdate: true
+    }
   } as Settings
   tools = makeTools()
 })
@@ -1136,6 +1144,29 @@ describe('设置', () => {
         chapters: true,
         nfo: false,
         watermark: 'off'
+      },
+      ui_platform: 'bili',
+      youtube: {
+        download_dir: join(dir, 'yt'),
+        concurrency: 2,
+        default_quality: 0,
+        auto_update: true,
+        defaults: {
+          output: 'full',
+          container: 'mp4',
+          codec_order: ['avc', 'vp9', 'av1'],
+          audio: 'best',
+          hdr: false,
+          subtitles: true,
+          embed_subtitles: false,
+          subtitle_langs: [],
+          auto_subs: false,
+          cover: false,
+          embed_cover: true,
+          chapters: true,
+          sponsorblock: false,
+          nfo: false
+        }
       }
     })
   })
@@ -1485,5 +1516,189 @@ describe('去水印', () => {
       expect(queue.cancelWatermark).toHaveBeenCalledWith('a')
       expect(queue.tasks[0].processing).toBeUndefined()
     })
+  })
+})
+
+describe('按平台区分（B站 / YouTube）', () => {
+  const ytItem = (id: string) => mediaItem(`yt:${id}`, { kind: 'youtube', ytId: id, cid: 0 })
+  /** 假的 YouTube 依赖：只看 McpTools 有没有把 youtube_* 交过去，各工具本身在 youtubeTools.test.ts */
+  const ytDeps = (over: Partial<import('./youtubeTools').YoutubeMcpDeps> = {}): import('./youtubeTools').YoutubeMcpDeps => ({
+    service: () => ({ currentAccount: () => undefined, info: vi.fn() }) as unknown as import('../youtube/service').YoutubeService,
+    engine: { status: () => ({ state: 'ready', version: '1' }), ensure: vi.fn(), checkUpdate: vi.fn() },
+    accounts: { snapshot: () => ({ accounts: [] }), select: vi.fn(), check: vi.fn(), remove: vi.fn() },
+    listBrowsers: () => [],
+    importBrowser: vi.fn(),
+    confirmRemove: vi.fn(),
+    queue,
+    settings: () => settings,
+    downloadedKeys: () => history,
+    proxy: async () => '',
+    ...over
+  })
+
+  it('列表类工具多了 platform 参数，update_settings 多了 ui_platform 和 youtube；没有 youtube 依赖时没有 youtube_* 工具', () => {
+    const defs = tools.definitions()
+    const props = (name: string) => defs.find((d) => d.name === name)!.inputSchema.properties as Record<string, any>
+    for (const name of ['list_tasks', 'control_tasks', 'list_batches', 'list_download_history', 'list_parse_history', 'remove_watermark']) {
+      expect(props(name).platform).toMatchObject({ type: 'string', enum: ['bili', 'youtube'] })
+    }
+    expect(props('get_status').platform).toBeUndefined()
+    expect(props('update_settings').platform).toBeUndefined()
+    expect(props('update_settings').ui_platform).toMatchObject({ enum: ['bili', 'youtube'] })
+    expect(Object.keys(props('update_settings').youtube.properties)).toEqual(['download_dir', 'concurrency', 'default_quality', 'auto_update', 'defaults'])
+    expect(defs.some((d) => d.name.startsWith('youtube_'))).toBe(false)
+  })
+
+  it('有 youtube 依赖时工具列表末尾追加 15 个 youtube_* 工具', () => {
+    tools = makeTools({ youtube: ytDeps() })
+    const names = tools.definitions().map((d) => d.name)
+    expect(names).toHaveLength(23 + 15)
+    expect(names.slice(0, 23).some((n) => n.startsWith('youtube_'))).toBe(false)
+    expect(names.slice(23).every((n) => n.startsWith('youtube_'))).toBe(true)
+    expect(names[23]).toBe('youtube_get_status')
+  })
+
+  it('youtube_* 交给 YouTube 工具处理，不进 B站的账号作用域', async () => {
+    tools = makeTools({ youtube: ytDeps() })
+    const r = await data('youtube_get_status')
+    expect(r).toMatchObject({ engine: { state: 'ready', version: '1' }, login: { logged_in: false }, proxy: null })
+    expect(deps.authState).not.toHaveBeenCalled()
+    // YouTube 工具抛出的错误也按 MCP 的错误格式返回
+    expect(await error('youtube_switch_account', { account_id: 'nope' })).toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('get_status：有 youtube 依赖时按平台分组统计队列，并提示用 youtube_get_status', async () => {
+    queue.add(makeTask('a'), makeTask('y', { item: ytItem('aaaaaaaaaaa'), status: 'done' }), makeTask('z', { item: ytItem('bbbbbbbbbbb') }))
+    let r = await data('get_status')
+    expect(r.queue_by_platform).toBeUndefined()
+    expect(r.youtube_hint).toBeUndefined()
+    tools = makeTools({ youtube: ytDeps() })
+    r = await data('get_status')
+    expect(r.queue_by_platform).toEqual([
+      expect.objectContaining({ platform: 'bili', total: 1, queued: 1 }),
+      expect.objectContaining({ platform: 'youtube', total: 2, queued: 1, done: 1 })
+    ])
+    expect(r.youtube_hint).toContain('youtube_get_status')
+  })
+
+  it('youtube_download_batch 用 McpTools 的批次：提交、去重、按平台列出批次', async () => {
+    tools = makeTools({ youtube: ytDeps() })
+    await data('download_batch', { url: 'x', all: true })
+    const args = { videos: ['aaaaaaaaaaa', 'https://youtu.be/bbbbbbbbbbb'] }
+    const first = await data('youtube_download_batch', args)
+    expect(first).toMatchObject({ selected: 2, logged_in: false, dir: settings.youtube.downloadDir })
+    expect(first.batch_id).toEqual(expect.any(String))
+    expect(queue.list().filter((task) => task.item.kind === 'youtube').map((task) => task.item.key)).toEqual(['yt:aaaaaaaaaaa', 'yt:bbbbbbbbbbb'])
+    // 同样的请求在批次没结束时提交第二次，返回原来的批次
+    const again = await data('youtube_download_batch', args)
+    expect(again).toMatchObject({ batch_id: first.batch_id, deduplicated: true })
+    expect((await data('youtube_download_batch', { ...args, request_id: 'r1' })).deduplicated).toBeUndefined()
+    expect(await data('youtube_download_batch', { videos: ['ccccccccccc', 'ddddddddddd'], request_id: 'r1' })).toMatchObject({ deduplicated: true })
+
+    expect((await data('list_batches')).total).toBe(3)
+    expect((await data('list_batches', { platform: 'youtube' })).batches.map((b: { batch_id: string }) => b.batch_id)).toContain(first.batch_id)
+    expect((await data('list_batches', { platform: 'youtube' })).total).toBe(2)
+    expect((await data('list_batches', { platform: 'bili' })).total).toBe(1)
+    expect(await error('list_batches', { platform: 'douyin' })).toMatchObject({ code: 'INVALID_ARGS' })
+  })
+
+  it('list_tasks 按平台筛选；非法的 platform 报错', async () => {
+    queue.add(makeTask('a'), makeTask('y', { item: ytItem('aaaaaaaaaaa') }))
+    const ids = async (args: Record<string, unknown>) => (await data('list_tasks', args)).tasks.map((t: { id: string }) => t.id)
+    expect(await ids({})).toEqual(['a', 'y'])
+    expect(await ids({ platform: null })).toEqual(['a', 'y'])
+    expect(await ids({ platform: 'youtube' })).toEqual(['y'])
+    expect(await ids({ platform: 'bili' })).toEqual(['a'])
+    expect(await error('list_tasks', { platform: 'x' })).toMatchObject({ code: 'INVALID_ARGS' })
+  })
+
+  it('control_tasks：platform 也可以单独作为范围', async () => {
+    queue.add(makeTask('a'), makeTask('y', { item: ytItem('aaaaaaaaaaa') }), makeTask('z', { item: ytItem('bbbbbbbbbbb'), status: 'paused' }))
+    const r = await data('control_tasks', { action: 'pause', platform: 'youtube' })
+    expect(queue.pauseMany).toHaveBeenCalledWith(['y'])
+    expect(r).toMatchObject({ matched: 2, affected: 1 })
+    await data('control_tasks', { action: 'pause', platform: 'bili', status: 'queued' })
+    expect(queue.pauseMany).toHaveBeenLastCalledWith(['a'])
+    expect(await error('control_tasks', { action: 'pause', platform: 'nope' })).toMatchObject({ code: 'INVALID_ARGS' })
+  })
+
+  it('下载记录按 key 前缀、解析记录按类型区分平台', async () => {
+    const rec = { title: '视频', groupTitle: '', path: '/dl/1.mp4', at: 1 }
+    tools = makeTools({
+      downloadRecords: () => [{ ...rec, key: 'ugc:BV1:1' }, { ...rec, key: 'yt:aaaaaaaaaaa', at: 2 }],
+      parseRecords: () => [
+        { input: 'b', title: 'B站', kind: 'ugc', cover: '', count: 1, at: 1 },
+        { input: 'y', title: 'YouTube', kind: 'youtube', cover: '', count: 1, at: 2 }
+      ]
+    })
+    expect((await data('list_download_history')).total).toBe(2)
+    expect(await data('list_download_history', { platform: 'youtube' })).toMatchObject({ total: 1, records: [{ item_id: 'yt:aaaaaaaaaaa' }] })
+    expect(await data('list_download_history', { platform: 'bili' })).toMatchObject({ total: 1, records: [{ item_id: 'ugc:BV1:1' }] })
+    expect((await data('list_parse_history')).total).toBe(2)
+    expect(await data('list_parse_history', { platform: 'youtube' })).toMatchObject({ total: 1, records: [{ input: 'y' }] })
+    expect(await data('list_parse_history', { platform: 'bili' })).toMatchObject({ total: 1, records: [{ input: 'b' }] })
+    expect(await error('list_download_history', { platform: 1 })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await error('list_parse_history', { platform: 'x' })).toMatchObject({ code: 'INVALID_ARGS' })
+  })
+
+  it('remove_watermark 按平台筛选任务', async () => {
+    const found = { width: 1920, height: 1080, detected: WM_REGION, found: true }
+    queue.add(
+      makeTask('a', { status: 'done', outputPath: '/dl/a.mp4', watermark: found }),
+      makeTask('y', { status: 'done', outputPath: '/dl/y.mp4', item: ytItem('aaaaaaaaaaa'), watermark: found })
+    )
+    const r = await data('remove_watermark', { task_ids: ['a', 'y'], method: 'fast', dry_run: true, platform: 'bili' })
+    expect(r.would_start.map((x: { task_id: string }) => x.task_id)).toEqual(['a'])
+    expect(r.skipped).toEqual([{ task_id: 'y', reason: expect.any(String) }])
+    expect(await error('remove_watermark', { task_ids: ['a'], method: 'fast', platform: 'x' })).toMatchObject({ code: 'INVALID_ARGS' })
+  })
+
+  describe('update_settings 的 ui_platform 和 youtube', () => {
+    it('ui_platform：只能是 bili 或 youtube', async () => {
+      const r = await data('update_settings', { ui_platform: 'youtube' })
+      expect(deps.updateSettings).toHaveBeenCalledWith({ uiSite: 'youtube' })
+      expect(r.settings.ui_platform).toBe('youtube')
+      expect(r.effects).toEqual({ ui_platform: '立即生效' })
+      expect(await error('update_settings', { ui_platform: 'douyin' })).toMatchObject({ code: 'INVALID_ARGS' })
+    })
+
+    it('youtube：只改传了的字段，defaults 按 YouTube 选项解析', async () => {
+      const target = join(dir, 'yt-new')
+      const r = await data('update_settings', {
+        youtube: { download_dir: target, concurrency: 3, default_quality: 1080, auto_update: false, defaults: { sponsorblock: true, container: 'mkv' } }
+      })
+      expect(statSync(target).isDirectory()).toBe(true)
+      const y = vi.mocked(deps.updateSettings).mock.calls[0][0].youtube!
+      expect(y).toMatchObject({ downloadDir: target, concurrency: 3, defaultQn: 1080, autoUpdate: false })
+      expect(y.defaults.yt).toMatchObject({ sponsorblock: 'mark', container: 'mkv' })
+      expect(r.settings.youtube).toMatchObject({ download_dir: target, concurrency: 3, default_quality: 1080, auto_update: false })
+      expect(r.settings.youtube.defaults).toMatchObject({ sponsorblock: true, container: 'mkv' })
+      expect(r.effects).toEqual({ youtube: '立即生效' })
+
+      // 只传一项时其他保持原样
+      await data('update_settings', { youtube: { concurrency: 1 } })
+      expect(vi.mocked(deps.updateSettings).mock.lastCall![0].youtube).toEqual({ ...settings.youtube, concurrency: 1 })
+      await data('update_settings', { youtube: {} })
+      expect(vi.mocked(deps.updateSettings).mock.lastCall![0].youtube).toEqual(settings.youtube)
+    })
+
+    it('youtube：不是对象、有不认识的字段、字段值不对时报错', async () => {
+      for (const v of ['x', null, [1]]) {
+        expect(await error('update_settings', { youtube: v })).toMatchObject({ code: 'INVALID_ARGS' })
+      }
+      expect(await error('update_settings', { youtube: { foo: 1, bar: 2 } })).toMatchObject({ code: 'INVALID_ARGS', message: expect.stringContaining('foo, bar') })
+      expect(await error('update_settings', { youtube: { concurrency: 9 } })).toMatchObject({ code: 'INVALID_ARGS' })
+      expect(await error('update_settings', { youtube: { defaults: { container: 'avi' } } })).toMatchObject({ code: 'INVALID_ARGS' })
+      expect(await error('update_settings', { youtube: { download_dir: 'relative' } })).toMatchObject({ code: 'INVALID_ARGS' })
+      expect(deps.updateSettings).not.toHaveBeenCalled()
+      // 没传任何设置时，提示里列出 ui_platform 和 youtube
+      expect(await error('update_settings', {})).toMatchObject({ message: expect.stringMatching(/ui_platform.*youtube/) })
+    })
+  })
+
+  it('全部已下载时也带上不认识的 id', async () => {
+    history = [plain(1).key]
+    const r = await data('download_batch', { url: 'x', ids: [plain(1).key, 'ugc:BV9:9'] })
+    expect(r).toMatchObject({ batch_id: null, unknown_ids: ['ugc:BV9:9'] })
   })
 })

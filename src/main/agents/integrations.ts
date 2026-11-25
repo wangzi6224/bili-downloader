@@ -16,7 +16,7 @@ import {
   type StdioEntry
 } from './configFile'
 import type { AgentDef, AgentEnv } from './registry'
-import { installedSkillVersion, removeSkill, SKILL_NAME, writeSkill } from './skill'
+import { installedSkillVersion, removeSkill, SKILL_NAMES, writeSkill } from './skill'
 
 /**
  * 把 MCP 和 skill 装进各个 agent，记下装过哪些，应用升级或挪了位置后自动更新。
@@ -125,7 +125,7 @@ export class Integrations {
   /** 这个 agent 里我们会写的路径：所有配置文件（含可选的）和 skill 目录 */
   private paths(a: AgentDef): string[] {
     const root = a.skills?.(this.deps.env)
-    return [...a.mcp(this.deps.env).map((c) => c.file), ...(root ? [join(root, SKILL_NAME)] : [])]
+    return [...a.mcp(this.deps.env).map((c) => c.file), ...(root ? SKILL_NAMES.map((n) => join(root, n)) : [])]
   }
 
   private ours(): Ours {
@@ -137,7 +137,7 @@ export class Integrations {
         files.set(backupPath(c.file), { ...c, file: backupPath(c.file) })
       }
       const root = a.skills?.(this.deps.env)
-      if (root) dirs.add(join(root, SKILL_NAME))
+      if (root) for (const n of SKILL_NAMES) dirs.add(join(root, n))
     }
     const parents = new Set<string>()
     for (const p of [...files.keys(), ...dirs]) {
@@ -230,7 +230,7 @@ export class Integrations {
     const targets = this.targets(a)
     const root = a.skills?.(this.deps.env)
     const skillRoot = root && withSkill && installedSkillVersion(root) !== null ? root : undefined
-    const created = this.missing([...targets.map((c) => c.file), ...(skillRoot ? [join(skillRoot, SKILL_NAME)] : [])])
+    const created = this.missing([...targets.map((c) => c.file), ...(skillRoot ? SKILL_NAMES.map((n) => join(skillRoot, n)) : [])])
     this.guard(a, () => targets.forEach((c) => writeEntry(c, entry)))
     if (!skillRoot) return { created }
     writeSkill(skillRoot, this.deps.version)

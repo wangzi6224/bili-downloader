@@ -20,6 +20,45 @@ export const SKILL_DESCRIPTION =
   ' Use it for Bilibili video download (bilibili downloader, download bilibili videos, BV ids, b23.tv links),' +
   ' Bilibili search (find the best / most viewed / newest videos, sort by views, comments, duration, danmaku or date), uploaders, subtitles, AI summaries and comments.'
 
+/** YouTube 单独一个 skill：description 里只写 YouTube 的说法，agent 遇到 YouTube 的请求更容易想到它 */
+export const YT_SKILL_NAME = 'youtube-downloader'
+
+export const YT_SKILL_DESCRIPTION =
+  'YouTube 视频下载、搜索和内容查看，通过本机的 B站下载器（bili-downloader MCP 服务，youtube_* 工具）完成。' +
+  '用户想下载 YouTube / 油管视频、Shorts、播放列表、频道视频、YouTube Music、直播回放、稍后观看或喜欢的视频，' +
+  '提到 YouTube 下载、油管下载、下载 YouTube 视频、保存 YouTube 视频或字幕，或者给出 youtube.com、youtu.be、music.youtube.com 链接时，优先使用本技能。' +
+  '也用于 YouTube 搜索视频和频道、看视频详情、字幕全文、章节、评论，以及查看下载进度、失败重试、导入 YouTube 登录。' +
+  ' Use it for YouTube video download (youtube downloader, download YouTube videos, Shorts, playlists, channels, YouTube Music, youtu.be links),' +
+  ' YouTube search (videos, channels, sort by date / views / rating), video details, transcripts, chapters and comments.'
+
+export const SKILL_NAMES = [SKILL_NAME, YT_SKILL_NAME] as const
+
+export function ytSkillMarkdown(version: string): string {
+  const appName = t('common.appName')
+  return [
+    '---',
+    `name: ${YT_SKILL_NAME}`,
+    `description: ${JSON.stringify(YT_SKILL_DESCRIPTION)}`,
+    'metadata:',
+    `  generator: ${GENERATOR}`,
+    `  version: ${JSON.stringify(version)}`,
+    '---',
+    '',
+    `# ${appName} · YouTube`,
+    '',
+    t('agents.ytSkillIntro', { appName }),
+    '',
+    `## ${t('agents.skillWorkflow')}`,
+    '',
+    t('mcpYoutube.instructions'),
+    '',
+    `## ${t('agents.skillTroubleshoot')}`,
+    '',
+    t('agents.ytSkillTroubleshootBody'),
+    ''
+  ].join('\n')
+}
+
 export function skillMarkdown(version: string): string {
   const appName = t('common.appName')
   return [
@@ -52,17 +91,18 @@ export function skillMarkdown(version: string): string {
   ].join('\n')
 }
 
-const skillFile = (root: string): string => join(root, SKILL_NAME, 'SKILL.md')
+const skillFile = (root: string, name: string = SKILL_NAME): string => join(root, name, 'SKILL.md')
 
 /**
- * 已装的 skill 的版本：没有这个目录返回 undefined；有但不是我们生成的（用户自己放的同名 skill）返回 null
+ * 已装的 skill 的版本：没有这个目录返回 undefined；有但不是我们生成的（用户自己放的同名 skill）返回 null。
+ * 缺省看主 skill（bili-downloader），两个 skill 总是一起写
  */
-export function installedSkillVersion(root: string): string | null | undefined {
+export function installedSkillVersion(root: string, name: string = SKILL_NAME): string | null | undefined {
   let text: string
   try {
-    text = readFileSync(skillFile(root), 'utf8')
+    text = readFileSync(skillFile(root, name), 'utf8')
   } catch {
-    return existsSync(join(root, SKILL_NAME)) ? null : undefined
+    return existsSync(join(root, name)) ? null : undefined
   }
   if (!new RegExp(`^\\s*generator:\\s*${GENERATOR}\\s*$`, 'm').test(text)) return null
   const m = /^\s*version:\s*"?([^"\s]+)"?\s*$/m.exec(text)
@@ -71,10 +111,14 @@ export function installedSkillVersion(root: string): string | null | undefined {
 
 export function writeSkill(root: string, version: string): void {
   writeTextAtomic(skillFile(root), skillMarkdown(version))
+  // 用户自己放了同名的 youtube-downloader 就不覆盖
+  if (installedSkillVersion(root, YT_SKILL_NAME) !== null) writeTextAtomic(skillFile(root, YT_SKILL_NAME), ytSkillMarkdown(version))
 }
 
-/** 只删我们生成的；返回是否删了 */
+/** 只删我们生成的；返回主 skill 是否删了 */
 export function removeSkill(root: string): boolean {
+  const yt = installedSkillVersion(root, YT_SKILL_NAME)
+  if (typeof yt === 'string') rmSync(join(root, YT_SKILL_NAME), { recursive: true, force: true })
   const v = installedSkillVersion(root)
   if (v === undefined || v === null) return false
   rmSync(join(root, SKILL_NAME), { recursive: true, force: true })

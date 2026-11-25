@@ -124,6 +124,34 @@ describe('install / uninstall', () => {
     expect(existsSync(paths.alphaSkill())).toBe(true)
   })
 
+  it('两个 skill（bili-downloader、youtube-downloader）一起装上、记下、一起卸载', () => {
+    const skills = join(home, '.alpha', 'skills')
+    make().install('alpha')
+    expect(readFileSync(join(skills, 'youtube-downloader', 'SKILL.md'), 'utf8')).toContain('version: "1.0.0"')
+    const created: string[] = read(paths.records()).alpha.created
+    expect(created).toEqual(expect.arrayContaining([join(skills, 'bili-downloader'), join(skills, 'youtube-downloader')]))
+    // 升级后两个一起重写
+    version = '1.1.0'
+    make().sync()
+    expect(readFileSync(join(skills, 'youtube-downloader', 'SKILL.md'), 'utf8')).toContain('version: "1.1.0"')
+    make().uninstall('alpha')
+    expect(existsSync(join(skills, 'bili-downloader'))).toBe(false)
+    expect(existsSync(join(skills, 'youtube-downloader'))).toBe(false)
+    expect(tree()).toEqual([])
+  })
+
+  it('用户自己的 youtube-downloader 不覆盖、卸载也不删，bili-downloader 照常装卸', () => {
+    const mine = join(home, '.alpha', 'skills', 'youtube-downloader', 'SKILL.md')
+    mkdirSync(join(home, '.alpha', 'skills', 'youtube-downloader'), { recursive: true })
+    writeFileSync(mine, '---\nname: youtube-downloader\n---\n我的')
+    make().install('alpha')
+    expect(readFileSync(mine, 'utf8')).toContain('我的')
+    expect(existsSync(paths.alphaSkill())).toBe(true)
+    make().uninstall('alpha')
+    expect(readFileSync(mine, 'utf8')).toContain('我的')
+    expect(existsSync(paths.alphaSkill())).toBe(false)
+  })
+
   it('卸载删掉条目、skill 和记录', () => {
     presence(join(home, '.alpha'))
     writeFileSync(paths.alphaMcp(), '{"theme": "dark"}')

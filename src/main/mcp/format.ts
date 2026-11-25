@@ -2,6 +2,7 @@ import { t as tr, type Key } from '@shared/i18n'
 import { isVideoTask } from '@shared/watermark'
 import type { ProcessingInfo, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BiliError, LoginRequiredError } from '../bili/http'
+import { YtLoginRequiredError, YtRateLimitError } from '../youtube/errors'
 
 /** 给 agent 看的任务状态：运行中的几个阶段合成 running，等待自动重试的 error 单独算 retrying */
 export type McpStatus = 'queued' | 'running' | 'paused' | 'retrying' | 'failed' | 'unsupported' | 'waiting_auth' | 'done'
@@ -139,5 +140,8 @@ export function describeError(e: unknown): { code: ErrorCode; message: string; h
   if (e instanceof BiliError && RATE_LIMIT_CODES.has(e.code)) {
     return { code: 'RATE_LIMITED', message, hint: tr('mcp.rateLimitedHint') }
   }
+  // YouTube：要登录（年龄限制、会员、私享）、机器人验证
+  if (e instanceof YtLoginRequiredError) return { code: 'NOT_LOGGED_IN', message, hint: tr('mcpYoutube.loginHint') }
+  if (e instanceof YtRateLimitError) return { code: 'RATE_LIMITED', message, hint: tr('mcpYoutube.rateLimitedHint') }
   return { code: 'FAILED', message }
 }
