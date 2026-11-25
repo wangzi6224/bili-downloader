@@ -11,6 +11,7 @@ import type {
   SourceDownloadChoice,
   ParseResult,
   Settings,
+  Site,
   SourceDetails,
   SourceRef,
   Subscription,
@@ -134,7 +135,7 @@ export async function parseAndRecord(input: string): Promise<ParseResult> {
 type Result = { ok: true; data: unknown } | { ok: false; error: string }
 
 /** 统一包装：错误以 { ok:false } 返回，preload 再还原成 Error，避免 Electron 给消息加前缀 */
-function handle(channel: string, fn: (...args: never[]) => unknown): void {
+export function handle(channel: string, fn: (...args: never[]) => unknown): void {
   ipcMain.handle(channel, async (_e, ...args): Promise<Result> => {
     try {
       return { ok: true, data: await inAuthScope(activeScope(), () => fn(...(args as never[]))) }
@@ -317,7 +318,7 @@ export function registerIpc({ manager, subs, mcp, agents, enqueue, updater, acco
   handle('history:parses', () => parseRecords())
   handle('history:removeParse', (input: string, accountMid?: number | null) =>
     accountMid === undefined ? removeParse(input) : removeParse(input, accountMid))
-  handle('history:clearParses', () => clearParses())
+  handle('history:clearParses', (site?: Site) => (site ? clearParses(site) : clearParses()))
 
   handle('dl:enqueue', (req: EnqueueRequest, accountMid?: number) => {
     if (accounts) {
@@ -382,19 +383,26 @@ export function registerIpc({ manager, subs, mcp, agents, enqueue, updater, acco
   handle('i18n:get', () => getLanguage())
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch: Partial<Settings>) => updateSettings(patch))
-  handle('settings:chooseDir', async () => {
+  // site 为 youtube 时改的是 YouTube 的下载目录
+  handle('settings:chooseDir', async (site?: Site) => {
     const win = getMainWindow()
+    const current = getSettings()
     const opts = {
       title: t('dialogs.chooseDownloadDir'),
-      defaultPath: getSettings().downloadDir,
+      defaultPath: site === 'youtube' ? current.youtube.downloadDir : current.downloadDir,
       properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
     }
     const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
-    return r.canceled || !r.filePaths[0] ? getSettings() : updateSettings({ downloadDir: r.filePaths[0] })
+    if (r.canceled || !r.filePaths[0]) return getSettings()
+    return site === 'youtube'
+      ? updateSettings({ youtube: { ...current.youtube, downloadDir: r.filePaths[0] } })
+      : updateSettings({ downloadDir: r.filePaths[0] })
   })
 
   handle('subs:list', () => subs.list())
   handle('subs:add', async (req: NewSubscription, accountMid?: number) => {
+    // YouTube 订阅不绑 B站账号，检查时用当时的 YouTube 账号
+    if (req.kind === 'youtube') return subs.add(req)
     if (accounts) return forAccount(accountMid, async () => {
       const verify = verifyView()
       await ensureLoggedIn()

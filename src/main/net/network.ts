@@ -47,3 +47,28 @@ export async function applyNetwork(s: Settings, force = false): Promise<NetworkS
   console.info(`网络：${result.text}`)
   return result
 }
+
+/** Chromium resolveProxy 的结果转成 yt-dlp 的 --proxy（支持 SOCKS；DIRECT 为空串） */
+export function ytProxyFromResolved(resolved: string): string {
+  const first = resolved.split(';')[0].trim()
+  const m = /^(PROXY|HTTPS|SOCKS5|SOCKS4|SOCKS)\s+(\S+)$/i.exec(first)
+  if (!m) return ''
+  const scheme = { PROXY: 'http', HTTPS: 'https', SOCKS5: 'socks5', SOCKS4: 'socks4', SOCKS: 'socks4' }[m[1].toUpperCase()]
+  return `${scheme}://${m[2]}`
+}
+
+/**
+ * yt-dlp 用的代理：系统代理按 youtube.com 解析（PAC 常对 B站直连、对 YouTube 走代理）；
+ * 手动填的 SOCKS 代理主进程用不了，但可以交给 yt-dlp
+ */
+export async function ytProxy(s: Settings, resolve: (url: string) => Promise<string> = (url) => session.defaultSession.resolveProxy(url)): Promise<string> {
+  if (s.proxy.mode === 'direct') return ''
+  if (s.proxy.mode === 'system') return ytProxyFromResolved(await resolve('https://www.youtube.com'))
+  const raw = s.proxy.url.trim()
+  if (/^socks(4a?|5h?)?:\/\//i.test(raw)) return raw
+  try {
+    return normalizeProxyUrl(raw)
+  } catch {
+    return ''
+  }
+}

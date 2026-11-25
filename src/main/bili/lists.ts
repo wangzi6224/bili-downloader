@@ -2,6 +2,7 @@ import { t } from '@shared/i18n'
 import { rankLabel } from '@shared/parseUrl'
 import type { MediaItem, PagedSource, PageResult, Paging, ParseResult } from '@shared/types'
 import { api, BiliError } from './http'
+import { youtube } from '../youtube/service'
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -257,6 +258,8 @@ export async function loadPage(source: PagedSource, page: number): Promise<PageR
         hasMore: page * SPACE_PS < d.page.total
       }
     }
+    case 'yt':
+      return youtube().loadPage(source.url, page)
   }
 }
 

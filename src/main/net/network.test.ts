@@ -98,3 +98,53 @@ describe('applyNetwork', () => {
     expect(m.setFetchProxy).toHaveBeenLastCalledWith(undefined)
   })
 })
+
+describe('ytProxyFromResolved', () => {
+  it.each([
+    ['PROXY 10.0.0.1:3128; DIRECT', 'http://10.0.0.1:3128'],
+    ['proxy 10.0.0.1:3128', 'http://10.0.0.1:3128'],
+    ['HTTPS proxy.local:443', 'https://proxy.local:443'],
+    ['SOCKS5 127.0.0.1:7891; PROXY 1.1.1.1:80', 'socks5://127.0.0.1:7891'],
+    ['SOCKS4 127.0.0.1:1080', 'socks4://127.0.0.1:1080'],
+    ['SOCKS 127.0.0.1:1080', 'socks4://127.0.0.1:1080'],
+    ['DIRECT', ''],
+    ['DIRECT; PROXY 10.0.0.1:3128', ''],
+    ['', ''],
+    ['QUIC 1.1.1.1:443', '']
+  ])('%s → %s', (resolved, want) => {
+    expect(net.ytProxyFromResolved(resolved)).toBe(want)
+  })
+})
+
+describe('ytProxy', () => {
+  it('直连时为空串（不读环境变量里的代理）', async () => {
+    const resolve = vi.fn()
+    expect(await net.ytProxy(cfg('direct', '127.0.0.1:7890'), resolve)).toBe('')
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
+  it('跟随系统：按 youtube.com 解析，支持 SOCKS', async () => {
+    const resolve = vi.fn(async () => 'SOCKS5 127.0.0.1:7891')
+    expect(await net.ytProxy(cfg('system'), resolve)).toBe('socks5://127.0.0.1:7891')
+    expect(resolve).toHaveBeenCalledWith('https://www.youtube.com')
+    expect(await net.ytProxy(cfg('system'), async () => 'DIRECT')).toBe('')
+  })
+
+  it('跟随系统且不注入时用默认会话解析', async () => {
+    m.resolveProxy.mockResolvedValue('PROXY 10.0.0.1:3128')
+    expect(await net.ytProxy(cfg('system'))).toBe('http://10.0.0.1:3128')
+    expect(m.resolveProxy).toHaveBeenCalledWith('https://www.youtube.com')
+  })
+
+  it('手动：SOCKS 原样交给 yt-dlp，HTTP 规范化，填错时为空串', async () => {
+    expect(await net.ytProxy(cfg('manual', ' socks5://127.0.0.1:7891 '))).toBe('socks5://127.0.0.1:7891')
+    expect(await net.ytProxy(cfg('manual', 'socks5h://u:p@h:1080'))).toBe('socks5h://u:p@h:1080')
+    expect(await net.ytProxy(cfg('manual', 'SOCKS4A://h:1080'))).toBe('SOCKS4A://h:1080')
+    expect(await net.ytProxy(cfg('manual', 'socks://h:1080'))).toBe('socks://h:1080')
+    expect(await net.ytProxy(cfg('manual', '127.0.0.1:7890'))).toBe('http://127.0.0.1:7890')
+    expect(await net.ytProxy(cfg('manual', 'https://user:pw@proxy.local:443'))).toBe('https://user:pw@proxy.local:443')
+    expect(await net.ytProxy(cfg('manual', 'http://127.0.0.1'))).toBe('')
+    expect(await net.ytProxy(cfg('manual', 'ftp://h:21'))).toBe('')
+    expect(await net.ytProxy(cfg('manual', ''))).toBe('')
+  })
+})

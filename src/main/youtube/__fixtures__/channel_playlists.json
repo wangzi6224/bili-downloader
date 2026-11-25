@@ -1,0 +1,131 @@
+{
+ "id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+ "title": "Google - Playlists",
+ "description": "Here to help. \n\nReimagining how AI can make your life better and help you explore your creativity, connect with the world, and discover new possibilities. Browse our latest product demos, unboxings, d",
+ "channel": "Google",
+ "channel_id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+ "channel_url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+ "uploader": "Google",
+ "uploader_id": "@Google",
+ "uploader_url": "https://www.youtube.com/@Google",
+ "playlist_count": null,
+ "webpage_url": "https://www.youtube.com/@Google/playlists",
+ "_type": "playlist",
+ "extractor_key": "YoutubeTab",
+ "availability": "public",
+ "channel_follower_count": 14700000,
+ "view_count": null,
+ "modified_date": null,
+ "thumbnails": [
+  {
+   "url": "https://yt3.googleusercontent.com/H9gGqPJUwNvqOwEZBewLZiW_gV2nFdeQOugRyKv1qclCvIH4ucb6E5z5zYUOZJE4Z2E0KcS6=s0"
+  },
+  {
+   "url": "https://yt3.googleusercontent.com/bAseQlKvNmjdLQrvYWm_q3QDp8C8YKyYI-nYJewgOkPi0JU1_3X9oFgjrEdzkOlXzLGFxFbnsw=s900-c-k-c0x00ffffff-no-rj",
+   "width": 900,
+   "height": 900
+  },
+  {
+   "url": "https://yt3.googleusercontent.com/bAseQlKvNmjdLQrvYWm_q3QDp8C8YKyYI-nYJewgOkPi0JU1_3X9oFgjrEdzkOlXzLGFxFbnsw=s0"
+  }
+ ],
+ "entries": [
+  {
+   "_type": "url",
+   "ie_key": "YoutubeTab",
+   "id": "PLAeFjVYtuU34",
+   "url": "https://www.youtube.com/playlist?list=PLAeFjVYtuU34",
+   "title": "Project Suncatcher",
+   "description": null,
+   "duration": null,
+   "view_count": null,
+   "channel": "Playlist",
+   "channel_id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+   "channel_url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+   "uploader": "Playlist",
+   "uploader_id": "@Google",
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": null,
+   "channel_is_verified": null,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/o1JK79jszqo/hqdefault.jpg?sqp=-oaymwEXCOADEI4CSFryq4qpAwkIARUAAIhCGAE=&rs=AOn4CLAoXhVzYOHf8Vp1-ihwxcJjK2r3TA",
+     "width": 480,
+     "height": 270
+    }
+   ]
+  },
+  {
+   "_type": "url",
+   "ie_key": "YoutubeTab",
+   "id": "PLfCWByeI47Ko",
+   "url": "https://www.youtube.com/playlist?list=PLfCWByeI47Ko",
+   "title": "Searching For",
+   "description": null,
+   "duration": null,
+   "view_count": null,
+   "channel": "Playlist",
+   "channel_id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+   "channel_url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+   "uploader": "Playlist",
+   "uploader_id": "@Google",
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": null,
+   "channel_is_verified": null,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/pl_c/PLfCWByeI47Ko/studio_square_thumbnail.jpg?sqp=CMe9mdgG-oaymwEICKoDEPABSFqi85f_AwYIl4Oj1AY=&rs=AOn4CLAEE4HEFwTf5alMrGs5BZyZY3xQMg",
+     "width": 426,
+     "height": 240
+    },
+    {
+     "url": "https://i.ytimg.com/pl_c/PLfCWByeI47Ko/studio_square_thumbnail.jpg?sqp=CMe9mdgG-oaymwEICNYGEOADSFqi85f_AwYIl4Oj1AY=&rs=AOn4CLAqn7kcqhZgW-7l_9_cDvHbxbe9zw",
+     "width": 854,
+     "height": 480
+    },
+    {
+     "url": "https://i.ytimg.com/pl_c/PLfCWByeI47Ko/studio_square_thumbnail.jpg?sqp=CMe9mdgG-oaymwEICIAKENAFSFqi85f_AwYIl4Oj1AY=&rs=AOn4CLClhE3F25u-m39TXApKm0klPm4nOQ",
+     "width": 1280,
+     "height": 720
+    }
+   ]
+  },
+  {
+   "_type": "url",
+   "ie_key": "YoutubeTab",
+   "id": "PLRaxUyJrOolk",
+   "url": "https://www.youtube.com/playlist?list=PLRaxUyJrOolk",
+   "title": "Made by Google ‘26",
+   "description": null,
+   "duration": null,
+   "view_count": null,
+   "channel": "Playlist",
+   "channel_id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+   "channel_url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+   "uploader": "Playlist",
+   "uploader_id": "@Google",
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": null,
+   "channel_is_verified": null,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/-eckuctHcoc/hqdefault.jpg?sqp=-oaymwEXCOADEI4CSFryq4qpAwkIARUAAIhCGAE=&rs=AOn4CLA6LLF18hLDwjhR8kKzcuXW4TJEZw",
+     "width": 480,
+     "height": 270
+    }
+   ]
+  }
+ ]
+}

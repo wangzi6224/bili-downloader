@@ -372,6 +372,14 @@ describe('多账号 IPC', () => {
     expect(subs.add).toHaveBeenCalledWith({ input: 'BV-test' }, 8)
   })
 
+  it('YouTube 订阅不绑 B站账号，不要求登录 B站，直接添加', async () => {
+    const request = { input: 'https://www.youtube.com/@x', kind: 'youtube' }
+    h.ensureLoggedIn.mockRejectedValue(new Error('请先登录'))
+    await data('subs:add', request, 8)
+    expect(subs.add.mock.calls).toEqual([[request]])
+    expect(h.ensureLoggedIn).not.toHaveBeenCalled()
+  })
+
   it('切换期间仍以原账号读取，但丢弃迟到的明细和提交', async () => {
     const source = { type: 'account', mid: 7, target: { type: 'watchlater' } }
     h.resolveInput.mockImplementation(async () => {
@@ -654,6 +662,23 @@ describe('settings:chooseDir', () => {
     expect(h.showOpenDialog.mock.calls).toEqual([[OPTS]])
   })
 
+  it('site 为 youtube 时默认打开、改的都是 YouTube 的下载目录', async () => {
+    const youtube = { downloadDir: '/yt', concurrency: 2 }
+    h.getSettings.mockReturnValue({ ...SETTINGS, youtube })
+    h.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/yt-new'] })
+    await data('settings:chooseDir', 'youtube')
+    expect(h.showOpenDialog.mock.calls).toEqual([[WIN, { ...OPTS, defaultPath: '/yt' }]])
+    expect(h.updateSettings.mock.calls).toEqual([[{ youtube: { downloadDir: '/yt-new', concurrency: 2 } }]])
+  })
+
+  it('site 为 bili 时和不传一样改 B站的下载目录', async () => {
+    h.getSettings.mockReturnValue({ ...SETTINGS, youtube: { downloadDir: '/yt' } })
+    h.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/new'] })
+    await data('settings:chooseDir', 'bili')
+    expect(h.showOpenDialog.mock.calls).toEqual([[WIN, OPTS]])
+    expect(h.updateSettings.mock.calls).toEqual([[{ downloadDir: '/new' }]])
+  })
+
   it.each([
     { canceled: true, filePaths: ['/x'] },
     { canceled: false, filePaths: [] }
@@ -809,6 +834,7 @@ describe('直接转发的频道', () => {
     { channel: 'history:parses', args: [], fn: h.parseRecords },
     { channel: 'history:removeParse', args: ['BV1'], fn: h.removeParse },
     { channel: 'history:clearParses', args: [], fn: h.clearParses },
+    { channel: 'history:clearParses', args: ['youtube'], fn: h.clearParses },
     { channel: 'dl:enqueue', args: [{ title: 't', items: [] }], fn: enqueue },
     { channel: 'dl:list', args: [], fn: manager.list },
     { channel: 'dl:pause', args: ['t1'], fn: manager.pause },

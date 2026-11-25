@@ -132,4 +132,16 @@ describe('解析记录', () => {
     expect(history.parseRecords()).toEqual([])
     expect(saved('parses.json')).toEqual([])
   })
+
+  it('按平台清空时只清那个平台的记录', () => {
+    history.recordParse(parse('BV1'))
+    history.recordParse({ ...parse('https://youtu.be/abc'), kind: 'youtube' })
+    history.recordParse(parse('BV2'))
+    history.clearParses('youtube')
+    expect(history.parseRecords().map((p) => p.input)).toEqual(['BV2', 'BV1'])
+    expect((saved('parses.json') as ParseRecord[]).map((p) => p.input)).toEqual(['BV2', 'BV1'])
+    history.recordParse({ ...parse('https://youtu.be/def'), kind: 'youtube' })
+    history.clearParses('bili')
+    expect(history.parseRecords().map((p) => p.input)).toEqual(['https://youtu.be/def'])
+  })
 })

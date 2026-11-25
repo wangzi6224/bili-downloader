@@ -1,0 +1,136 @@
+{
+ "id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+ "title": "Google - Videos",
+ "description": "Here to help. \n\nReimagining how AI can make your life better and help you explore your creativity, connect with the world, and discover new possibilities. Browse our latest product demos, unboxings, d",
+ "channel": "Google",
+ "channel_id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+ "channel_url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+ "uploader": "Google",
+ "uploader_id": "@Google",
+ "uploader_url": "https://www.youtube.com/@Google",
+ "playlist_count": null,
+ "webpage_url": "https://www.youtube.com/@Google/videos",
+ "_type": "playlist",
+ "extractor_key": "YoutubeTab",
+ "availability": "public",
+ "channel_follower_count": 14700000,
+ "view_count": null,
+ "modified_date": null,
+ "thumbnails": [
+  {
+   "url": "https://yt3.googleusercontent.com/H9gGqPJUwNvqOwEZBewLZiW_gV2nFdeQOugRyKv1qclCvIH4ucb6E5z5zYUOZJE4Z2E0KcS6=s0"
+  },
+  {
+   "url": "https://yt3.googleusercontent.com/bAseQlKvNmjdLQrvYWm_q3QDp8C8YKyYI-nYJewgOkPi0JU1_3X9oFgjrEdzkOlXzLGFxFbnsw=s900-c-k-c0x00ffffff-no-rj",
+   "width": 900,
+   "height": 900
+  },
+  {
+   "url": "https://yt3.googleusercontent.com/bAseQlKvNmjdLQrvYWm_q3QDp8C8YKyYI-nYJewgOkPi0JU1_3X9oFgjrEdzkOlXzLGFxFbnsw=s0"
+  }
+ ],
+ "entries": [
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "Di8ntBu1ouY",
+   "url": "https://www.youtube.com/watch?v=Di8ntBu1ouY",
+   "title": "Creativity is a team sport | Walter Isaacson & Kent Walker",
+   "description": null,
+   "duration": 579,
+   "view_count": 111000,
+   "channel": null,
+   "channel_id": null,
+   "channel_url": null,
+   "uploader": null,
+   "uploader_id": null,
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": null,
+   "channel_is_verified": null,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/Di8ntBu1ouY/hq720_custom_1.jpg?sqp=CKDNmdgG-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD8cf7iIAopZUU111I6B0XzFfD3Dw",
+     "width": 360,
+     "height": 202
+    },
+    {
+     "url": "https://i.ytimg.com/vi/Di8ntBu1ouY/hq720_custom_1.jpg?sqp=CKDNmdgG-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAx39_dMjAGfbnQaoILkqt27gNMhA",
+     "width": 720,
+     "height": 404
+    }
+   ]
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "DDjr6gXqtN8",
+   "url": "https://www.youtube.com/watch?v=DDjr6gXqtN8",
+   "title": "What’s New in Google Accessibility | Episode 13 | American Sign Language",
+   "description": null,
+   "duration": 478,
+   "view_count": 32000,
+   "channel": null,
+   "channel_id": null,
+   "channel_url": null,
+   "uploader": null,
+   "uploader_id": null,
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": null,
+   "channel_is_verified": null,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/DDjr6gXqtN8/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDObiTtvoyCGUvyiB6Fqjk_V7t_fQ",
+     "width": 360,
+     "height": 202
+    },
+    {
+     "url": "https://i.ytimg.com/vi/DDjr6gXqtN8/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCHKkjeMoZS9agjOIWu2tcCG4z4Iw",
+     "width": 720,
+     "height": 404
+    }
+   ]
+  },
+  {
+   "_type": "url",
+   "ie_key": "Youtube",
+   "id": "lL7L6DiGeLc",
+   "url": "https://www.youtube.com/watch?v=lL7L6DiGeLc",
+   "title": "What’s New in Google Accessibility | Episode 13",
+   "description": null,
+   "duration": 478,
+   "view_count": 65000,
+   "channel": null,
+   "channel_id": null,
+   "channel_url": null,
+   "uploader": null,
+   "uploader_id": null,
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": null,
+   "channel_is_verified": null,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/lL7L6DiGeLc/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDpm4E_51v-W2-nsxvN7-45rp_98A",
+     "width": 360,
+     "height": 202
+    },
+    {
+     "url": "https://i.ytimg.com/vi/lL7L6DiGeLc/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDKlIRD9vSJKcsJMfaZw-mmC8YWGw",
+     "width": 720,
+     "height": 404
+    }
+   ]
+  }
+ ]
+}

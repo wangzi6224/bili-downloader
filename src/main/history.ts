@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { app } from 'electron'
-import type { HistoryEntry, ParseRecord } from '@shared/types'
+import { siteOf } from '@shared/site'
+import type { HistoryEntry, ParseRecord, Site } from '@shared/types'
 import { readJsonArray, writeJson } from './store'
 
 const MAX_PARSES = 300
@@ -76,7 +77,8 @@ export function removeParse(input: string, accountMid?: number | null): ParseRec
   return parses
 }
 
-export function clearParses(): void {
-  parses = []
-  writeJson(parsesFile(), [])
+/** 清空解析记录；指定平台时只清那个平台的（界面上只看得到当前平台的） */
+export function clearParses(site?: Site): void {
+  parses = site ? loadParses().filter((p) => siteOf(p) !== site) : []
+  writeJson(parsesFile(), parses)
 }

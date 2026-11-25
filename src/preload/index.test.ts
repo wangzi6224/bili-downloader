@@ -110,6 +110,14 @@ describe('preload', () => {
     { channel: 'auth:chooseBrowserFolder', call: () => api.auth.chooseBrowserFolder('chrome::'), args: ['chrome::'] },
     { channel: 'parse', call: () => api.parse('watchlater', 8), args: ['watchlater', 8] },
     { channel: 'history:downloadedKeys', call: () => api.history.downloadedKeys(), args: [] },
+    { channel: 'parseMore', call: () => api.parseMore(SOURCE, 2, 8), args: [SOURCE, 2, 8] },
+    { channel: 'sources:prepareItems', call: () => api.sources.prepareItems([], 8), args: [[], 8] },
+    { channel: 'dl:enqueue', call: () => api.download.enqueue({ title: 't', items: [] } as never, 8), args: [{ title: 't', items: [] }, 8] },
+    { channel: 'history:removeParse', call: () => api.history.removeParse('BV1', null), args: ['BV1', null] },
+    { channel: 'history:clearParses', call: () => api.history.clearParses('youtube'), args: ['youtube'] },
+    { channel: 'settings:chooseDir', call: () => api.settings.chooseDir('youtube'), args: ['youtube'] },
+    { channel: 'yt:listBrowsers', call: () => api.yt.listBrowsers('chrome'), args: ['chrome'] },
+    { channel: 'yt:selectAccount', call: () => api.yt.selectAccount('acc1'), args: ['acc1'] },
     { channel: 'sources:subscribeDownload', call: () => api.sources.subscribeDownload(SUB_SOURCE), args: [SUB_SOURCE] },
     {
       channel: 'sources:subscribeDownload',
@@ -160,9 +168,11 @@ describe('preload', () => {
 
     const { registerIpc } = await import('../main/ipc')
     registerIpc({ manager: {}, subs: {}, mcp: {}, agents: {}, updater: {}, enqueue: vi.fn() } as unknown as IpcDeps)
+    const { registerYoutubeIpc } = await import('../main/youtube/setup')
+    registerYoutubeIpc({ engine: {}, accounts: {}, service: {}, parseAndRecord: vi.fn(), enqueue: vi.fn() } as never)
 
     expect([...invoked].sort()).toEqual([...h.registered].sort())
-    expect(invoked.size).toBe(82)
+    expect(invoked.size).toBe(98)
     // 每个 api 函数各用一个频道，主进程也没有重复注册
     expect(invokers).toBe(invoked.size)
     expect(new Set(h.registered).size).toBe(h.registered.length)
@@ -180,7 +190,9 @@ describe('preload', () => {
       'subs:update',
       'update:prompt',
       'update:state',
-      'wm:ai:status'
+      'wm:ai:status',
+      'yt:accountsChanged',
+      'yt:engine:status'
     ])
   })
 })

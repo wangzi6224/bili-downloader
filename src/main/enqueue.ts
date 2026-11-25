@@ -1,14 +1,20 @@
 import { t } from '@shared/i18n'
 import type { EnqueueRequest, MediaItem } from '@shared/types'
+import { siteOf } from '@shared/site'
 import { expandLazy } from './bili/lists'
+import { youtube } from './youtube/service'
 import { activeRevision, activeScope, authScope } from './auth/scope'
 import type { DownloadManager } from './download/manager'
 import { send } from './windows'
 
-export async function prepareEnqueueItems(items: MediaItem[]): Promise<{ items: MediaItem[]; failed: MediaItem[]; note?: string }> {
+export async function prepareEnqueueItems(items: MediaItem[], ytAccount?: string): Promise<{ items: MediaItem[]; failed: MediaItem[]; note?: string }> {
   const revision = activeRevision()
   const scope = authScope()
-  const expanded = await expandLazy(items, (done, total) => {
+  // YouTube 频道里的播放列表先展开成视频；剩下要展开的都是 B站的
+  const ytExpanded = items.some((i) => i.lazy && siteOf(i) === 'youtube')
+    ? await youtube().expand(items, { account: ytAccount ?? null })
+    : items
+  const expanded = await expandLazy(ytExpanded, (done, total) => {
     if (!scope.background && revision === activeRevision() && scope.partition === activeScope().partition) {
       send('parse:progress', { done, total, title: t('misc.fetchingParts') })
     }
@@ -27,7 +33,7 @@ export async function prepareEnqueueItems(items: MediaItem[]): Promise<{ items: 
  */
 export function makeEnqueue(manager: DownloadManager) {
   return async (req: EnqueueRequest, beforeQueue?: () => void): Promise<string | undefined> => {
-    const { items, note } = await prepareEnqueueItems(req.items)
+    const { items, note } = await prepareEnqueueItems(req.items, req.ytAccount)
     beforeQueue?.()
     manager.enqueue({ ...req, items })
     return note

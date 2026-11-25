@@ -1,0 +1,124 @@
+{
+ "id": "google",
+ "title": "google",
+ "description": "",
+ "channel": null,
+ "channel_id": null,
+ "channel_url": null,
+ "uploader": null,
+ "uploader_id": null,
+ "uploader_url": null,
+ "playlist_count": null,
+ "webpage_url": "https://www.youtube.com/results?search_query=google&sp=EgIQAg%253D%253D",
+ "_type": "playlist",
+ "extractor_key": "YoutubeSearchURL",
+ "availability": null,
+ "channel_follower_count": null,
+ "view_count": null,
+ "modified_date": null,
+ "thumbnails": [],
+ "entries": [
+  {
+   "_type": "url",
+   "ie_key": "YoutubeTab",
+   "id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+   "url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+   "title": "Google",
+   "description": "Here to help. Reimagining how AI can make your life better and help you explore your creativity, connect with the world, and ...",
+   "duration": null,
+   "view_count": null,
+   "channel": "Google",
+   "channel_id": "UCK8sQmJBp8GCxrOtXWBpyEA",
+   "channel_url": "https://www.youtube.com/channel/UCK8sQmJBp8GCxrOtXWBpyEA",
+   "uploader": "Google",
+   "uploader_id": "@Google",
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": 14700000,
+   "channel_is_verified": true,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "//yt3.ggpht.com/bAseQlKvNmjdLQrvYWm_q3QDp8C8YKyYI-nYJewgOkPi0JU1_3X9oFgjrEdzkOlXzLGFxFbnsw=s88-c-k-c0x00ffffff-no-rj-mo",
+     "width": 88,
+     "height": 88
+    },
+    {
+     "url": "//yt3.ggpht.com/bAseQlKvNmjdLQrvYWm_q3QDp8C8YKyYI-nYJewgOkPi0JU1_3X9oFgjrEdzkOlXzLGFxFbnsw=s176-c-k-c0x00ffffff-no-rj-mo",
+     "width": 176,
+     "height": 176
+    }
+   ]
+  },
+  {
+   "_type": "url",
+   "ie_key": "YoutubeTab",
+   "id": "UCTnRxVUPssiL7H29ON07t_Q",
+   "url": "https://www.youtube.com/channel/UCTnRxVUPssiL7H29ON07t_Q",
+   "title": "Google Japan",
+   "description": "Google 日本版 公式チャンネル.",
+   "duration": null,
+   "view_count": null,
+   "channel": "Google Japan",
+   "channel_id": "UCTnRxVUPssiL7H29ON07t_Q",
+   "channel_url": "https://www.youtube.com/channel/UCTnRxVUPssiL7H29ON07t_Q",
+   "uploader": "Google Japan",
+   "uploader_id": "@GoogleJapan",
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": 516000,
+   "channel_is_verified": true,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "//yt3.ggpht.com/hKr7DIOlyh2D7zPYEqg-7GZKX3DzKOulY7awV2B6WxgsoJxi51q074GVDj7_IeLHSOeZheukiQ=s88-c-k-c0x00ffffff-no-rj-mo",
+     "width": 88,
+     "height": 88
+    },
+    {
+     "url": "//yt3.ggpht.com/hKr7DIOlyh2D7zPYEqg-7GZKX3DzKOulY7awV2B6WxgsoJxi51q074GVDj7_IeLHSOeZheukiQ=s176-c-k-c0x00ffffff-no-rj-mo",
+     "width": 176,
+     "height": 176
+    }
+   ]
+  },
+  {
+   "_type": "url",
+   "ie_key": "YoutubeTab",
+   "id": "UCWIzrKzN4KY6BPU8hsk880Q",
+   "url": "https://www.youtube.com/channel/UCWIzrKzN4KY6BPU8hsk880Q",
+   "title": "Life at Google",
+   "description": "Googlers are here to give you the inside scoop on our work, culture, offices, and everything else that makes up life at Google.",
+   "duration": null,
+   "view_count": null,
+   "channel": "Life at Google",
+   "channel_id": "UCWIzrKzN4KY6BPU8hsk880Q",
+   "channel_url": "https://www.youtube.com/channel/UCWIzrKzN4KY6BPU8hsk880Q",
+   "uploader": "Life at Google",
+   "uploader_id": "@LifeatGoogle",
+   "timestamp": null,
+   "release_timestamp": null,
+   "live_status": null,
+   "availability": null,
+   "channel_follower_count": 713000,
+   "channel_is_verified": true,
+   "playlist_count": null,
+   "thumbnails": [
+    {
+     "url": "//yt3.ggpht.com/DephPsLpeO69Sj2WC4xqI1stHmQ37vrOqgjftL73bvDpzxIh7AgjcPvU4HudguTqirQpgsyiUA=s88-c-k-c0x00ffffff-no-rj-mo",
+     "width": 88,
+     "height": 88
+    },
+    {
+     "url": "//yt3.ggpht.com/DephPsLpeO69Sj2WC4xqI1stHmQ37vrOqgjftL73bvDpzxIh7AgjcPvU4HudguTqirQpgsyiUA=s176-c-k-c0x00ffffff-no-rj-mo",
+     "width": 176,
+     "height": 176
+    }
+   ]
+  }
+ ]
+}

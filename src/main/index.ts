@@ -1,12 +1,12 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron'
-import type { TaskInfo, UserInfo } from '@shared/types'
+import type { Site, TaskInfo, UserInfo } from '@shared/types'
 import { activeAuthState, checkAuth, checkAuthThrottled, onLoginChanged, requireLogin } from './auth/authGuard'
 import { accounts } from './auth/accounts'
 import { endAccount as endAccountWith, type Requester } from './auth/handover'
 import { activeScope, inAuthScope } from './auth/scope'
 import { canCloseBrowser, closeBrowser, confirmCloseBrowser } from './auth/browserClose'
-import { importFromBrowser, isProfileLocked, listBrowserProfiles } from './auth/browserImport'
+import { importFromBrowser, isProfileLocked, listBrowserProfiles, readBrowserCookies } from './auth/browserImport'
 import { isLoginWindowOpen, openLoginWindow } from './auth/loginWindow'
 import { expandLazy, loadAllPages } from './bili/lists'
 import { biliLookup } from './bili/lookup'
@@ -22,7 +22,7 @@ import { invalid, stopsBatch } from './mcp/format'
 import { LoginFlow } from './mcp/loginFlow'
 import { McpServer } from './mcp/server'
 import { McpTools } from './mcp/tools'
-import { applyNetwork } from './net/network'
+import { applyNetwork, ytProxy } from './net/network'
 import { applyPower } from './power'
 import { allowQuit } from './quitGuard'
 import { getSettings, onSettingsChange, updateSettings } from './settings'
@@ -41,6 +41,8 @@ import { bridgeEntry, installBridge } from './agents/entry'
 import { Integrations } from './agents/integrations'
 import { agentEnv, AGENTS } from './agents/registry'
 import { getLanguage, t } from '@shared/i18n'
+import { setupYoutube } from './youtube/setup'
+import { YT_SITE } from './youtube/cookies'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 const isMac = process.platform === 'darwin'
@@ -53,6 +55,27 @@ const windowStateFile = (): string => join(app.getPath('userData'), 'window.json
 /** Windows 和 Linux 窗口、托盘和通知用的图标；macOS 用 .app 里的 icns */
 const appIcon = (): string =>
   app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '../../build/icons/256x256.png')
+
+/** 界面平台对应的大图标（1024px）：程序坞和窗口图标跟着 B站 / YouTube 界面换 */
+const siteIcon = (site: Site): string =>
+  app.isPackaged
+    ? join(process.resourcesPath, site === 'youtube' ? 'icon-youtube.png' : 'icon-bili.png')
+    : join(__dirname, '../../build', site === 'youtube' ? 'icon-youtube.png' : 'icon.png')
+
+let iconSite: Site | undefined
+
+/** 换程序坞（macOS）或窗口（Windows / Linux）的图标；和上次一样就不动 */
+function applySiteIcon(site: Site): void {
+  if (site === iconSite) return
+  const win = getMainWindow()
+  // Windows / Linux 换的是窗口图标：窗口还没建时由 createWindow 按当前平台设
+  if (!isMac && !win) return
+  const image = nativeImage.createFromPath(siteIcon(site))
+  if (image.isEmpty()) return
+  iconSite = site
+  if (isMac) app.dock?.setIcon(image)
+  else win!.setIcon(image)
+}
 
 /** 窗口隐藏到后台后从这里找回来。存着引用，免得被回收后图标消失 */
 let tray: Tray | undefined
@@ -71,6 +94,8 @@ function createWindow(): BrowserWindow {
     title: t('common.appName'),
     ...platformWindowOptions(),
     show: false,
+    // YouTube 界面用 YouTube 主题的图标（macOS 的程序坞图标由 applySiteIcon 换）
+    ...(!isMac && getSettings().uiSite === 'youtube' ? { icon: siteIcon('youtube') } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -302,6 +327,7 @@ async function start(): Promise<void> {
   )
 
   const enqueue = makeEnqueue(manager)
+  const youtube = setupYoutube({ userData: app.getPath('userData'), settings: getSettings, manager, enqueue })
   const subs = new SubscriptionManager((request) => manager.enqueue(request).created.length, accounts)
   subs.on('update', (list) => send('subs:update', list))
   subs.on('found', ({ title, count }: { title: string; count: number }) =>
@@ -362,6 +388,29 @@ async function start(): Promise<void> {
     logoutAccount: (mid) => endAccount(mid, 'mcp'),
     lookup: biliLookup,
     login,
+    youtube: {
+      service: () => youtube.service,
+      engine: youtube.engine,
+      accounts: youtube.accounts,
+      listBrowsers: () => listBrowserProfiles(undefined, YT_SITE),
+      importBrowser: async (id) => youtube.accounts.add(await readBrowserCookies(id, YT_SITE)),
+      // 移除账号要用户本人确认：AI 助手读到的评论、字幕里可能有注入的指令
+      confirmRemove: async (name) => {
+        const r = await showDialog({
+          type: 'question',
+          buttons: [t('mcpYoutube.confirmRemoveYes'), t('mcpYoutube.confirmRemoveNo')],
+          defaultId: 1,
+          cancelId: 1,
+          message: t('mcpYoutube.confirmRemoveTitle', { name }),
+          detail: t('mcpYoutube.confirmRemoveDetail')
+        })
+        return r.response === 0
+      },
+      queue: manager,
+      settings: getSettings,
+      downloadedKeys,
+      proxy: () => ytProxy(getSettings())
+    },
     watermark: {
       estimate: estimateTime,
       speed: () => ({ fast: speedRatio('fast'), ai: speedRatio('ai') }),
@@ -432,6 +481,7 @@ async function start(): Promise<void> {
 
   onSettingsChange((s) => {
     send('settings:changed', s)
+    applySiteIcon(s.uiSite)
     if (applyLanguage(s.language)) {
       send('i18n:changed', getLanguage())
       writeManifest()
@@ -459,6 +509,7 @@ async function start(): Promise<void> {
     subs.stop()
     void mcp.stop()
     updater.stop()
+    youtube.stop()
   })
 
   endAccount = (mid, requester) => endAccountWith({
@@ -475,7 +526,8 @@ async function start(): Promise<void> {
   registerIpc({ manager, subs, mcp, agents, enqueue, updater, accounts, endAccount: (mid) => endAccount(mid, 'user') })
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
-  if (isDev) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
+  // 开发时程序坞默认是 Electron 图标；打包后 B站界面用 .app 里的 icns，切到 YouTube 时才换
+  if (isDev || getSettings().uiSite === 'youtube') applySiteIcon(getSettings().uiSite)
   createTray(updater)
   if (background) {
     // 只在托盘里待命；程序坞图标等用户打开窗口时再显示
@@ -490,7 +542,8 @@ async function start(): Promise<void> {
   getMainWindow()?.webContents.once('did-finish-load', () => {
     void inAuthScope(activeScope(), async () => {
       const auth = await checkAuth()
-      if (!auth.loggedIn) requireLogin()
+      // YouTube 主题下不一启动就弹 B站登录（B站任务真要登录时还会提示）
+      if (!auth.loggedIn && getSettings().uiSite !== 'youtube') requireLogin()
     }).catch(() => {})
     setTimeout(() => updater.start(() => getSettings().autoCheckUpdate), 3000)
   })

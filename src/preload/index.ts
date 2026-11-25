@@ -19,6 +19,28 @@ function on<A extends unknown[]>(channel: string) {
 
 const api: BiliApi = {
   platform: process.platform,
+  yt: {
+    engine: {
+      status: () => invoke('yt:engine:status'),
+      prepare: () => invoke('yt:engine:prepare'),
+      check: () => invoke('yt:engine:check'),
+      cancel: () => invoke('yt:engine:cancel'),
+      onStatus: on('yt:engine:status')
+    },
+    parse: (input) => invoke('yt:parse', input),
+    parseMore: (url, page) => invoke('yt:parseMore', url, page),
+    parseBatch: (inputs) => invoke('yt:parseBatch', inputs),
+    streamInfo: (item) => invoke('yt:streamInfo', item),
+    enqueue: (req) => invoke('yt:enqueue', req),
+    accounts: () => invoke('yt:accounts'),
+    onAccountsChanged: on('yt:accountsChanged'),
+    listBrowsers: (browserKey) => (browserKey === undefined ? invoke('yt:listBrowsers') : invoke('yt:listBrowsers', browserKey)),
+    importBrowser: (id) => invoke('yt:importBrowser', id),
+    importCookie: (text) => invoke('yt:importCookie', text),
+    selectAccount: (id) => (id === undefined ? invoke('yt:selectAccount') : invoke('yt:selectAccount', id)),
+    removeAccount: (id) => invoke('yt:removeAccount', id),
+    checkAccount: (id) => invoke('yt:checkAccount', id)
+  },
   auth: {
     check: () => invoke('auth:check'),
     accounts: () => invoke('auth:accounts'),
@@ -92,7 +114,7 @@ const api: BiliApi = {
     removeParse: (input, accountMid) => accountMid === undefined
       ? invoke('history:removeParse', input)
       : invoke('history:removeParse', input, accountMid),
-    clearParses: () => invoke('history:clearParses')
+    clearParses: (site) => (site === undefined ? invoke('history:clearParses') : invoke('history:clearParses', site))
   },
   i18n: {
     get: () => invoke('i18n:get'),
@@ -101,7 +123,7 @@ const api: BiliApi = {
   settings: {
     get: () => invoke('settings:get'),
     set: (patch) => invoke('settings:set', patch),
-    chooseDir: () => invoke('settings:chooseDir'),
+    chooseDir: (site) => (site === undefined ? invoke('settings:chooseDir') : invoke('settings:chooseDir', site)),
     onChanged: on('settings:changed')
   },
   subs: {
