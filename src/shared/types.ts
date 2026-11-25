@@ -662,6 +662,8 @@ export interface UpdateInfo {
   blocker?: string
   /** 用户选择过跳过这个版本 */
   skipped: boolean
+  /** 上次自动安装这个版本没有成功的原因（Windows） */
+  lastFailure?: string
 }
 
 export type UpdateState = { current: string; checkedAt?: number } & (

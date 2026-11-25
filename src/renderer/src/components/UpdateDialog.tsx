@@ -195,6 +195,9 @@ export function UpdateDialog() {
         </div>
         {u.status === 'available' && info.blocker && <Banner tone="warn">{t('updateUi.blocker', { blocker: info.blocker })}</Banner>}
         {u.status === 'available' && info.skipped && <Banner>{t('updateUi.skipped')}</Banner>}
+        {(u.status === 'available' || u.status === 'ready') && info.lastFailure && (
+          <Banner tone="error">{t('updateUi.lastFailure', { reason: info.lastFailure })}</Banner>
+        )}
         {u.status === 'downloading' && (
           <div>
             <Progress value={u.total ? (u.done / u.total) * 100 : 0} />

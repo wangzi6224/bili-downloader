@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { accessSync, chmodSync, constants, copyFileSync, mkdirSync, openSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { accessSync, chmodSync, closeSync, constants, copyFileSync, mkdirSync, openSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { app } from 'electron'
@@ -72,12 +72,17 @@ fi
 ) >/dev/null 2>&1 &
 `
 
+/** Windows 更新脚本没装上新版本时把原因写在更新目录的这个文件里，旧版本重新打开后读出来提示用户 */
+export const INSTALL_RESULT = 'last-install.json'
+
 /**
  * Windows 版：旧进程退出后结束它留下的 ffmpeg（运行中的 exe 换不掉），静默运行 NSIS 安装器，最后重新打开应用。
- * 用 -EncodedCommand 运行，不受执行策略限制；参数从环境变量传进来，用完就删掉，免得带给安装器和新版本
+ * 用 -EncodedCommand 运行，不受执行策略限制；参数从环境变量传进来，用完就删掉，免得带给安装器和新版本。
+ * 失败时在 INSTALL_RESULT 里记下版本、Win32 错误码（认出智能应用控制等系统策略的拦截）、安装器退出码和原文
  */
 export const WINDOWS_UPDATE_SCRIPT = [
   '$OldPid = [int]$env:BILI_UPDATE_PID; $Installer = $env:BILI_UPDATE_INSTALLER; $AppExe = $env:BILI_UPDATE_APP; $Log = $env:BILI_UPDATE_LOG',
+  '$Result = $env:BILI_UPDATE_RESULT; $Version = $env:BILI_UPDATE_VERSION; $NsisExit = $null',
   "Remove-Item -Path 'Env:BILI_UPDATE_*'",
   // update.log 是 UTF-8，Windows PowerShell 默认按系统代码页写，中文会乱码；标准输出也指向这个文件，要允许别人同时写
   'function Write-Log([string]$Message) {',
@@ -91,17 +96,36 @@ export const WINDOWS_UPDATE_SCRIPT = [
   "  $ffmpeg = Join-Path $AppDir 'resources\\ffmpeg\\ffmpeg.exe'",
   '  $left = @(Get-Process -Name ffmpeg -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ffmpeg })',
   '  if ($left.Count) { $left | Stop-Process -Force; $left | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue }',
-  // --updated：按更新处理，用户删掉的桌面快捷方式不会再建回来
-  "  $updated = Start-Process -FilePath $Installer -ArgumentList '/S', '--updated' -PassThru -Wait -WindowStyle Hidden",
-  '  if ($updated.ExitCode -ne 0) { throw "NSIS 退出码 $($updated.ExitCode)" }',
+  // --updated：按更新处理，用户删掉的桌面快捷方式不会再建回来。
+  // 不用 Start-Process：它出错时只留下文字，丢掉了 Win32 错误码
+  "  $psi = New-Object Diagnostics.ProcessStartInfo -Property @{ FileName = $Installer; Arguments = '/S --updated'; WindowStyle = 'Hidden'; UseShellExecute = $true }",
+  '  $updated = [Diagnostics.Process]::Start($psi); $updated.WaitForExit(); $NsisExit = $updated.ExitCode',
+  '  if ($NsisExit -ne 0) { throw "NSIS 退出码 $NsisExit" }',
   "  Write-Log '已安装新版本'",
   '} catch {',
   '  Write-Log "更新失败：$($_.Exception.Message)"',
+  '  $e = $_.Exception; while ($e -and $e -isnot [ComponentModel.Win32Exception]) { $e = $e.InnerException }',
+  '  $code = if ($e) { $e.NativeErrorCode } else { 0 }',
+  '  $failure = @{ version = $Version; code = $code; exit = $NsisExit; message = $_.Exception.Message } | ConvertTo-Json -Compress',
+  '  try { [IO.File]::WriteAllText($Result, $failure) } catch { Write-Log "记录失败原因失败：$($_.Exception.Message)" }',
   '} finally {',
   // 不能带 -WindowStyle Hidden：它会作用到新版本第一次显示窗口，主窗口就出不来了
   '  try { Start-Process -FilePath $AppExe -WorkingDirectory $AppDir } catch { Write-Log "重新打开失败：$($_.Exception.Message)" }',
   '}'
 ].join('\n')
+
+/**
+ * Windows 版的启动器：拉起真正的更新脚本后马上退出。不能直接 detached 启动更新脚本：detached 的 PowerShell
+ * 没有控制台，在部分 Windows 11 上一启动就退出，什么都不执行（0.12.0 起的自动更新因此一直装不上）；
+ * 不 detached 的子进程又在 libuv 的作业对象里，应用退出时会被一起结束。
+ * Start-Process 拉起的孙进程会静默脱离这个作业对象（libuv 允许），应用退出后照样运行
+ */
+export const WINDOWS_LAUNCHER =
+  // 输出重定向到日志时，PowerShell 加载模块的进度会以 CLIXML 写进去
+  "$ProgressPreference = 'SilentlyContinue'; Start-Process -FilePath $env:BILI_UPDATE_PS -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $env:BILI_UPDATE_SCRIPT -WindowStyle Hidden"
+
+/** 启动器冷启动 PowerShell 一般要几秒，超过这个时间还没退出就当作失败 */
+const LAUNCH_TIMEOUT_MS = 60_000
 
 /** 正在运行的 .app，例如 /Applications/B站下载器.app */
 export const appBundle = (): string => resolve(app.getPath('exe'), '../../..')
@@ -207,29 +231,46 @@ export const prepare = (pkg: string, stageDir: string, version: string): Promise
   return Promise.reject(new Error(t('updateErr.platformUnsupported', { platform: process.platform })))
 }
 
-/** 启动独立的替换脚本；调用方随后退出应用 */
-export function replaceAfterExit(next: string, workDir: string, log: string): void {
-  if (process.platform === 'win32') {
-    const out = openSync(log, 'a')
-    const child = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodeCommand(WINDOWS_UPDATE_SCRIPT)], {
+/** Windows：等启动器拉起更新脚本并退出；启动器没起来、出错或超时都报错，调用方就不会退出应用 */
+function launchWindowsUpdate(next: string, workDir: string, log: string, version: string): Promise<void> {
+  const out = openSync(log, 'a')
+  return new Promise((resolve, reject) => {
+    const child = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodeCommand(WINDOWS_LAUNCHER)], {
       cwd: workDir,
-      detached: true,
       windowsHide: true,
       stdio: ['ignore', out, out],
       env: {
         ...process.env,
+        BILI_UPDATE_PS: POWERSHELL,
+        BILI_UPDATE_SCRIPT: encodeCommand(WINDOWS_UPDATE_SCRIPT),
         BILI_UPDATE_PID: String(process.pid),
         BILI_UPDATE_INSTALLER: next,
         BILI_UPDATE_APP: app.getPath('exe'),
-        BILI_UPDATE_LOG: log
+        BILI_UPDATE_LOG: log,
+        BILI_UPDATE_RESULT: join(workDir, INSTALL_RESULT),
+        BILI_UPDATE_VERSION: version
       }
     })
-    // 没起来时 pid 是空的，error 事件稍后才到：先报错，调用方就不会退出应用
-    child.once('error', (e) => console.error('更新脚本没有启动', e))
-    if (child.pid === undefined) throw new Error(t('updateErr.launchFailed'))
-    child.unref()
-    return
-  }
+    const timer = setTimeout(() => child.kill(), LAUNCH_TIMEOUT_MS)
+    let settled = false
+    const done = (error?: unknown): void => {
+      // 启动失败时 error 之后可能还有 exit
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      closeSync(out)
+      if (error === undefined) return resolve()
+      console.error('更新脚本没有启动', error)
+      reject(new Error(t('updateErr.launchFailed')))
+    }
+    child.once('error', done)
+    child.once('exit', (code) => (code === 0 ? done() : done(new Error(`启动器退出码 ${code}`))))
+  })
+}
+
+/** 启动独立的替换脚本；完成后调用方退出应用。version 是要装的新版本 */
+export function replaceAfterExit(next: string, workDir: string, log: string, version: string): Promise<void> {
+  if (process.platform === 'win32') return launchWindowsUpdate(next, workDir, log, version)
   const mac = process.platform === 'darwin'
   const script = join(workDir, 'install.sh')
   writeFileSync(script, mac ? SCRIPT : APPIMAGE_SCRIPT, { mode: 0o755 })
@@ -241,4 +282,5 @@ export function replaceAfterExit(next: string, workDir: string, log: string): vo
     detached: true,
     stdio: ['ignore', out, out]
   }).unref()
+  return Promise.resolve()
 }

@@ -26,5 +26,9 @@ export default {
   installFailed: 'Failed to install the update: {reason}',
   verifyFailed: 'The package failed verification (the file is corrupted or has been tampered with). Please try again',
   downloadFailed: 'Failed to download the update: {reason}',
-  stalled: 'Connection timed out'
+  stalled: 'Connection timed out',
+  appControlBlocked: 'Windows Smart App Control blocked the installer (the installer isn’t code-signed yet), so both automatic and manual installs are blocked. Turn it off under “Windows Security → App & browser control → Smart App Control”, then install again',
+  policyBlocked: 'A system policy (Group Policy or AppLocker) doesn’t allow the installer to run. Please contact the administrator of this computer',
+  installerExit: 'The installer exited with an error (exit code {code})',
+  unknownInstallError: 'Unknown reason. See update.log in the logs folder'
 } satisfies Messages['updateErr']

@@ -24,5 +24,9 @@ export default {
   installFailed: '安装更新失败：{reason}',
   verifyFailed: '安装包校验不通过（文件损坏或被篡改），请重试',
   downloadFailed: '下载更新失败：{reason}',
-  stalled: '连接超时'
+  stalled: '连接超时',
+  appControlBlocked: 'Windows 的智能应用控制拦下了安装程序（安装包还没有代码签名），自动更新和手动安装都会被拦下。可以在“Windows 安全中心 → 应用和浏览器控制 → 智能应用控制”里关闭它，再重新安装',
+  policyBlocked: '系统策略（组策略或 AppLocker）不允许运行安装程序，请联系这台电脑的管理员',
+  installerExit: '安装程序出错退出（退出码 {code}）',
+  unknownInstallError: '原因不明，可以查看日志文件夹里的 update.log'
 }

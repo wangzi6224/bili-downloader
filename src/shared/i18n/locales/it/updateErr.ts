@@ -26,5 +26,9 @@ export default {
   installFailed: 'Installazione dell’aggiornamento non riuscita: {reason}',
   verifyFailed: 'Verifica del pacchetto di installazione non superata (file danneggiato o manomesso), riprova',
   downloadFailed: 'Download dell’aggiornamento non riuscito: {reason}',
-  stalled: 'Timeout della connessione'
+  stalled: 'Timeout della connessione',
+  appControlBlocked: 'Il Controllo intelligente delle app di Windows ha bloccato il programma di installazione (non è ancora firmato), quindi sia l’installazione automatica sia quella manuale vengono bloccate. Disattivalo in “Sicurezza di Windows → Controllo app e browser → Controllo intelligente delle app”, poi reinstalla',
+  policyBlocked: 'Un criterio di sistema (Criteri di gruppo o AppLocker) non consente l’esecuzione del programma di installazione. Contatta l’amministratore di questo computer',
+  installerExit: 'Il programma di installazione è terminato con un errore (codice di uscita {code})',
+  unknownInstallError: 'Motivo sconosciuto. Controlla update.log nella cartella dei log'
 } satisfies Messages['updateErr']

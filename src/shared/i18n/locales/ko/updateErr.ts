@@ -26,5 +26,9 @@ export default {
   installFailed: '업데이트 설치 실패: {reason}',
   verifyFailed: '설치 파일 검증에 실패했습니다(파일이 손상되었거나 변조됨). 다시 시도하세요',
   downloadFailed: '업데이트 다운로드 실패: {reason}',
-  stalled: '연결 시간 초과'
+  stalled: '연결 시간 초과',
+  appControlBlocked: 'Windows 스마트 앱 컨트롤이 설치 프로그램을 차단했습니다(설치 프로그램에 아직 코드 서명이 없습니다). 자동 설치와 수동 설치 모두 차단됩니다. "Windows 보안 → 앱 및 브라우저 컨트롤 → 스마트 앱 컨트롤"에서 끈 다음 다시 설치하세요',
+  policyBlocked: '시스템 정책(그룹 정책 또는 AppLocker)이 설치 프로그램 실행을 허용하지 않습니다. 이 컴퓨터의 관리자에게 문의하세요',
+  installerExit: '설치 프로그램이 오류로 종료되었습니다(종료 코드 {code})',
+  unknownInstallError: '원인을 알 수 없습니다. 로그 폴더의 update.log를 확인하세요'
 } satisfies Messages['updateErr']

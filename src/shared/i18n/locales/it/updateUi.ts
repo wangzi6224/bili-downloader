@@ -23,5 +23,6 @@ export default {
     other: 'Ci sono ancora {count} attività non completate: il riavvio le metterà in pausa e potrai riprenderle dopo l’aggiornamento.'
   },
   ready: 'La nuova versione è stata scaricata e verificata: riavvia per usarla.',
-  installing: 'Installazione in corso, l’app si riaprirà automaticamente tra poco…'
+  installing: 'Installazione in corso, l’app si riaprirà automaticamente tra poco…',
+  lastFailure: 'L’ultima installazione automatica non è riuscita: {reason}'
 } satisfies Messages['updateUi']

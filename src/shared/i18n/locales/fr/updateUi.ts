@@ -23,5 +23,6 @@ export default {
     other: '{count} tâches ne sont pas terminées. Le redémarrage les mettra en pause ; vous pourrez les reprendre après la mise à jour.'
   },
   ready: 'La nouvelle version est téléchargée et vérifiée. Redémarrez pour l’utiliser.',
-  installing: 'Installation en cours, l’application va se rouvrir automatiquement…'
+  installing: 'Installation en cours, l’application va se rouvrir automatiquement…',
+  lastFailure: 'La dernière installation automatique a échoué : {reason}'
 } satisfies Messages['updateUi']

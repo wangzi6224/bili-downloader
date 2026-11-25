@@ -23,5 +23,6 @@ export default {
     other: '{count} tasks are still unfinished. Restarting will pause them; you can resume them after the update.'
   },
   ready: 'The new version has been downloaded and verified. Restart to start using it.',
-  installing: 'Installing. The app will reopen automatically in a moment…'
+  installing: 'Installing. The app will reopen automatically in a moment…',
+  lastFailure: 'The last automatic install didn’t succeed: {reason}'
 } satisfies Messages['updateUi']

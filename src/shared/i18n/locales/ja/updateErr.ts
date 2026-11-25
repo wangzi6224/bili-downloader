@@ -26,5 +26,9 @@ export default {
   installFailed: 'アップデートのインストールに失敗しました：{reason}',
   verifyFailed: 'インストールパッケージの検証に失敗しました（ファイルの破損または改ざん）。もう一度お試しください',
   downloadFailed: 'アップデートのダウンロードに失敗しました：{reason}',
-  stalled: '接続がタイムアウトしました'
+  stalled: '接続がタイムアウトしました',
+  appControlBlocked: 'Windows のスマート アプリ コントロールがインストーラーをブロックしました（インストーラーはまだコード署名されていません）。自動・手動どちらのインストールもブロックされます。「Windows セキュリティ → アプリとブラウザー コントロール → スマート アプリ コントロール」でオフにしてから、もう一度インストールしてください',
+  policyBlocked: 'システムのポリシー（グループ ポリシーまたは AppLocker）でインストーラーの実行が許可されていません。このコンピューターの管理者に問い合わせてください',
+  installerExit: 'インストーラーがエラーで終了しました（終了コード {code}）',
+  unknownInstallError: '原因は不明です。ログ フォルダーの update.log を確認してください'
 } satisfies Messages['updateErr']

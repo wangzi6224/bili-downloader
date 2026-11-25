@@ -26,5 +26,9 @@ export default {
   installFailed: 'Échec de l’installation de la mise à jour : {reason}',
   verifyFailed: 'La vérification du paquet d’installation a échoué (fichier endommagé ou altéré), veuillez réessayer',
   downloadFailed: 'Échec du téléchargement de la mise à jour : {reason}',
-  stalled: 'Délai de connexion dépassé'
+  stalled: 'Délai de connexion dépassé',
+  appControlBlocked: 'Le Contrôle intelligent des applications de Windows a bloqué le programme d’installation (il n’est pas encore signé), l’installation automatique comme manuelle est donc bloquée. Désactivez-le dans « Sécurité Windows → Contrôle des applications et du navigateur → Contrôle intelligent des applications », puis réinstallez',
+  policyBlocked: 'Une stratégie système (stratégie de groupe ou AppLocker) n’autorise pas le programme d’installation. Contactez l’administrateur de cet ordinateur',
+  installerExit: 'Le programme d’installation s’est terminé avec une erreur (code de sortie {code})',
+  unknownInstallError: 'Raison inconnue. Consultez update.log dans le dossier des journaux'
 } satisfies Messages['updateErr']

@@ -20,5 +20,6 @@ export default {
   downloading: 'ダウンロード中…ウィンドウを閉じても続行します',
   pendingTasks: '未完了のタスクが {count} 件あります。再起動すると一時停止しますが、アップデート後に再開できます。',
   ready: '新しいバージョンのダウンロードと検証が完了しました。再起動すると使えます。',
-  installing: 'インストール中です。アプリはまもなく自動で再起動します…'
+  installing: 'インストール中です。アプリはまもなく自動で再起動します…',
+  lastFailure: '前回の自動インストールは完了しませんでした：{reason}'
 } satisfies Messages['updateUi']

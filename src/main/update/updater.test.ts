@@ -21,7 +21,7 @@ vi.mock('electron', () => ({ app: { getVersion: () => '0.4.0' }, shell: { openEx
 vi.mock('../logger', () => ({ logDir: () => '/logs' }))
 vi.mock('../quitGuard', () => ({ quitConfirmed: m.quitConfirmed }))
 vi.mock('../windows', () => ({ send: m.send }))
-vi.mock('./install', () => ({ installBlocker: m.installBlocker, prepare: m.prepare, replaceAfterExit: m.replaceAfterExit }))
+vi.mock('./install', () => ({ INSTALL_RESULT: 'last-install.json', installBlocker: m.installBlocker, prepare: m.prepare, replaceAfterExit: m.replaceAfterExit }))
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void
 
@@ -273,7 +273,7 @@ describe('check', () => {
       expect(readFileSync(installer)).toEqual(PAYLOAD)
       await u.install()
       expect(m.prepare).toHaveBeenCalledWith(installer, join(dir, 'stage'), '0.5.0')
-      expect(m.replaceAfterExit).toHaveBeenCalledWith(installer, dir, join('/logs', 'update.log'))
+      expect(m.replaceAfterExit).toHaveBeenCalledWith(installer, dir, join('/logs', 'update.log'), '0.5.0')
     } finally {
       Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM)
       Object.defineProperty(process, 'arch', ORIGINAL_ARCH)
@@ -547,6 +547,27 @@ describe('install', () => {
     await expect(u.install()).rejects.toThrow('更新还没有下载完成')
   })
 
+  it('更新脚本没启动起来时报错，不退出应用', async () => {
+    const u = await readyUpdater()
+    m.replaceAfterExit.mockRejectedValueOnce(new Error('无法启动更新程序'))
+    await u.install()
+    expect(errorOf(u)).toBe('安装更新失败：无法启动更新程序')
+    expect(m.quitConfirmed).not.toHaveBeenCalled()
+  })
+
+  it('等更新脚本启动好了才退出应用', async () => {
+    const u = await readyUpdater()
+    let started!: () => void
+    m.replaceAfterExit.mockReturnValueOnce(new Promise<void>((r) => (started = r)))
+    const p = u.install()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(m.quitConfirmed).not.toHaveBeenCalled()
+    expect(statusOf(u)).toBe('installing')
+    started()
+    await p
+    expect(m.quitConfirmed).toHaveBeenCalled()
+  })
+
   it('非 Error 的异常也能报出来', async () => {
     const u = await readyUpdater()
     m.prepare.mockRejectedValueOnce('坏了')
@@ -558,9 +579,76 @@ describe('install', () => {
     const u = await readyUpdater()
     await u.install()
     expect(m.prepare).toHaveBeenCalledWith(zipPath(), join(dir, 'stage'), '0.5.0')
-    expect(m.replaceAfterExit).toHaveBeenCalledWith('/stage/B站下载器.app', dir, join('/logs', 'update.log'))
+    expect(m.replaceAfterExit).toHaveBeenCalledWith('/stage/B站下载器.app', dir, join('/logs', 'update.log'), '0.5.0')
     expect(m.quitConfirmed).toHaveBeenCalled()
     expect(statusOf(u)).toBe('installing')
+  })
+})
+
+describe('上次没装上的原因', () => {
+  const writeResult = (r: unknown): void => {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'last-install.json'), typeof r === 'string' ? r : JSON.stringify(r))
+  }
+  const failureOf = (u: U): string | undefined => {
+    const s = u.getState()
+    return 'info' in s && s.info ? s.info.lastFailure : undefined
+  }
+
+  it('启动时读出原因并删掉文件，检查到同一个版本时带上，弹窗里提示', async () => {
+    writeResult({ version: '0.5.0', code: 4551, exit: null, message: '应用程序控制策略已阻止此文件。' })
+    const u = await load()
+    u.start(() => false)
+    u.stop()
+    expect(existsSync(join(dir, 'last-install.json'))).toBe(false)
+    await u.check(true)
+    expect(failureOf(u)).toContain('智能应用控制')
+  })
+
+  it('出了更新的版本就不再提示旧版本的失败', async () => {
+    writeResult({ version: '0.4.5', code: 0, exit: 2, message: 'NSIS 退出码 2' })
+    const u = await load()
+    u.start(() => false)
+    u.stop()
+    await u.check(true)
+    expect(failureOf(u)).toBeUndefined()
+  })
+
+  it('没有结果文件时不带原因', async () => {
+    const u = await load()
+    await u.check(true)
+    expect(failureOf(u)).toBeUndefined()
+  })
+})
+
+describe('readInstallFailure', () => {
+  const file = (): string => join(dir, 'last-install.json')
+  const read = async (r: unknown, current = '0.4.0'): Promise<{ version: string; reason: string } | undefined> => {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(file(), typeof r === 'string' ? r : JSON.stringify(r))
+    const { readInstallFailure } = await import('./updater')
+    return readInstallFailure(file(), current)
+  }
+
+  it('按错误码、安装器退出码和原文给出原因', async () => {
+    expect((await read({ version: '0.5.0', code: 4551 }))?.reason).toContain('智能应用控制')
+    expect((await read({ version: '0.5.0', code: 1260 }))?.reason).toContain('AppLocker')
+    expect(await read({ version: '0.5.0', code: 0, exit: 2, message: 'NSIS 退出码 2' })).toEqual({
+      version: '0.5.0',
+      reason: '安装程序出错退出（退出码 2）'
+    })
+    expect((await read({ version: '0.5.0', code: 5, exit: null, message: ' 拒绝访问。 ' }))?.reason).toBe('拒绝访问。')
+    expect((await read({ version: '0.5.0', exit: 0, message: '' }))?.reason).toContain('update.log')
+  })
+
+  it('已经装上了、版本号不对、文件坏了或没有时返回空', async () => {
+    expect(await read({ version: '0.4.0', code: 4551 })).toBeUndefined()
+    expect(await read({ version: 'x', code: 4551 })).toBeUndefined()
+    expect(await read({ code: 4551 })).toBeUndefined()
+    expect(await read('{坏的')).toBeUndefined()
+    rmSync(file())
+    const { readInstallFailure } = await import('./updater')
+    expect(readInstallFailure(file(), '0.4.0')).toBeUndefined()
   })
 })
 

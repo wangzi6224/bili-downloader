@@ -18,5 +18,6 @@ export default {
   downloading: '正在下载…关掉窗口也会继续',
   pendingTasks: '还有 {count} 个任务未完成，重启会暂停它们，更新后可以继续。',
   ready: '新版本已下载并校验完成，重启后即可使用。',
-  installing: '正在安装，应用马上会自动重新打开…'
+  installing: '正在安装，应用马上会自动重新打开…',
+  lastFailure: '上次自动安装没有成功：{reason}'
 }

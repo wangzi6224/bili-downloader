@@ -11,7 +11,7 @@ import { logDir } from '../logger'
 import { quitConfirmed } from '../quitGuard'
 import { readJson, writeJson } from '../store'
 import { send } from '../windows'
-import { installBlocker, prepare, replaceAfterExit } from './install'
+import { INSTALL_RESULT, installBlocker, prepare, replaceAfterExit } from './install'
 import { assetKey, compareVersions, notesSince, parseManifest, type ManifestFile } from './manifest'
 
 /** 新版本发布在这个仓库的 Releases 里，每个 Release 都带一份 update.json（见 scripts/release.mjs） */
@@ -31,6 +31,32 @@ const PACKAGE_EXT = process.platform === 'darwin' ? 'zip' : process.platform ===
 type Body = UpdateState extends infer S ? (S extends unknown ? Omit<S, 'current' | 'checkedAt'> : never) : never
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+/** Win32 错误码：智能应用控制 / WDAC 拦截、组策略或 AppLocker 拦截 */
+const ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION = 4551
+const ERROR_ACCESS_DISABLED_BY_POLICY = 1260
+
+/** 读出上次没装上的版本和原因；已经装上（不比当前版本新）或者文件不对时返回空 */
+export function readInstallFailure(file: string, current: string): { version: string; reason: string } | undefined {
+  const r = readJson<{ version?: unknown; code?: unknown; exit?: unknown; message?: unknown }>(file)
+  if (!r || typeof r.version !== 'string') return undefined
+  try {
+    if (compareVersions(r.version, current) <= 0) return undefined
+  } catch {
+    return undefined
+  }
+  const reason =
+    r.code === ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION
+      ? t('updateErr.appControlBlocked')
+      : r.code === ERROR_ACCESS_DISABLED_BY_POLICY
+        ? t('updateErr.policyBlocked')
+        : typeof r.exit === 'number' && r.exit !== 0
+          ? t('updateErr.installerExit', { code: r.exit })
+          : typeof r.message === 'string' && r.message.trim()
+            ? r.message.trim()
+            : t('updateErr.unknownInstallError')
+  return { version: r.version, reason }
+}
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 async function sha512(file: string): Promise<string> {
@@ -54,6 +80,8 @@ export class Updater {
   private lastEmit = 0
   private timer?: NodeJS.Timeout
   private checking?: Promise<UpdateState>
+  /** 上次自动安装没成功的版本和原因（Windows） */
+  private lastFailure?: { version: string; reason: string }
 
   constructor(
     /** 安装包下载和解压的目录 */
@@ -68,6 +96,9 @@ export class Updater {
 
   /** 清掉已经装过的旧安装包，然后按设置定时检查 */
   start(enabled: () => boolean): void {
+    // 先读出上次安装的结果，下面的清理会删掉这个文件
+    this.lastFailure = readInstallFailure(join(this.dir, INSTALL_RESULT), this.current)
+    if (this.lastFailure) console.warn(`更新：上次没有装上 ${this.lastFailure.version}：${this.lastFailure.reason}`)
     // 比当前版本新的安装包（包括下载到一半的）留着，下次可以直接用
     this.cleanup((name) => {
       const v = /^bili-downloader-(.+)-\w+\.(?:zip|AppImage|exe)(\.part)?$/.exec(name)?.[1]
@@ -123,7 +154,8 @@ export class Updater {
         page: m.page,
         size: file.size,
         blocker: installBlocker(),
-        skipped: readJson<{ skipVersion?: string }>(this.prefsFile)?.skipVersion === m.version
+        skipped: readJson<{ skipVersion?: string }>(this.prefsFile)?.skipVersion === m.version,
+        lastFailure: this.lastFailure?.version === m.version ? this.lastFailure.reason : undefined
       }
       // 之前已经下载并校验过同一个安装包，直接可以安装
       const cached = !info.blocker && (await matches(this.packagePath(info.version), file).catch(() => false))
@@ -165,7 +197,7 @@ export class Updater {
       const pkg = this.packagePath(info.version)
       if (!(await matches(pkg, this.file))) throw new Error(t('updateErr.corrupted'))
       const next = await prepare(pkg, join(this.dir, 'stage'), info.version)
-      replaceAfterExit(next, this.dir, join(logDir(), 'update.log'))
+      await replaceAfterExit(next, this.dir, join(logDir(), 'update.log'), info.version)
       console.info(`更新：退出并安装 ${info.version}`)
       // 更新弹窗里已经提醒过未完成的任务；安装脚本已经在等进程退出，不能再被取消
       quitConfirmed()

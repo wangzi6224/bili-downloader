@@ -20,5 +20,6 @@ export default {
   downloading: '다운로드 중… 창을 닫아도 계속됩니다',
   pendingTasks: '아직 완료되지 않은 작업이 {count}개 있습니다. 다시 시작하면 일시 정지되며 업데이트 후 이어서 진행할 수 있습니다.',
   ready: '새 버전을 다운로드하고 검증했습니다. 다시 시작하면 바로 사용할 수 있습니다.',
-  installing: '설치 중입니다. 앱이 곧 자동으로 다시 열립니다…'
+  installing: '설치 중입니다. 앱이 곧 자동으로 다시 열립니다…',
+  lastFailure: '지난번 자동 설치가 완료되지 않았습니다: {reason}'
 } satisfies Messages['updateUi']
