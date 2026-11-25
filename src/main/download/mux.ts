@@ -5,6 +5,7 @@ import { app } from 'electron'
 import { t, type Key } from '@shared/i18n'
 import { markWatermarkText } from '@shared/watermark'
 import { AbortError, FfmpegError } from './errors'
+import { canEmbedCover, type OutFormat } from './formats'
 
 let cached: string | undefined
 
@@ -110,7 +111,7 @@ export function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   return run
 }
 
-export type OutFormat = 'mp4' | 'mkv' | 'm4a' | 'flac'
+export type { OutFormat } from './formats'
 
 export interface MuxOptions {
   video?: string
@@ -137,12 +138,12 @@ export function buildMuxArgs(o: MuxOptions): string[] {
     return inputs++
   }
   const mp4Family = o.format === 'mp4' || o.format === 'm4a'
-  const videoContainer = o.format === 'mp4' || o.format === 'mkv'
+  const videoContainer = o.format === 'mp4' || o.format === 'mkv' || o.format === 'webm'
 
   const vi = o.video ? input(o.video) : -1
   const ai = o.audio ? input(o.audio) : -1
   // MKV 的封面用附件，其余格式作为一路“附图”视频流
-  const ci = o.cover && o.format !== 'mkv' ? input(o.cover) : -1
+  const ci = o.cover && o.format !== 'mkv' && canEmbedCover(o.format) ? input(o.cover) : -1
   const subs = videoContainer ? (o.subtitles ?? []) : []
   const si = subs.map((s) => input(s.path))
   const chi = o.chapters ? input(o.chapters, ['-f', 'ffmetadata']) : -1
@@ -154,7 +155,7 @@ export function buildMuxArgs(o: MuxOptions): string[] {
   if (chi >= 0) args.push('-map_chapters', String(chi))
 
   args.push('-c', 'copy')
-  if (si.length) args.push('-c:s', o.format === 'mp4' ? 'mov_text' : 'srt')
+  if (si.length) args.push('-c:s', o.format === 'mp4' ? 'mov_text' : o.format === 'webm' ? 'webvtt' : 'srt')
   if (ci >= 0) args.push(`-disposition:v:${vi >= 0 ? 1 : 0}`, 'attached_pic')
   if (o.cover && o.format === 'mkv') {
     args.push('-attach', o.cover, '-metadata:s:t:0', `mimetype=${o.cover.endsWith('.png') ? 'image/png' : 'image/jpeg'}`)
@@ -176,7 +177,8 @@ export function buildMuxArgs(o: MuxOptions): string[] {
   for (const [k, v] of Object.entries(o.metadata ?? {})) if (v) args.push('-metadata', `${k}=${v}`)
   if (mp4Family) args.push('-movflags', '+faststart')
   // m4a 用 mp4 封装器写（随包的静态 ffmpeg 不一定带 ipod 封装器）
-  args.push('-f', mp4Family ? 'mp4' : o.format === 'mkv' ? 'matroska' : 'flac', o.out)
+  const muxer = { mp4: 'mp4', m4a: 'mp4', mkv: 'matroska', webm: 'webm', opus: 'opus', flac: 'flac' }[o.format]
+  args.push('-f', muxer, o.out)
   return args
 }
 

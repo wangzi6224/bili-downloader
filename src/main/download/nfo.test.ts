@@ -115,3 +115,18 @@ describe('nfo 的回退和可选字段', () => {
     expect(episodeNfo(bare, '番剧')).not.toMatch(/<plot>|<aired>|<runtime>/)
   })
 })
+
+describe('YouTube 条目的 nfo', () => {
+  const yt: MediaItem = { key: 'yt:dQw4w9WgXcQ', kind: 'youtube', title: 'Never Gonna Give You Up', index: 1, cid: 0, ytId: 'dQw4w9WgXcQ' }
+
+  it('uniqueid 类型为 youtube，值为视频 id', () => {
+    const x = movieNfo(yt, { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })
+    expect(x).toContain('<uniqueid type="youtube" default="true">dQw4w9WgXcQ</uniqueid>')
+    expect(x).toContain('<website>https://www.youtube.com/watch?v=dQw4w9WgXcQ</website>')
+    expect(x).not.toContain('bilibili')
+  })
+
+  it('缺视频 id 时用 key', () => {
+    expect(movieNfo({ ...yt, ytId: undefined })).toContain('<uniqueid type="youtube" default="true">yt:dQw4w9WgXcQ</uniqueid>')
+  })
+})

@@ -8,6 +8,8 @@ import type { DownloadOptions, EnqueueRequest, MediaItem, Settings, TaskInfo } f
 import { WM_MARK, WM_NOTE } from '@shared/watermark'
 import type { DashStream, PlayInfo } from '../bili/playurl'
 import type { PreparedExtras } from './extras'
+import type { YoutubeService } from '../youtube/service'
+import type { YtVideoInfo } from '../youtube/types'
 import { activeScope, authScope, inAuthScope, setActiveScope } from '../auth/scope'
 
 vi.mock('electron', () => ({}))
@@ -16,6 +18,7 @@ vi.mock('../bili/audio', () => ({ getAudioStream: vi.fn() }))
 vi.mock('./fetchFile', () => ({ fetchFile: vi.fn() }))
 vi.mock('./mux', () => ({ mux: vi.fn() }))
 vi.mock('./extras', () => ({ prepareExtras: vi.fn(), placeSidecars: vi.fn() }))
+vi.mock('../youtube/extras', () => ({ prepareYtExtras: vi.fn() }))
 vi.mock('../watermark/auto', () => ({ autoRemove: vi.fn(), detectOnly: vi.fn(), ensureModel: vi.fn() }))
 vi.mock('../watermark/manual', async (o) => ({ ...(await o<typeof import('../watermark/manual')>()), replaceVideo: vi.fn() }))
 const ai = vi.hoisted(() => ({ ready: vi.fn(() => true), refine: vi.fn() }))
@@ -1713,5 +1716,286 @@ describe('手动去水印', () => {
     expect(existsSync(`${out}.wm.tmp`)).toBe(false)
     expect(existsSync(tmpOf('t1'))).toBe(false)
     expect(readFileSync(out, 'utf8')).toBe('orig')
+  })
+})
+
+const { setYoutube } = await import('../youtube/service')
+const { prepareYtExtras } = await import('../youtube/extras')
+const { YtLoginRequiredError } = await import('../youtube/errors')
+
+/** 一个画面流加一个音频流的最小视频信息 */
+const ytInfo = (id: string, webm = false): YtVideoInfo => ({
+  id,
+  title: id,
+  duration: 10,
+  formats: webm
+    ? [
+        { format_id: 'v', ext: 'webm', vcodec: 'vp9', acodec: 'none', height: 720, filesize: 100 },
+        { format_id: 'a', ext: 'webm', vcodec: 'none', acodec: 'opus', filesize: 10 }
+      ]
+    : [
+        { format_id: 'v', ext: 'mp4', vcodec: 'avc1.4d401f', acodec: 'none', height: 720, filesize: 100 },
+        { format_id: 'a', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 10 }
+      ]
+})
+
+/** 假的 YouTube 服务：info 按链接里的 id 返回，exec 直接成功；附加内容（单独测过）只给一张封面 */
+const yt = {
+  info: vi.fn<YoutubeService['info']>(),
+  exec: vi.fn<YoutubeService['exec']>()
+}
+function useFakeYoutube(): void {
+  beforeEach(() => {
+    settings.youtube = { downloadDir: join(root, 'yt'), concurrency: 2, defaultQn: 0, autoUpdate: false } as Settings['youtube']
+    yt.info.mockReset().mockImplementation(async (url) => ytInfo(new URL(url).searchParams.get('v')!))
+    yt.exec.mockReset().mockResolvedValue({ stdout: '', stderr: '' })
+    vi.mocked(prepareYtExtras).mockReset().mockResolvedValue({ cover: '/x/cover.jpg', subtitles: [], notes: [] })
+    setYoutube(yt as unknown as YoutubeService)
+  })
+  afterEach(() => {
+    setYoutube(undefined)
+  })
+}
+
+describe('YouTube 任务不用 B站账号', () => {
+  const ytItem = (id: string): MediaItem => ({ key: `yt:${id}`, kind: 'youtube', title: id, index: 1, cid: 0, ytId: id, duration: 10 })
+  const accounts = {
+    run: <T>(_mid: number | undefined, fn: () => Promise<T>) => fn(),
+    partition: () => 'p',
+    status: () => 'ready' as const
+  }
+  useFakeYoutube()
+
+  it('assignLegacy 只把没绑账号的 B站任务归过去', () => {
+    seed([
+      task({ id: 'b' }),
+      task({ id: 'y', item: ytItem('abc') }),
+      task({ id: 'd', status: 'done' })
+    ])
+    const m = make()
+    m.assignLegacy(7)
+    expect(m.list().map((t) => t.accountMid)).toEqual([7, undefined, undefined])
+  })
+
+  it('分账号时，没绑账号的 YouTube 任务照常开始，B站任务等待登录', async () => {
+    const m = new DownloadManager(join(root, 'tmp'), stateFile(), () => settings, accounts)
+    m.enqueue(req([item(1)]))
+    m.enqueue(req([ytItem('abc')], { kind: 'youtube' }))
+    await settle()
+    expect(statuses(m)).toEqual(['waitingAuth', 'done'])
+  })
+
+  it('重启后等待登录的 YouTube 任务改为暂停，绑了账号的 B站任务继续等', () => {
+    seed([
+      task({ id: 'b', status: 'waitingAuth', accountMid: 1 }),
+      task({ id: 'y', status: 'waitingAuth', item: ytItem('abc') })
+    ])
+    const m = new DownloadManager(join(root, 'tmp'), stateFile(), () => settings, accounts)
+    expect(statuses(m)).toEqual(['waitingAuth', 'paused'])
+  })
+})
+
+describe('YouTube 任务', () => {
+  useFakeYoutube()
+  const ytItem = (id: string, over: Partial<MediaItem> = {}): MediaItem => ({ key: `yt:${id}`, kind: 'youtube', title: id, index: 1, cid: 0, ytId: id, duration: 10, ...over })
+  const ytReq = (items: MediaItem[], over: Partial<EnqueueRequest> = {}, opts: Partial<DownloadOptions> = {}): EnqueueRequest =>
+    req(items, { kind: 'youtube', options: normalizeOptions({ subtitle: false, embedSubtitle: false, chapters: false, ...opts }), ...over })
+
+  it('默认存到 YouTube 的下载目录，元数据带原视频地址', async () => {
+    const m = make()
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa', { owner: '频道主', desc: '简介' })]))
+    await settle()
+    const t = m.list()[0]
+    expect(t.status).toBe('done')
+    expect(t.dir).toBe(join(root, 'yt'))
+    expect(t.outputPath).toBe(join(root, 'yt', 'aaaaaaaaaaa.mp4'))
+    expect(t.meta).toMatchObject({ owner: '频道主', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' })
+    const o = vi.mocked(mux).mock.calls[0][0]
+    expect(o).toMatchObject({ video: tmpOf(t.id, 'v.mp4'), audio: tmpOf(t.id, 'a.m4a'), format: 'mp4', cover: '/x/cover.jpg' })
+    expect(o.metadata?.comment).toBe('https://www.youtube.com/watch?v=aaaaaaaaaaa')
+    expect(placeSidecars).toHaveBeenCalledWith(t, expect.anything(), join(root, 'yt', 'aaaaaaaaaaa'), true)
+    expect(getPlayInfo).not.toHaveBeenCalled()
+  })
+
+  it('旧任务没有 dir 时也放到 YouTube 的下载目录', async () => {
+    seed([task({ item: ytItem('bbbbbbbbbbb'), title: 'b', relBase: 'b' })])
+    const m = make()
+    m.resume('t1')
+    await settle()
+    expect(m.list()[0].outputPath).toBe(join(root, 'yt', 'b.mp4'))
+  })
+
+  it('选好格式后记在任务上并马上落盘', async () => {
+    const gate = deferred<{ stdout: string; stderr: string }>()
+    yt.exec.mockReturnValue(gate.promise)
+    const m = make()
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa')]))
+    await settle()
+    expect(m.list()[0]).toMatchObject({ status: 'downloading', ytFormat: 'v,a', qualityLabel: '720p · AVC', videoQn: 720 })
+    expect(JSON.parse(readFileSync(stateFile(), 'utf8'))[0].ytFormat).toBe('v,a')
+    gate.resolve({ stdout: '', stderr: '' })
+    await settle()
+    expect(m.list()[0].status).toBe('done')
+  })
+
+  it('WebM 写不进封面：要嵌入的封面改为另存在旁边', async () => {
+    yt.info.mockImplementation(async (url) => ytInfo(new URL(url).searchParams.get('v')!, true))
+    const m = make()
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa')], {}, { yt: { container: 'webm' } as DownloadOptions['yt'] }))
+    await settle()
+    const t = m.list()[0]
+    expect(t.outputPath).toBe(join(root, 'yt', 'aaaaaaaaaaa.webm'))
+    expect(vi.mocked(mux).mock.calls[0][0]).toMatchObject({ format: 'webm', cover: undefined })
+    const [sidecar, extras] = vi.mocked(placeSidecars).mock.calls[0]
+    expect(sidecar).not.toBe(t)
+    expect(sidecar).toMatchObject({ id: t.id, options: { ...t.options, cover: true } })
+    expect(extras.cover).toBe('/x/cover.jpg')
+    expect(prepareYtExtras).toHaveBeenCalledWith(t, tmpOf(t.id), expect.objectContaining({ id: 'aaaaaaaaaaa' }), tmpOf(t.id, 'info.json'), expect.anything())
+  })
+
+  it('WebM 且不嵌入封面时按原选项保存', async () => {
+    yt.info.mockImplementation(async (url) => ytInfo(new URL(url).searchParams.get('v')!, true))
+    const m = make()
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa')], {}, { embedCover: false, yt: { container: 'webm' } as DownloadOptions['yt'] }))
+    await settle()
+    expect(vi.mocked(placeSidecars).mock.calls[0][0]).toBe(m.list()[0])
+  })
+
+  it('要登录才能下：只有这个任务等待登录并带上原因，其他照常', async () => {
+    yt.info.mockImplementation(async (url) => {
+      if (url.endsWith('aaaaaaaaaaa')) throw new YtLoginRequiredError('需要登录才能观看')
+      return ytInfo(new URL(url).searchParams.get('v')!)
+    })
+    const m = make()
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa')]))
+    m.enqueue(ytReq([ytItem('bbbbbbbbbbb')]))
+    m.enqueue(req([item(1)]))
+    await settle()
+    expect(statuses(m)).toEqual(['waitingAuth', 'done', 'done'])
+    expect(m.list()[0]).toMatchObject({ error: '需要登录才能观看', speed: 0 })
+  })
+
+  it('导入登录、切换账号后，等待登录的 YouTube 任务换成新账号重新排队', async () => {
+    yt.info.mockRejectedValue(new YtLoginRequiredError('要登录'))
+    const m = make()
+    m.enqueue(req([item(1)]))
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa')], { ytAccount: 'old' }))
+    m.enqueue(ytReq([ytItem('bbbbbbbbbbb')]))
+    await settle()
+    expect(statuses(m)).toEqual(['done', 'waitingAuth', 'waitingAuth'])
+
+    // 换成不登录：重新排队并马上开始，清掉原因，账号不变
+    m.ytLoginChanged(undefined)
+    expect(m.list().slice(1).map((t) => [t.status, t.error, t.ytAccount])).toEqual([
+      ['fetching', undefined, 'old'],
+      ['fetching', undefined, undefined]
+    ])
+    await settle()
+    expect(statuses(m)).toEqual(['done', 'waitingAuth', 'waitingAuth'])
+
+    yt.info.mockImplementation(async (url) => ytInfo(new URL(url).searchParams.get('v')!))
+    m.ytLoginChanged('new')
+    await settle()
+    expect(statuses(m)).toEqual(['done', 'done', 'done'])
+    expect(m.list().map((t) => t.ytAccount)).toEqual([undefined, 'new', 'new'])
+    expect(yt.info).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ account: 'new' }))
+    // 已完成的不再动
+    m.ytLoginChanged('other')
+    expect(m.list().map((t) => t.ytAccount)).toEqual([undefined, 'new', 'new'])
+  })
+
+  it('YouTube 账号被删掉：没下完的任务改为不登录', () => {
+    seed([
+      task({ id: 'a', item: ytItem('aaaaaaaaaaa'), ytAccount: 'acc' }),
+      task({ id: 'b', item: ytItem('bbbbbbbbbbb'), ytAccount: 'acc', status: 'done' }),
+      task({ id: 'c', item: ytItem('ccccccccccc'), ytAccount: 'other' })
+    ])
+    const m = make()
+    m.ytAccountRemoved('acc')
+    expect(m.list().map((t) => t.ytAccount)).toEqual([undefined, 'acc', 'other'])
+  })
+
+  it('YouTube 另有同时下载数上限，不影响 B站任务', async () => {
+    settings.concurrency = 3
+    settings.youtube.concurrency = 1
+    const gates = new Map<string, ReturnType<typeof deferred<YtVideoInfo>>>()
+    yt.info.mockImplementation((url) => {
+      const id = new URL(url).searchParams.get('v')!
+      const g = deferred<YtVideoInfo>()
+      gates.set(id, g)
+      return g.promise
+    })
+    const m = make()
+    m.enqueue(ytReq([ytItem('aaaaaaaaaaa')]))
+    m.enqueue(ytReq([ytItem('bbbbbbbbbbb')]))
+    m.enqueue(req([item(1)]))
+    await settle()
+    expect(statuses(m)).toEqual(['fetching', 'queued', 'done'])
+    gates.get('aaaaaaaaaaa')!.resolve(ytInfo('aaaaaaaaaaa'))
+    await settle()
+    expect(statuses(m)).toEqual(['done', 'fetching', 'done'])
+    gates.get('bbbbbbbbbbb')!.resolve(ytInfo('bbbbbbbbbbb'))
+    await settle()
+    expect(statuses(m)).toEqual(['done', 'done', 'done'])
+  })
+
+  it('手动去水印的 YouTube 任务不占 YouTube 的名额', async () => {
+    settings.youtube.concurrency = 1
+    mkdirSync(dl, { recursive: true })
+    const out = join(dl, 'a.mp4')
+    writeFileSync(out, 'orig')
+    seed([
+      task({ id: 'a', item: ytItem('aaaaaaaaaaa'), status: 'done', outputPath: out, dir: dl }),
+      task({ id: 'b', item: ytItem('bbbbbbbbbbb'), title: 'b', relBase: 'b' })
+    ])
+    vi.mocked(replaceVideo).mockImplementation((o) => untilAbort(o.signal))
+    const m = make()
+    m.startWatermark('a', { x: 0, y: 0, w: 10, h: 10 })
+    m.resume('b')
+    await settle()
+    expect(m.list().map((t) => t.status)).toEqual(['done', 'done'])
+    expect(m.list()[1].outputPath).toBe(join(root, 'yt', 'b.mp4'))
+    m.cancelWatermark('a')
+    await settle()
+  })
+})
+
+describe('下载驱动接入后的通用流程', () => {
+  it('旧的 B站任务没有 dir 时放到下载目录', async () => {
+    seed([task({ relBase: '旧名字' })])
+    const m = make()
+    m.resume('t1')
+    await settle()
+    expect(m.list()[0].outputPath).toBe(join(dl, '旧名字.mp4'))
+  })
+
+  it('取流刚结束时被暂停：不再准备附加内容', async () => {
+    const gate = deferred<void>()
+    // 下载在中止后才正常结束（不以 AbortError 结束）
+    vi.mocked(fetchFile).mockImplementation(async (o) => {
+      await gate.promise
+      writeFileSync(o.dest, Buffer.alloc(100))
+    })
+    const m = make()
+    m.enqueue(req([item(1)]))
+    await settle()
+    m.pause(m.list()[0].id)
+    gate.resolve()
+    await settle()
+    expect(m.list()[0].status).toBe('paused')
+    expect(prepareExtras).not.toHaveBeenCalled()
+    expect(mux).not.toHaveBeenCalled()
+  })
+
+  it('上次合并到一半留下的文件先删掉', async () => {
+    mkdirSync(dl, { recursive: true })
+    const half = join(dl, '上次.mp4.tmp')
+    writeFileSync(half, 'half')
+    seed([task({ dir: dl, tmpOutput: half })])
+    const m = make()
+    m.resume('t1')
+    await settle()
+    expect(existsSync(half)).toBe(false)
+    expect(m.list()[0]).toMatchObject({ status: 'done', tmpOutput: undefined })
   })
 })

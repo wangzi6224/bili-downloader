@@ -3,14 +3,13 @@ import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { joinList, t as tr } from '@shared/i18n'
-import { renderTemplate, type NamingValues } from '@shared/naming'
+import { KIND_TYPE_LABEL, renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
+import { siteOf, ytItemUrl } from '@shared/site'
 import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
 import { withWatermarkNote, WM_NOTE } from '@shared/watermark'
-import { AuthExpiredError, BASE_HEADERS, UnsupportedError } from '../bili/http'
-import { getAudioStream } from '../bili/audio'
-import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashStream } from '../bili/playurl'
-import { preferCdn } from '../net/cdn'
+import { AuthExpiredError, UnsupportedError } from '../bili/http'
+import { YtLoginRequiredError } from '../youtube/errors'
 import { readJsonArray, writeJson } from '../store'
 import { aiModel, spawnHost } from '../watermark/ai'
 import { refineVideo } from '../watermark/ai/refine'
@@ -18,11 +17,12 @@ import { autoRemove, detectOnly, ensureModel } from '../watermark/auto'
 import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark/manual'
 import { removeQuietly, removeTaskOutputs } from './cleanup'
 import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
-import { placeSidecars, prepareExtras } from './extras'
+import { placeSidecars } from './extras'
 import type { accounts as accountRegistry } from '../auth/accounts'
-import { fetchFile } from './fetchFile'
+import { driverFor, type DriverContext } from './drivers'
 import { uniquePath } from './filename'
-import { mux, type OutFormat } from './mux'
+import { canEmbedCover } from './formats'
+import { mux } from './mux'
 
 const RUNNING = new Set(['fetching', 'downloading', 'merging', 'extras', 'processing'])
 const SETTLED = new Set(['done', 'unsupported'])
@@ -59,53 +59,6 @@ export interface EnqueueResult {
   skipped: { key: string; taskId: string }[]
 }
 
-/** 文件名模板的 {type}：影响已下载文件的命名和跳过判断，保持中文，不随界面语言变 */
-const KIND_LABEL = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' } as const
-
-interface StreamPlan {
-  parts: { name: string; urls: string[]; fingerprint: string; estimate: number }[]
-  video?: DashStream
-  hasAudio: boolean
-  format: OutFormat
-  qualityLabel: string
-  quality: string
-  codec: string
-  notes: string[]
-}
-
-/** 决定要下载哪些流：音频区直接取音频地址，视频走 DASH 选流 */
-async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
-  if (t.item.kind === 'audio') {
-    const s = await getAudioStream(t.item.cid, t.options.audio)
-    return {
-      parts: [{ name: 'audio.m4s', urls: s.urls, fingerprint: `au-${s.label}-${s.size}`, estimate: s.size }],
-      hasAudio: true,
-      format: s.flac ? 'flac' : 'm4a',
-      qualityLabel: tr('bili.audioQuality', { label: s.text }),
-      quality: s.label,
-      codec: '',
-      notes: []
-    }
-  }
-  const pick = pickStreams(await getPlayInfo(t.item, t.options.qn), t.options)
-  const estimate = (s: DashStream): number => Math.round((s.bandwidth * (t.item.duration ?? 0)) / 8)
-  const part = (name: string, s: DashStream) => ({
-    name,
-    urls: preferCdn(streamUrls(s), cdn),
-    fingerprint: `${s.id}-${s.codecs}-${s.bandwidth}`,
-    estimate: estimate(s)
-  })
-  return {
-    parts: [...(pick.video ? [part('video.m4s', pick.video)] : []), ...(pick.audio ? [part('audio.m4s', pick.audio)] : [])],
-    video: pick.video,
-    hasAudio: Boolean(pick.audio),
-    format: pick.video ? pick.container : pick.audioKind === 'flac' ? 'flac' : 'm4a',
-    qualityLabel: pick.qualityLabel,
-    quality: pick.quality,
-    codec: pick.codec,
-    notes: pick.notes
-  }
-}
 
 /** 画质标签里的编码换成重新编码后的，例如“1080P 高清 · AV1”→“1080P 高清 · AVC” */
 const swapCodec = (label: string | undefined, codec: 'h264' | 'hevc'): string | undefined =>
@@ -115,7 +68,7 @@ const swapCodec = (label: string | undefined, codec: 'h264' | 'hevc'): string | 
 function videoMeta(item: MediaItem): MediaMeta | undefined {
   if (!item.owner) return undefined
   const { owner, ownerMid, pubdate, desc, bvid } = item
-  return { owner, ownerMid, pubdate, desc, url: bvid && `https://www.bilibili.com/video/${bvid}` }
+  return { owner, ownerMid, pubdate, desc, url: ytItemUrl(item) ?? (bvid && `https://www.bilibili.com/video/${bvid}`) }
 }
 
 /**
@@ -162,7 +115,7 @@ export class DownloadManager extends EventEmitter {
           speed: 0,
           retryAt: undefined,
           processing: undefined,
-          status: RUNNING.has(t.status) || t.status === 'queued' || ((!this.accounts || t.accountMid === undefined) && t.status === 'waitingAuth')
+          status: RUNNING.has(t.status) || t.status === 'queued' || (this.waitsForNothing(t) && t.status === 'waitingAuth')
             ? 'paused' : t.status
         }
         // 手动去水印做到一半退出了：原视频没动过，删掉半成品
@@ -179,10 +132,16 @@ export class DownloadManager extends EventEmitter {
     return this.tasks
   }
 
+  /** 早先没有多账号时的 B站任务归到这个账号；YouTube 任务不用 B站账号 */
   assignLegacy(mid: number): void {
     for (const task of this.tasks) {
-      if (task.accountMid === undefined && task.status !== 'done') this.patch(task, { accountMid: mid })
+      if (task.accountMid === undefined && task.status !== 'done' && siteOf(task) === 'bili') this.patch(task, { accountMid: mid })
     }
+  }
+
+  /** 等待登录的任务重启后没有可等的 B站账号：不分账号时、任务没绑账号，或者是 YouTube 任务（重启后由用户手动继续） */
+  private waitsForNothing(t: TaskInfo): boolean {
+    return siteOf(t) !== 'bili' || !this.accounts || t.accountMid === undefined
   }
 
   /** 这个账号名下还没下完的任务 */
@@ -214,6 +173,20 @@ export class DownloadManager extends EventEmitter {
       }
     }
     this.schedule()
+  }
+
+  /** YouTube 账号有变化（导入了登录、切换了账号）：等待登录的 YouTube 任务换成当前账号重新排队 */
+  ytLoginChanged(account: string | undefined): void {
+    for (const task of this.tasks) {
+      if (siteOf(task) !== 'youtube' || task.status !== 'waitingAuth') continue
+      this.patch(task, { status: 'queued', error: undefined, ...(account ? { ytAccount: account } : {}) })
+    }
+    this.schedule()
+  }
+
+  /** 这个 YouTube 账号被删掉了：还没下完的任务改为不登录 */
+  ytAccountRemoved(account: string): void {
+    for (const task of this.tasks) if (task.ytAccount === account && task.status !== 'done') this.patch(task, { ytAccount: undefined })
   }
 
   /** 退出时会被打断的任务数：运行中、排队、等待登录（之后会变成暂停），以及正在手动去水印的 */
@@ -263,7 +236,7 @@ export class DownloadManager extends EventEmitter {
         aid: item.aid,
         cid: item.cid,
         ep_id: item.epId,
-        type: KIND_LABEL[req.kind]
+        type: KIND_TYPE_LABEL[req.kind]
       }
       const task: TaskInfo = {
         id: randomUUID(),
@@ -271,6 +244,7 @@ export class DownloadManager extends EventEmitter {
         groupTitle: req.title,
         item,
         accountMid: req.accountMid,
+        ytAccount: req.ytAccount,
         options: normalizeOptions(req.options),
         relBase: renderTemplate(template, nameValues),
         template,
@@ -278,7 +252,7 @@ export class DownloadManager extends EventEmitter {
         meta: req.meta ?? videoMeta(item),
         series: episodic && multi,
         seriesCover: req.cover,
-        dir: req.dir ?? settings.downloadDir,
+        dir: req.dir ?? (req.kind === 'youtube' ? settings.youtube.downloadDir : settings.downloadDir),
         batchId: req.batchId,
         status: req.paused ? 'paused' : 'queued',
         downloaded: 0,
@@ -430,15 +404,22 @@ export class DownloadManager extends EventEmitter {
 
   schedule(): void {
     if (!this.authBlocked && !this.stopped) {
-      const limit = this.settings().concurrency
+      const s = this.settings()
+      const limit = s.concurrency
+      // YouTube 再单独限一个数：同时开太多容易触发机器人验证
+      const ytLimit = s.youtube?.concurrency ?? limit
+      let ytRunning = this.tasks.filter((t) => this.running.has(t.id) && siteOf(t) === 'youtube' && !t.processing?.manual).length
       for (const t of this.tasks) {
         if (this.running.size >= limit) break
         // 暂停后立刻继续时，上一次 run 可能还卡在取流里没结束，等它结算后再启动
         if (t.status !== 'queued' || this.running.has(t.id)) continue
-        if (this.accounts && (t.accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(t.accountMid)))) {
+        const yt = siteOf(t) === 'youtube'
+        if (yt && ytRunning >= ytLimit) continue
+        if (this.accounts && siteOf(t) === 'bili' && (t.accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(t.accountMid)))) {
           this.patch(t, { status: 'waitingAuth', speed: 0 })
           continue
         }
+        if (yt) ytRunning++
         void this.run(t)
       }
     }
@@ -471,7 +452,7 @@ export class DownloadManager extends EventEmitter {
   }
 
   private rootOf(t: TaskInfo): string {
-    return t.dir ?? this.settings().downloadDir
+    return t.dir ?? (siteOf(t) === 'youtube' ? this.settings().youtube.downloadDir : this.settings().downloadDir)
   }
 
   /** 删除没下载完的部分：临时目录里的分片和附加内容、合并到一半的 .tmp */
@@ -634,72 +615,45 @@ export class DownloadManager extends EventEmitter {
       partition = mid === undefined ? undefined : this.accounts.partition(mid)
       return this.accounts.run(mid, fn)
     }
+    const driver = driverFor(t)
+    const meter = speedMeter()
+    const ctx: DriverContext = {
+      tmp,
+      signal: ac.signal,
+      settings: this.settings,
+      withAccount,
+      onPlanned: (p) => {
+        this.patch(t, { status: 'downloading', qualityLabel: p.qualityLabel, videoQn: p.videoQn, ...(p.lock ? { ytFormat: p.lock } : {}) })
+        // 格式马上落盘：下载中途崩溃了，下次也能续传同一份
+        if (p.lock) this.flush()
+      },
+      onProgress: (downloaded, total) => this.patch(t, { downloaded, total, speed: meter(downloaded) })
+    }
     try {
       this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0, watermark: undefined })
-      const plan = await withAccount(() => planStreams(t, this.settings().cdn))
-      check()
-      this.patch(t, { status: 'downloading', qualityLabel: plan.qualityLabel, videoQn: plan.video?.id })
-      mkdirSync(tmp, { recursive: true })
-
-      const parts = plan.parts
-      // 拿到真实大小之前先用估算值
-      const sizes = parts.map((p) => p.estimate)
-      const done = parts.map(() => 0)
-      const meter = speedMeter()
-      const report = (): void => {
-        const sum = done.reduce((a, b) => a + b, 0)
-        this.patch(t, { downloaded: sum, total: sizes.reduce((a, b) => a + b, 0), speed: meter(sum) })
-      }
-
-      // 音视频两个文件同时下载，各自再分段
-      const threads = this.settings().threads
-      await Promise.all(
-        parts.map(async (part, i) => {
-          const dest = join(tmp, part.name)
-          if (!existsSync(dest)) {
-            await fetchFile({
-              urls: part.urls,
-              dest,
-              fingerprint: part.fingerprint,
-              threads,
-              headers: BASE_HEADERS,
-              signal: ac.signal,
-              onProgress: (d, total) => {
-                done[i] = d
-                if (total) sizes[i] = total
-                report()
-              }
-            })
-          }
-          done[i] = sizes[i] = statSync(dest).size
-          report()
-        })
-      )
+      const plan = await driver.acquire(t, ctx)
 
       check()
       this.patch(t, { status: 'extras', speed: 0 })
-      const audioOnly = t.options.output === 'audio' || t.item.kind === 'audio'
-      const needsAuth = !audioOnly && (t.options.subtitle || t.options.embedSubtitle || t.options.chapters)
-      const extras = await (needsAuth
-        ? withAccount(() => prepareExtras(t, tmp, this.settings()))
-        : prepareExtras(t, tmp, this.settings()))
+      const extras = await driver.extras(t, ctx)
 
       // 去水印：在合并前单独处理视频流，处理好的文件也放在临时目录，暂停后继续可以直接用
-      let video = plan.video ? join(tmp, 'video.m4s') : undefined
+      let video = plan.video
       let codec = plan.codec
-      let hevc = plan.video ? isHevc(plan.video) : false
-      let dolbyVision = plan.video ? isDolbyVision(plan.video) : false
+      let hevc = plan.hevc
+      let dolbyVision = plan.dolbyVision
       let wmNote: string | undefined
       // 旧任务的选项里可能没有 watermark，只认这两种
       const wm = t.options.watermark
-      if (plan.video && video && (wm === 'auto' || wm === 'ai')) {
+      const stream = plan.wmStream
+      if (stream && video && (wm === 'auto' || wm === 'ai')) {
         check()
         this.patch(t, { status: 'processing', processing: { stage: 'detect' } })
         const method = wm === 'ai' ? 'ai' : 'fast'
         const r = await autoRemove({
           tmp,
           source: video,
-          stream: plan.video,
+          stream,
           durationHint: t.item.duration,
           method,
           ai: method === 'ai' ? { model: aiModel(), spawn: spawnHost, threads: this.settings().threads } : undefined,
@@ -715,11 +669,11 @@ export class DownloadManager extends EventEmitter {
         }
         wmNote = r.note
         this.patch(t, { watermark: r.state, processing: undefined })
-      } else if (plan.video && video && t.batchId) {
+      } else if (stream && video && t.batchId) {
         // AI 助手（MCP）提交的下载没选去水印：顺便识别有没有 B站水印，让它知道要不要提醒用户
         check()
         this.patch(t, { status: 'processing', processing: { stage: 'detect' } })
-        const state = await detectOnly({ source: video, stream: plan.video, durationHint: t.item.duration, signal: ac.signal })
+        const state = await detectOnly({ source: video, stream, durationHint: t.item.duration, signal: ac.signal })
         this.patch(t, { watermark: state, processing: undefined })
       }
 
@@ -727,7 +681,7 @@ export class DownloadManager extends EventEmitter {
       this.patch(t, { status: 'merging' })
       // 按实际拿到的画质、编码重新套一次命名模板
       const relBase = t.template ? renderTemplate(t.template, { ...t.nameValues, quality: plan.quality, codec }) : t.relBase
-      const base = join(t.dir ?? this.settings().downloadDir, relBase)
+      const base = join(this.rootOf(t), relBase)
       try {
         mkdirSync(dirname(base), { recursive: true })
       } catch (e) {
@@ -740,23 +694,25 @@ export class DownloadManager extends EventEmitter {
       if (t.tmpOutput) rmSync(t.tmpOutput, { force: true })
       this.patch(t, { tmpOutput: `${out}.tmp` })
       const o = t.options
+      // WebM、Opus 写不进封面：要嵌入的封面改为另存在旁边
+      const coverInside = canEmbedCover(format)
       const embedded = await mux(
         {
           video,
-          audio: plan.hasAudio ? join(tmp, 'audio.m4s') : undefined,
+          audio: plan.audio,
           out: `${out}.tmp`,
           format,
           title: t.title,
           hevc,
           dolbyVision,
-          cover: o.embedCover ? extras.cover : undefined,
+          cover: o.embedCover && coverInside ? extras.cover : undefined,
           subtitles: o.embedSubtitle ? extras.subtitles : undefined,
           chapters: extras.chapters,
           metadata: {
             artist: t.meta?.owner,
             album: t.series || t.groupTitle !== t.title ? t.groupTitle : undefined,
             date: t.nameValues?.pubdate ? new Date(Number(t.nameValues.pubdate) * 1000).toISOString().slice(0, 10) : undefined,
-            comment: t.item.bvid ? `https://www.bilibili.com/video/${t.item.bvid}` : t.meta?.url,
+            comment: driver.sourceUrl(t),
             description: t.item.desc ?? t.meta?.desc
           }
         },
@@ -767,7 +723,8 @@ export class DownloadManager extends EventEmitter {
       produced = out
       this.patch(t, { tmpOutput: undefined })
 
-      const sideNotes = await placeSidecars(t, extras, out.slice(0, -format.length - 1), embedded)
+      const sidecarTask = coverInside || !o.embedCover ? t : { ...t, options: { ...o, cover: true } }
+      const sideNotes = await placeSidecars(sidecarTask, extras, out.slice(0, -format.length - 1), embedded)
       // 保存附加内容时被删除了：不能再标记完成、记进下载历史
       if (this.canceled.has(t.id)) throw new AbortError()
       // 成品已经好了，临时目录删不掉也不算失败
@@ -786,6 +743,9 @@ export class DownloadManager extends EventEmitter {
         const refreshed = this.accounts && mid !== undefined
           && this.accounts.partition(mid) !== partition && this.accounts.status(mid) === 'ready'
         this.patch(t, { status: refreshed ? 'queued' : 'waitingAuth', speed: 0 })
+      } else if (e instanceof YtLoginRequiredError) {
+        // 只影响这个任务：导入 YouTube 登录后由 ytLoginChanged 重新排队
+        this.patch(t, { status: 'waitingAuth', error: message, speed: 0 })
       } else if (e instanceof UnsupportedError) {
         this.batch.failed++
         this.patch(t, { status: 'unsupported', error: message, speed: 0 })

@@ -12,6 +12,7 @@ vi.mock('node:child_process', () => ({ spawn: h.spawn }))
 vi.mock('node:fs', async (o) => ({ ...(await o<typeof import('node:fs')>()), existsSync: h.existsSync }))
 const { buildMuxArgs, explainFfmpegError, isEncoderFailure } = await import('./mux')
 const { WM_MARK } = await import('@shared/watermark')
+const { canEmbedCover } = await import('./formats')
 const ORIGINAL_PLATFORM = Object.getOwnPropertyDescriptor(process, 'platform')!
 
 /** 假的 ffmpeg 进程：测试里手动 emit stderr / close / error */
@@ -141,6 +142,51 @@ describe('buildMuxArgs', () => {
   it('只写有值的元数据', () => {
     const args = buildMuxArgs({ video: 'v', out: 'o', format: 'mkv', title: 'T', metadata: { artist: 'UP', album: undefined, comment: '' } })
     expect(args.join(' ')).toBe('-i v -map 0:v:0 -c copy -metadata title=T -metadata artist=UP -f matroska o')
+  })
+})
+
+describe('buildMuxArgs：WebM 和 Opus', () => {
+  it('webm：字幕转 webvtt，封面不嵌入，用 webm 封装器、不加 faststart', () => {
+    const args = buildMuxArgs({
+      video: 'v.webm',
+      audio: 'a.webm',
+      out: 'o.tmp',
+      format: 'webm',
+      title: 'T',
+      cover: 'c.jpg',
+      subtitles: [{ path: 'en.vtt', language: 'eng', title: 'English' }],
+      chapters: 'ch.txt'
+    })
+    expect(args.join(' ')).toBe(
+      [
+        '-i v.webm -i a.webm -i en.vtt -f ffmetadata -i ch.txt',
+        '-map 0:v:0 -map 1:a:0 -map 2:s:0 -map_chapters 3',
+        '-c copy -c:s webvtt',
+        '-metadata:s:s:0 language=eng -metadata:s:s:0 title=English',
+        '-metadata title=T -f webm o.tmp'
+      ].join(' ')
+    )
+    expect(args).not.toContain('c.jpg')
+    expect(args).not.toContain('-attach')
+  })
+
+  it('opus：只有音频，不嵌封面、不带字幕', () => {
+    const args = buildMuxArgs({
+      audio: 'a.webm',
+      out: 'o.tmp',
+      format: 'opus',
+      title: 'T',
+      cover: 'c.jpg',
+      subtitles: [{ path: 'en.vtt', language: 'eng', title: 'English' }],
+      metadata: { artist: 'Rick Astley' }
+    })
+    expect(args.join(' ')).toBe('-i a.webm -map 0:a:0 -c copy -metadata title=T -metadata artist=Rick Astley -f opus o.tmp')
+  })
+
+  it('canEmbedCover：WebM、Opus 不能嵌封面', () => {
+    expect((['mp4', 'mkv', 'm4a', 'flac'] as const).map(canEmbedCover)).toEqual([true, true, true, true])
+    expect(canEmbedCover('webm')).toBe(false)
+    expect(canEmbedCover('opus')).toBe(false)
   })
 })
 
