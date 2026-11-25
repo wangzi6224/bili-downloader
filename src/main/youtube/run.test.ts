@@ -122,7 +122,7 @@ describe('killTree', () => {
       throw new Error('ESRCH')
     })
     const c = new FakeChild()
-    killTree(asChild(c))
+    killTree(asChild(c), 'linux')
     expect(c.kill).toHaveBeenCalledWith('SIGTERM')
   })
 
