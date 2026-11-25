@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { setLanguage } from '@shared/i18n'
-import { isSettingsShortcut, platformText } from './platform'
+import { isSettingsShortcut, isSiteShortcut, platformText } from './platform'
 
 describe('platformText', () => {
   it('macOS 用访达、程序坞或菜单栏和 ⌘ 快捷键', () => {
@@ -70,5 +70,35 @@ describe('isSettingsShortcut', () => {
   it('别的键不算', () => {
     expect(isSettingsShortcut(key('.', { metaKey: true, ctrlKey: true }), 'darwin')).toBe(false)
     expect(isSettingsShortcut(key(',', {}), 'linux')).toBe(false)
+  })
+})
+
+describe('isSiteShortcut', () => {
+  const key = (k: string, mods: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean }) =>
+    ({ key: k, metaKey: false, ctrlKey: false, shiftKey: false, ...mods })
+
+  it('macOS 上是 ⌘⇧Y，按 Shift 时 key 是大写也算', () => {
+    expect(isSiteShortcut(key('Y', { metaKey: true, shiftKey: true }), 'darwin')).toBe(true)
+    expect(isSiteShortcut(key('y', { metaKey: true, shiftKey: true }), 'darwin')).toBe(true)
+  })
+
+  it('macOS 上同时按 Ctrl、或只按 Ctrl 不算', () => {
+    expect(isSiteShortcut(key('Y', { metaKey: true, ctrlKey: true, shiftKey: true }), 'darwin')).toBe(false)
+    expect(isSiteShortcut(key('Y', { ctrlKey: true, shiftKey: true }), 'darwin')).toBe(false)
+  })
+
+  it('Windows 和 Linux 上是 Ctrl+Shift+Y，按 ⊞/Super 不算', () => {
+    for (const platform of ['win32', 'linux']) {
+      expect(isSiteShortcut(key('Y', { ctrlKey: true, shiftKey: true }), platform)).toBe(true)
+      expect(isSiteShortcut(key('y', { ctrlKey: true, shiftKey: true }), platform)).toBe(true)
+      expect(isSiteShortcut(key('Y', { metaKey: true, shiftKey: true }), platform)).toBe(false)
+      expect(isSiteShortcut(key('Y', { ctrlKey: true, metaKey: true, shiftKey: true }), platform)).toBe(false)
+    }
+  })
+
+  it('不按 Shift、或按的不是 Y 都不算', () => {
+    expect(isSiteShortcut(key('y', { metaKey: true }), 'darwin')).toBe(false)
+    expect(isSiteShortcut(key('y', { ctrlKey: true }), 'win32')).toBe(false)
+    expect(isSiteShortcut(key('T', { metaKey: true, shiftKey: true }), 'darwin')).toBe(false)
   })
 })

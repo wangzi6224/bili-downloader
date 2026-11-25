@@ -26,6 +26,7 @@ import { useT } from '../i18n'
 import {
   appendToFirst,
   bestQuality,
+  biliCodecs,
   CODEC_TEXT,
   enqueueBatches,
   FALLBACK,
@@ -51,7 +52,8 @@ const KIND_TEXT: Record<ParseResult['kind'], Key> = {
   ugc: 'selection.kindUgc',
   pgc: 'selection.kindPgc',
   cheese: 'selection.kindCheese',
-  audio: 'selection.kindAudio'
+  audio: 'selection.kindAudio',
+  youtube: 'selection.kindYoutube'
 }
 /** 自动加载全部分页时每页的间隔，避免触发风控 */
 const PAGE_INTERVAL = 1000
@@ -651,7 +653,7 @@ export function SelectionDialog({ result, fromSource = false }: { result: ParseR
               </Section>
             )}
             {audioKind && <div className="text-xs leading-relaxed text-muted">{t('selection.audioOnlyHint')}</div>}
-            <OptionsEditor value={opts} onChange={setOpts} info={info} codecsForQuality={chosen?.codecs} />
+            <OptionsEditor value={opts} onChange={setOpts} info={info} codecsForQuality={biliCodecs(chosen?.codecs)} />
           </div>
 
           {/* 下载按钮固定在底部，不随选项滚动 */}

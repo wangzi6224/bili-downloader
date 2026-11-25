@@ -1,6 +1,6 @@
 import { t, type Key } from '@shared/i18n'
-import { renderTemplate, type NamingTemplates } from '@shared/naming'
-import type { DuplicateAction, EnqueueRequest, MediaGroup, MediaItem, Paging, ParseResult, QualityOption } from '@shared/types'
+import { KIND_TYPE_LABEL, renderTemplate, type NamingTemplates } from '@shared/naming'
+import type { CodecPref, DuplicateAction, EnqueueRequest, MediaGroup, MediaItem, Paging, ParseResult, QualityOption } from '@shared/types'
 import { actualCodec, type EditableOptions } from './viewLogic'
 
 const fallback = (qn: number, label: Key, needLogin: boolean): QualityOption => ({
@@ -21,7 +21,11 @@ export const FALLBACK: QualityOption[] = [
   fallback(32, 'selection.quality480', false)
 ]
 
-export const CODEC_TEXT = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1' } as const
+export const CODEC_TEXT = { avc: 'AVC', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9' } as const
+
+/** 画质提供的编码里 B站认识的（YouTube 的 vp9 去掉） */
+export const biliCodecs = (codecs: QualityOption['codecs'] | undefined): CodecPref[] | undefined =>
+  codecs?.filter((c): c is CodecPref => c !== 'vp9')
 
 export { downloadedMatcher } from '@shared/downloaded'
 
@@ -143,7 +147,6 @@ export function resolveDuplicates(
 }
 
 // 文件名模板 {type} 的取值，会影响已下载文件的命名，不随界面语言变
-const TYPE_TEXT = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频' } as const
 
 export interface PreviewInput {
   result: ParseResult
@@ -171,7 +174,7 @@ export function pathPreview({ result, groups, all, selected, naming, opts, audio
   const tpl = !multi ? naming.single : episodic ? naming.pgc : naming.multi
   const output = audioKind ? 'audio' : opts.output
   const ext = output === 'audio' ? (opts.audio === 'flac' ? 'flac' : 'm4a') : opts.container
-  const codec = actualCodec(opts.codecOrder, chosen?.codecs) ?? opts.codecOrder[0]
+  const codec = actualCodec(opts.codecOrder, biliCodecs(chosen?.codecs)) ?? opts.codecOrder[0]
   return `${renderTemplate(tpl, {
     title: first.title,
     series: multi || first.title !== src.title ? src.title : '',
@@ -186,7 +189,7 @@ export function pathPreview({ result, groups, all, selected, naming, opts, audio
     aid: first.aid,
     cid: first.cid,
     ep_id: first.epId,
-    type: TYPE_TEXT[src.kind]
+    type: KIND_TYPE_LABEL[src.kind]
   })}.${ext}`
 }
 

@@ -1,6 +1,20 @@
+import { flushSync } from 'react-dom'
 import { create } from 'zustand'
 import { t, type Lang } from '@shared/i18n'
-import type { AccountState, AuthState, LoginTarget, ParseRecord, ParseResult, Settings, SourceRef, TaskInfo, UpdateState } from '@shared/types'
+import type {
+  AccountState,
+  AuthState,
+  LoginTarget,
+  ParseRecord,
+  ParseResult,
+  Settings,
+  SourceRef,
+  TaskInfo,
+  Site,
+  UpdateState,
+  YtAccountsSnapshot,
+  YtEngineStatus
+} from '@shared/types'
 import { platformText } from './platform'
 
 export type View = 'downloads' | 'subs' | 'history' | 'settings'
@@ -35,6 +49,15 @@ interface State {
   notice: string | null
   /** 正在打开去水印对话框的任务 */
   watermarkTaskId: string | null
+  // ---- YouTube：和上面 B站的各存一份，切换平台时两边的输入、选集弹窗都保留 ----
+  ytParse: ParseResult | null
+  ytParsing: boolean
+  ytProgress: { done: number; total: number; title?: string } | null
+  ytError: string | null
+  ytNotice: string | null
+  ytAccounts: YtAccountsSnapshot | null
+  ytEngine: YtEngineStatus | null
+  ytLoginOpen: boolean
   set: (patch: Partial<State>) => void
 }
 
@@ -59,6 +82,14 @@ export const useStore = create<State>((set) => ({
   error: null,
   notice: null,
   watermarkTaskId: null,
+  ytParse: null,
+  ytParsing: false,
+  ytProgress: null,
+  ytError: null,
+  ytNotice: null,
+  ytAccounts: null,
+  ytEngine: null,
+  ytLoginOpen: false,
   set: (patch) => set(patch)
 }))
 
@@ -142,3 +173,100 @@ export function reopenParseRecord({ input, accountMid }: Pick<ParseRecord, 'inpu
 }
 
 export const parseBatch = (inputs: string[]): Promise<void> => runParse(() => api.parseBatch(inputs))
+
+// ---------------- YouTube ----------------
+
+/** 界面当前显示的平台 */
+export const useSite = (): Site => useStore((s) => s.settings?.uiSite ?? 'bili')
+
+/**
+ * 一键切换平台：只改界面，下载队列、账号、两边各自的解析结果都不动。
+ * from 是切换按钮的中心（视口坐标）：支持 View Transitions 时整个界面从那里圆形展开成另一个平台
+ */
+export function switchSite(site: Site, from?: { x: number; y: number }): Promise<void> {
+  const { settings, set } = useStore.getState()
+  if (!settings || settings.uiSite === site) return Promise.resolve()
+  let saved: Promise<void> | undefined
+  // 本地先切过去、再保存：放在一起做，动画回调推迟执行时两边也不会错开；用当时最新的设置，免得盖掉期间别处的修改
+  const apply = (): void => {
+    const latest = useStore.getState().settings ?? settings
+    const next = { ...latest, uiSite: site }
+    if (typeof document === 'undefined') set({ settings: next })
+    else {
+      flushSync(() => set({ settings: next }))
+      document.documentElement.dataset.brand = site
+    }
+    saved = updateSettings({ uiSite: site })
+  }
+  if (!canAnimateSwitch()) {
+    apply()
+    return saved!
+  }
+  const root = document.documentElement
+  if (from) {
+    root.style.setProperty('--vt-x', `${from.x}px`)
+    root.style.setProperty('--vt-y', `${from.y}px`)
+    // 圆要盖住离按钮最远的那个角
+    const r = Math.hypot(Math.max(from.x, innerWidth - from.x), Math.max(from.y, innerHeight - from.y))
+    root.style.setProperty('--vt-r', `${Math.ceil(r)}px`)
+  }
+  // 展开期间新界面直接用最终配色，不再做颜色渐变
+  root.classList.add('vt-site')
+  let transition: ViewTransition
+  try {
+    transition = document.startViewTransition(apply)
+  } catch {
+    root.classList.remove('vt-site')
+    apply()
+    return saved!
+  }
+  void transition.finished.finally(() => root.classList.remove('vt-site')).catch(() => undefined)
+  // 回调出错（没执行完）时直接切换，保证一定会切过去
+  return transition.updateCallbackDone.then(
+    () => saved!,
+    () => {
+      if (!saved) apply()
+      return saved!
+    }
+  )
+}
+
+/** 支持 View Transitions、窗口可见、系统没开“减弱动态效果”时才做切换动画 */
+export function canAnimateSwitch(): boolean {
+  return typeof document !== 'undefined'
+    && typeof document.startViewTransition === 'function'
+    // 窗口在后台时浏览器不出新帧，动画回调会一直等着
+    && document.visibilityState === 'visible'
+    && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+let ytRequestId = 0
+
+async function runYtParse(fn: () => Promise<ParseResult>): Promise<void> {
+  const { set } = useStore.getState()
+  const requestId = ++ytRequestId
+  const isCurrent = (): boolean => requestId === ytRequestId
+  set({ ytParsing: true, ytError: null, ytNotice: null, ytProgress: null })
+  try {
+    const result = await fn()
+    if (!isCurrent()) return
+    set({ ytParse: result })
+    if (result.failures?.length) {
+      const errors = result.failures.map((f) => f.error).join(t('input.separator'))
+      set({ ytNotice: t('input.parseFailures', { count: result.failures.length, errors }) })
+    }
+  } catch (e) {
+    if (isCurrent()) set({ ytError: (e as Error).message })
+  } finally {
+    if (isCurrent()) set({ ytParsing: false, ytProgress: null })
+  }
+}
+
+export const ytParseLink = (input: string): Promise<void> => runYtParse(() => api.yt.parse(input))
+export const ytParseBatch = (inputs: string[]): Promise<void> => runYtParse(() => api.yt.parseBatch(inputs))
+
+/** 从解析记录重新打开：切到对应平台的下载页 */
+export function reopenYtParseRecord(input: string): Promise<void> {
+  useStore.getState().set({ view: 'downloads' })
+  return ytParseLink(input)
+}

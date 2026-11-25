@@ -74,3 +74,8 @@ export function platformText(platform: string): PlatformText {
 export function isSettingsShortcut(e: { metaKey: boolean; ctrlKey: boolean; key: string }, platform: string): boolean {
   return e.key === ',' && (platform === 'darwin' ? e.metaKey : e.ctrlKey)
 }
+
+/** ⌘⇧Y / Ctrl+Shift+Y：在 B站和 YouTube 之间切换界面 */
+export function isSiteShortcut(e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; key: string }, platform: string): boolean {
+  return e.shiftKey && e.key.toLowerCase() === 'y' && (platform === 'darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)
+}

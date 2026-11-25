@@ -26,9 +26,12 @@ export function fmtEta(sec: number): string {
   return t('format.etaHours', { hours: Math.floor(sec / 3600), min: Math.floor((sec % 3600) / 60) })
 }
 
-/** B站图片加尺寸参数，减小缩略图体积 */
-export const thumb = (url: string | undefined, w: number): string | undefined =>
-  url ? `${url.replace(/^http:/, 'https:')}@${w}w.webp` : undefined
+/** B站图片加尺寸参数，减小缩略图体积；其他网站（YouTube）的图片原样返回 */
+export const thumb = (url: string | undefined, w: number): string | undefined => {
+  if (!url) return undefined
+  const https = url.replace(/^http:/, 'https:')
+  return /^(https:)?\/\/[^/]*(hdslb\.com|biliimg\.com|bilibili\.com)\//i.test(https) ? `${https}@${w}w.webp` : https
+}
 
 type AgoKeys = Record<'justNow' | 'minutes' | 'hours' | 'days', Key>
 const AGO: AgoKeys = { justNow: 'format.justNow', minutes: 'format.minutesAgo', hours: 'format.hoursAgo', days: 'format.daysAgo' }

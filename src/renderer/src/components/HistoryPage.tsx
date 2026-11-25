@@ -3,18 +3,23 @@ import { History, Search, Trash2, X } from 'lucide-react'
 import type { ParseRecord } from '@shared/types'
 import { ago, thumb } from '../format'
 import { useT } from '../i18n'
-import { api, reopenParseRecord } from '../store'
+import { api, reopenParseRecord, reopenYtParseRecord, useSite } from '../store'
+import { recordsOfSite } from '../ytView'
 import { AccountOrigin } from './AccountOrigin'
 import { Badge, Button, EmptyState, IconButton, Input, PageHeader } from './ui'
 
 /** 解析记录：方便下次接着下合集里剩下的集 */
 export function HistoryPage() {
   const t = useT()
-  const [records, setRecords] = useState<ParseRecord[] | null>(null)
+  const site = useSite()
+  const [all, setAll] = useState<ParseRecord[] | null>(null)
   const [q, setQ] = useState('')
+  // 只看当前平台的记录
+  const records = useMemo(() => (all ? recordsOfSite(all, site) : null), [all, site])
+  const reopen = (r: ParseRecord): Promise<void> => (site === 'youtube' ? reopenYtParseRecord(r.input) : reopenParseRecord(r))
 
   useEffect(() => {
-    void api.history.parses().then(setRecords)
+    void api.history.parses().then(setAll)
   }, [])
 
   const shown = useMemo(() => {
@@ -37,8 +42,8 @@ export function HistoryPage() {
                 variant="ghost"
                 onClick={async () => {
                   if (!confirm(t('history.clearConfirm'))) return
-                  await api.history.clearParses()
-                  setRecords([])
+                  await api.history.clearParses(site)
+                  setAll((cur) => cur?.filter((r) => !records!.includes(r)) ?? [])
                 }}
               >
                 {t('history.clear')}
@@ -59,9 +64,9 @@ export function HistoryPage() {
             key={JSON.stringify([r.input, r.accountMid])}
             role="button"
             tabIndex={0}
-            onClick={() => void reopenParseRecord(r)}
+            onClick={() => void reopen(r)}
             onKeyDown={(e) => {
-              if (e.target === e.currentTarget && e.key === 'Enter') void reopenParseRecord(r)
+              if (e.target === e.currentTarget && e.key === 'Enter') void reopen(r)
             }}
             className="group flex cursor-pointer items-center gap-4 rounded-xl px-3 py-2.5 transition-colors outline-none hover:bg-hover focus-visible:bg-hover"
           >
@@ -71,12 +76,16 @@ export function HistoryPage() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] font-medium">{r.title}</div>
               <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                <Badge>{r.kind === 'pgc' ? t('history.kindPgc') : t('history.kindVideo')}</Badge>
+                <Badge>{r.kind === 'youtube' ? 'YouTube' : r.kind === 'pgc' ? t('history.kindPgc') : t('history.kindVideo')}</Badge>
                 <span className="tabular-nums">{t('history.itemCount', { count: r.count })}</span>
                 <span>·</span>
                 <span>{ago(r.at, Date.now())}</span>
-                <span>·</span>
-                <AccountOrigin mid={r.accountMid} />
+                {site === 'bili' && (
+                  <>
+                    <span>·</span>
+                    <AccountOrigin mid={r.accountMid} />
+                  </>
+                )}
               </div>
               <div className="mt-0.5 truncate text-[11px] text-subtle">{r.input}</div>
             </div>
@@ -87,7 +96,7 @@ export function HistoryPage() {
               className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               onClick={async (e) => {
                 e.stopPropagation()
-                setRecords(await api.history.removeParse(r.input, r.accountMid ?? null))
+                setAll(await api.history.removeParse(r.input, r.accountMid ?? null))
               }}
             />
           </div>

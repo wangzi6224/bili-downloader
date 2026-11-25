@@ -14,12 +14,14 @@ import type { CloseAction, DuplicateAction, PowerMode, ThemeMode, WatermarkMode 
 import { WATERMARK_MODES } from '../aiRefine'
 import { insertAt } from '../format'
 import { useT } from '../i18n'
-import { api, sysText, updateSettings, useStore } from '../store'
+import { api, switchSite, sysText, updateSettings, useSite, useStore } from '../store'
 import { updateHint } from '../viewLogic'
 import { AdvancedSettings } from './AdvancedSettings'
 import { AgentIntegrations } from './AgentIntegrations'
 import { AccountSettings } from './AccountControls'
 import { OptionsEditor } from './OptionsEditor'
+import { YtAccountSettings } from './YtAccounts'
+import { YtConcurrencyRow, YtDirRow, YtFormatSettings } from './YtSettings'
 import { Button, fieldCls, Group, Input, PageHeader, rich, Row, Segmented, Select, Switch } from './ui'
 
 // 需要包含所有清晰度代码：“记住上次选择”可能存下其中任意一个
@@ -187,6 +189,7 @@ export function SettingsPage() {
   const t = useT()
   const s = useStore((st) => st.settings)!
   const set = useStore((st) => st.set)
+  const site = useSite()
   const [tab, setTab] = useState<Tab>('general')
   const [cleared, setCleared] = useState<'' | 'downloads' | 'parses'>('')
   const showAccounts = useStore((st) => st.showAccountSettings)
@@ -213,20 +216,33 @@ export function SettingsPage() {
           {tab === 'general' && (
             <>
               <Group title={t('settings.storage')}>
-                <Row label={t('settings.downloadDir')} hint={<span className="break-all">{s.downloadDir}</span>}>
-                  <Button icon={FolderOpen} onClick={async () => set({ settings: await api.settings.chooseDir() })}>
-                    {t('settings.change')}
-                  </Button>
-                </Row>
-                <Row label={t('settings.watermark')} hint={t('settings.watermarkHint')}>
-                  <Segmented
-                    value={s.defaults.watermark}
-                    options={WATERMARK_MODES}
-                    onChange={(watermark: WatermarkMode) => updateSettings({ defaults: { ...s.defaults, watermark } })}
-                  />
-                </Row>
+                {site === 'youtube' ? (
+                  <YtDirRow />
+                ) : (
+                  <>
+                    <Row label={t('settings.downloadDir')} hint={<span className="break-all">{s.downloadDir}</span>}>
+                      <Button icon={FolderOpen} onClick={async () => set({ settings: await api.settings.chooseDir() })}>
+                        {t('settings.change')}
+                      </Button>
+                    </Row>
+                    <Row label={t('settings.watermark')} hint={t('settings.watermarkHint')}>
+                      <Segmented
+                        value={s.defaults.watermark}
+                        options={WATERMARK_MODES}
+                        onChange={(watermark: WatermarkMode) => updateSettings({ defaults: { ...s.defaults, watermark } })}
+                      />
+                    </Row>
+                  </>
+                )}
               </Group>
               <Group title={t('settings.appearanceGroup')}>
+                <Row label={t('ytUi.siteSetting')} hint={t('ytUi.siteSettingHint')}>
+                  <Segmented
+                    value={site}
+                    options={[{ value: 'bili' as const, label: t('ytUi.siteBili') }, { value: 'youtube' as const, label: 'YouTube' }]}
+                    onChange={(next) => void switchSite(next)}
+                  />
+                </Row>
                 <Row label={t('settings.appearance')}>
                   <Segmented value={s.theme} options={themes()} onChange={(theme: ThemeMode) => updateSettings({ theme })} />
                 </Row>
@@ -265,7 +281,7 @@ export function SettingsPage() {
                 <Row label={t('settings.notify')} hint={t('settings.notifyHint')}>
                   <Switch checked={s.notify} onChange={(notify) => updateSettings({ notify })} />
                 </Row>
-                <Row label={t('settings.clipboard')} hint={t('settings.clipboardHint')}>
+                <Row label={t('settings.clipboard')} hint={t(site === 'youtube' ? 'ytUi.clipboardHint' : 'settings.clipboardHint')}>
                   <Switch checked={s.clipboardWatch} onChange={(clipboardWatch) => updateSettings({ clipboardWatch })} />
                 </Row>
               </Group>
@@ -302,7 +318,10 @@ export function SettingsPage() {
                 </Row>
               </Group>
               <UpdateGroup />
-              <div ref={accountSection}><AccountSettings /></div>
+              <div ref={accountSection} className="flex flex-col gap-6">
+                <AccountSettings />
+                <YtAccountSettings />
+              </div>
             </>
           )}
 
@@ -345,6 +364,7 @@ export function SettingsPage() {
                   />
                   <span className="text-xs text-muted">KB/s</span>
                 </Row>
+                {site === 'youtube' && <YtConcurrencyRow />}
                 <Row label={t('settings.autoRetry')} hint={t('settings.autoRetryHint')}>
                   <Select value={s.autoRetry} onChange={(e) => updateSettings({ autoRetry: Number(e.target.value) })}>
                     {[0, 3, 5, 10, 20].map((n) => (
@@ -365,7 +385,7 @@ export function SettingsPage() {
                   </Select>
                 </Row>
               </Group>
-              <Group title={t('settings.danmakuGroup')}>
+              {site === 'bili' && <Group title={t('settings.danmakuGroup')}>
                 <Row label={t('settings.danmakuStyle')} hint={t('settings.danmakuStyleHint')} wide>
                   <div className="flex flex-wrap items-center gap-5 text-[13px]">
                     <label className="flex items-center gap-2">
@@ -408,11 +428,12 @@ export function SettingsPage() {
                     </label>
                   </div>
                 </Row>
-              </Group>
+              </Group>}
             </>
           )}
 
-          {tab === 'format' && (
+          {tab === 'format' && site === 'youtube' && <YtFormatSettings />}
+          {tab === 'format' && site === 'bili' && (
             <>
               <Group>
                 <Row label={t('settings.defaultQn')} hint={t('settings.defaultQnHint')}>

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Clock, Download, Folder, Loader2, LogIn, RefreshCw, Rss, Search, Trash2, Tv } from 'lucide-react'
-import type { AccountSource, AccountSourceCategory, SourceDownloadChoice, SourceDownloadPlan, SourceRef, Subscription } from '@shared/types'
+import { siteOf } from '@shared/site'
+import type { AccountSource, AccountSourceCategory, Site, SourceDownloadChoice, SourceDownloadPlan, SourceRef, Subscription } from '@shared/types'
 import { t, type Key } from '@shared/i18n'
 import { checkedAgo, thumb } from '../format'
 import { useT } from '../i18n'
-import { api, openSource, useStore } from '../store'
+import { api, openSource, reopenYtParseRecord, useSite, useStore } from '../store'
+import { currentYtAccount } from '../ytView'
 import { pausedReason } from '../subscriptionStatus'
 import { useLazyNextPage } from '../useLazyNextPage'
 import { AccountOrigin } from './AccountOrigin'
@@ -20,8 +22,53 @@ export const intervals = (): { min: number; label: string }[] => [
   { min: 1440, label: t('subs.interval1d') }
 ]
 
+/** YouTube 主题的“我的 YouTube”：稍后观看、喜欢的视频等，点开就解析 */
+function YtMyLists() {
+  const t = useT()
+  const account = useStore((s) => currentYtAccount(s.ytAccounts))
+  const set = useStore((s) => s.set)
+  if (!account) {
+    return (
+      <div className="px-8">
+        <EmptyState icon={LogIn} title={t('ytUi.sidebarLogin')}>
+          {t('ytUi.myListsHint')}
+          <div className="mt-3">
+            <Button variant="primary" onClick={() => set({ ytLoginOpen: true })}>{t('ytUi.importLogin')}</Button>
+          </div>
+        </EmptyState>
+      </div>
+    )
+  }
+  const lists = [
+    { label: t('ytUi.watchLater'), input: 'https://www.youtube.com/playlist?list=WL' },
+    { label: t('ytUi.liked'), input: 'https://www.youtube.com/playlist?list=LL' },
+    { label: t('ytUi.subscriptionsFeed'), input: 'https://www.youtube.com/feed/subscriptions' },
+    { label: t('ytUi.watchHistory'), input: 'https://www.youtube.com/feed/history' }
+  ]
+  return (
+    <div className="px-8 pb-8">
+      <div className="divide-y divide-line rounded-xl border border-line bg-surface">
+        {lists.map((l) => (
+          <button
+            key={l.input}
+            type="button"
+            onClick={() => void reopenYtParseRecord(l.input)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-[13px] font-medium hover:bg-hover"
+          >
+            <span className="flex-1">{l.label}</span>
+            <ChevronRight size={14} className="text-subtle" />
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 px-1 text-xs leading-relaxed text-muted">{t('ytUi.myListsSubscribeHint')}</p>
+    </div>
+  )
+}
+
 export function SubscriptionsPage() {
   const t = useT()
+  const site = useSite()
+  const ytAccount = useStore((s) => currentYtAccount(s.ytAccounts))
   const [tab, setTab] = useState<'local' | 'account'>('local')
   const auth = useStore((s) => s.auth)
   const set = useStore((s) => s.set)
@@ -29,11 +76,14 @@ export function SubscriptionsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title={t('subs.title')} subtitle={tab === 'local' ? t('subs.subtitle') : auth?.loggedIn && auth.user.uname} />
+      <PageHeader
+        title={t('subs.title')}
+        subtitle={tab === 'local' ? t('subs.subtitle') : site === 'youtube' ? ytAccount?.name : auth?.loggedIn && auth.user.uname}
+      />
       <div className="px-8 pb-4">
         <Segmented value={tab} onChange={setTab} options={[
           { value: 'local', label: t('subs.local') },
-          { value: 'account', label: t('subs.account') }
+          { value: 'account', label: site === 'youtube' ? t('ytUi.myLists') : t('subs.account') }
         ]} />
       </div>
       {quick.pending && (
@@ -48,7 +98,9 @@ export function SubscriptionsPage() {
       )}
       <QuickConfirm quick={quick} />
       {tab === 'local' ? (
-        <LocalSubscriptions quick={quick} />
+        <LocalSubscriptions quick={quick} site={site} />
+      ) : site === 'youtube' ? (
+        <YtMyLists />
       ) : auth?.loggedIn ? (
         <AccountSources key={auth.user.mid} mid={auth.user.mid} quick={quick} />
       ) : (
@@ -201,7 +253,7 @@ function SourceSearch({ value, onChange }: { value: string; onChange: (value: st
   )
 }
 
-function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
+function LocalSubscriptions({ quick, site }: { quick: QuickDownload; site: Site }) {
   const accounts = useStore((s) => s.accounts)
   const t = useT()
   const [subs, setSubs] = useState<Subscription[] | null>(null)
@@ -211,7 +263,9 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
   const [search, setSearch] = useState('')
   const { open, pending, failed } = useSourceOpener()
   const query = search.trim().toLowerCase()
-  const visible = subs?.filter((s) => s.title.toLowerCase().includes(query) || s.input.toLowerCase().includes(query))
+  // 只列当前平台的订阅；另一个平台的照常在后台检查
+  const mine = subs?.filter((s) => siteOf(s) === site)
+  const visible = mine?.filter((s) => s.title.toLowerCase().includes(query) || s.input.toLowerCase().includes(query))
 
   useEffect(() => {
     let initial = true
@@ -238,12 +292,12 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
         {error && <SourceError message={error} retry={() => { setError(null); setAttempt(attempt + 1) }} />}
         {failed && <SourceError message={failed.message} retry={() => void open(failed.source, failed.key)} />}
         {subs === null && !error && <LoadingSources />}
-        {subs?.length === 0 && (
+        {mine?.length === 0 && (
           <EmptyState icon={Rss} title={t('subs.empty')}>
-            {t('subs.emptyHint')}
+            {t(site === 'youtube' ? 'ytUi.subsEmptyHint' : 'subs.emptyHint')}
           </EmptyState>
         )}
-        {!!subs?.length && !visible?.length && <EmptyState icon={Search} title={t('subs.noMatches')} />}
+        {!!mine?.length && !visible?.length && <EmptyState icon={Search} title={t('subs.noMatches')} />}
         {!!visible?.length && (
           <div className="divide-y divide-line rounded-xl border border-line bg-surface">
             {visible.map((s) => (
@@ -260,7 +314,7 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
                     disabled={pending !== null}
                     aria-busy={pending === s.id}
                     className={`flex max-w-full items-center gap-1.5 rounded text-left text-[13px] font-medium hover:text-bili-dark dark:hover:text-bili ${s.enabled ? '' : 'text-muted'}`}
-                    onClick={() => void open({ type: 'subscription', id: s.id }, s.id)}
+                    onClick={() => void (site === 'youtube' ? reopenYtParseRecord(s.input) : open({ type: 'subscription', id: s.id }, s.id))}
                   >
                     <span className="truncate">{s.title}</span>
                     {pending === s.id
@@ -268,11 +322,11 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
                       : <ChevronRight size={13} className="shrink-0 text-subtle" />}
                   </button>
                   <div className="mt-0.5 truncate text-xs text-muted">
-                    <AccountOrigin mid={s.accountMid} />{' · '}
+                    {site === 'bili' && <><AccountOrigin mid={s.accountMid} />{' · '}</>}
                     {checkedAgo(s.lastCheck, Date.now())}
                     {s.lastNew ? ` · ${t('subs.lastNew', { count: s.lastNew })}` : ''}
                     {s.lastError && <span className="text-red-600 dark:text-red-400"> · {s.lastError}</span>}
-                    {s.enabled && pausedReason(accounts, s.accountMid) && (
+                    {site === 'bili' && s.enabled && pausedReason(accounts, s.accountMid) && (
                       <span className="text-amber-600 dark:text-amber-400"> · {t(pausedReason(accounts, s.accountMid)!)}</span>
                     )}
                   </div>
@@ -288,12 +342,12 @@ function LocalSubscriptions({ quick }: { quick: QuickDownload }) {
                   ))}
                 </Select>
                 <div className="flex gap-0.5">
-                  <IconButton
+                  {site === 'bili' && <IconButton
                     icon={Download}
                     label={t('subs.downloadMissing')}
                     disabled={quick.pending !== null || checking === s.id}
                     onClick={() => void quick.run({ type: 'subscription', id: s.id }, s.title)}
-                  />
+                  />}
                   <IconButton
                     icon={RefreshCw}
                     label={checking === s.id ? t('subs.checking') : t('subs.checkNow')}

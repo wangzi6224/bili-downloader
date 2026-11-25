@@ -56,7 +56,7 @@ export function Section({ title, children, dim }: { title: string; children: Rea
   )
 }
 
-function Check({
+export function Check({
   checked,
   onChange,
   disabled,

@@ -1,6 +1,9 @@
 import {
   ChevronUp,
   CircleAlert,
+  CircleCheck,
+  UserRound,
+  UserX,
   CircleArrowUp,
   Download,
   History,
@@ -12,15 +15,17 @@ import {
   Settings,
   type LucideIcon
 } from 'lucide-react'
+import { useMemo } from 'react'
 import { t } from '@shared/i18n'
 import { thumb } from '../format'
 import { useT } from '../i18n'
-import { openLogin, useStore, type View } from '../store'
+import type { Site } from '@shared/types'
+import { api, openLogin, switchSite, useSite, useStore, type View } from '../store'
 import { updateEntry, type UpdateIcon } from '../viewLogic'
+import { activeCounts, currentYtAccount } from '../ytView'
 import { Logo } from './Logo'
 import { QuickAccounts, useAccountActions } from './AccountControls'
-import { ACTIVE } from './TaskList'
-import { Badge, Dropdown, STROKE } from './ui'
+import { Badge, Dropdown, MenuItem, STROKE } from './ui'
 
 // 文案在渲染时取，切换语言后跟着变
 const nav = (): { view: View; label: string; icon: LucideIcon }[] => [
@@ -85,6 +90,118 @@ function AccountChevron({ open }: { open: boolean }) {
       strokeWidth={STROKE}
       className={`shrink-0 text-muted transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
     />
+  )
+}
+
+/** YouTube 主题下的账号卡片：当前 YouTube 账号，点开切换或导入 */
+function YtAccountCard() {
+  const t = useT()
+  const snapshot = useStore((s) => s.ytAccounts)
+  const set = useStore((s) => s.set)
+  const current = currentYtAccount(snapshot)
+  const card = (onClick: () => void, open?: boolean) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className={current
+        ? 'flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover aria-expanded:bg-hover'
+        : 'flex w-full items-center gap-2.5 rounded-xl border border-line-strong bg-elevated/70 px-2.5 py-2 text-left shadow-xs hover:bg-elevated'}
+    >
+      {current?.avatar ? (
+        <img src={current.avatar} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full ring-1 ring-black/5" alt="" />
+      ) : (
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${current?.status === 'expired' ? 'bg-amber-500/15 text-amber-600' : 'bg-bili/12 text-bili'}`}>
+          {current?.status === 'expired' ? <KeyRound size={15} strokeWidth={STROKE} /> : <LogIn size={15} strokeWidth={STROKE} />}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium">{current ? current.name : t('ytUi.sidebarLogin')}</div>
+        <div className="truncate text-[11px] text-muted">
+          {current ? (current.status === 'expired' ? t('ytUi.expired') : current.handle ?? 'YouTube') : t('ytUi.sidebarLoginHint')}
+        </div>
+      </div>
+      {open !== undefined && <AccountChevron open={open} />}
+    </button>
+  )
+  if (!snapshot?.accounts.length) return card(() => set({ ytLoginOpen: true }))
+  return (
+    <Dropdown side="top" align="start" className="w-56" button={({ open, toggle }) => card(toggle, open)}>
+      {(close) => (
+        <>
+          {snapshot.accounts.map((a) => (
+            <MenuItem
+              key={a.id}
+              icon={a.id === snapshot.current ? CircleCheck : UserRound}
+              onClick={() => {
+                close()
+                void api.yt.selectAccount(a.id)
+              }}
+            >
+              {a.name}
+            </MenuItem>
+          ))}
+          <MenuItem icon={UserX} onClick={() => { close(); void api.yt.selectAccount() }}>
+            {t('ytUi.useNoAccount')}
+          </MenuItem>
+          <MenuItem icon={KeyRound} onClick={() => { close(); set({ ytLoginOpen: true }) }}>
+            {t('ytUi.addAccount')}
+          </MenuItem>
+          <MenuItem icon={Settings} onClick={() => { close(); set({ view: 'settings', showAccountSettings: true }) }}>
+            {t('accounts.manage')}
+          </MenuItem>
+        </>
+      )}
+    </Dropdown>
+  )
+}
+
+/**
+ * 一键切换 B站 / YouTube：只换界面，下载和账号都不受影响。
+ * 只有文字的分段控件，白色滑块平滑移动；另一边有任务在下载时文字旁边一个小圆点
+ */
+function SiteSwitch() {
+  const t = useT()
+  const site = useSite()
+  // 选择器不能每次返回新对象，否则 zustand 会认为状态一直在变、反复重渲染
+  const tasks = useStore((s) => s.tasks)
+  const counts = useMemo(() => activeCounts(tasks), [tasks])
+  const options: { value: Site; label: string }[] = [
+    { value: 'bili', label: t('ytUi.siteBili') },
+    { value: 'youtube', label: 'YouTube' }
+  ]
+  return (
+    <div
+      role="radiogroup"
+      aria-label={t('ytUi.switchSite')}
+      className="no-drag relative mx-5 mb-4 grid grid-cols-2 rounded-[9px] bg-black/[.045] p-[3px] dark:bg-white/[.07]"
+    >
+      <span
+        aria-hidden="true"
+        className={`site-thumb pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-[7px] bg-elevated shadow-[0_0_0_0.5px_rgb(0_0_0/0.06),0_1px_2px_rgb(0_0_0/0.08)] dark:bg-white/[.14] dark:shadow-none ${site === 'youtube' ? 'translate-x-full' : 'translate-x-0'}`}
+      />
+      {options.map((o) => {
+        const on = site === o.value
+        const other = !on && counts[o.value] > 0
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            title={other ? t('ytUi.otherRunning', { count: counts[o.value] }) : undefined}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              void switchSite(o.value, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
+            }}
+            className={`relative z-10 flex h-[26px] items-center justify-center gap-1.5 text-xs tracking-[0.01em] transition-colors duration-200 ${on ? 'font-medium text-fg' : 'text-muted hover:text-fg'}`}
+          >
+            {o.label}
+            {other && <span aria-label={t('ytUi.otherRunning', { count: counts[o.value] })} className="size-[5px] rounded-full bg-bili" />}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -160,7 +277,8 @@ function Account() {
 
 export function Sidebar() {
   const t = useT()
-  const running = useStore((s) => s.tasks.filter((t) => ACTIVE.has(t.status) || t.status === 'queued').length)
+  const site = useSite()
+  const running = useStore((s) => activeCounts(s.tasks)[site])
   const version = useStore((s) => s.update?.current)
 
   return (
@@ -171,10 +289,14 @@ export function Sidebar() {
         <Logo size={30} className="shrink-0 drop-shadow-sm" />
         <div>
           <div className="text-[15px] font-semibold tracking-tight">{t('common.appName')}</div>
-          {/* 先占好高度，拿到版本号时布局不跳 */}
-          <div className="h-4 text-[11px] leading-4 text-muted tabular-nums">{version && `v${version}`}</div>
+          {/* 先占好高度，拿到版本号时布局不跳；YouTube 主题下标出来 */}
+          <div className="h-4 text-[11px] leading-4 text-muted tabular-nums">
+            {site === 'youtube' && <span className="font-medium text-bili-dark dark:text-bili">YouTube · </span>}
+            {version && `v${version}`}
+          </div>
         </div>
       </div>
+      <SiteSwitch />
       <nav className="flex flex-col gap-0.5 px-3">
         {nav().map((n) => (
           <NavItem key={n.view} {...n} count={n.view === 'downloads' ? running : undefined} />
@@ -186,7 +308,7 @@ export function Sidebar() {
         <NavItem view="settings" label={t('sidebar.settings')} icon={Settings} />
         {/* 账号单独成块，和上面的导航分开 */}
         <div className="mx-2.5 border-t border-line" />
-        <Account />
+        {site === 'youtube' ? <YtAccountCard /> : <Account />}
       </div>
     </aside>
   )

@@ -3,9 +3,12 @@
 /* mac:pt-0 这样的类只在 macOS 上生效，<html data-platform> 由 main.tsx 设置 */
 @custom-variant mac (&:where([data-platform='darwin'] *));
 
+/* 品牌色：组件里写 bg-bili、text-bili-dark 这样的类，生成的样式引用的是这几个变量，
+   YouTube 主题（<html data-brand="youtube">）只要覆盖变量，组件不用改 */
 @theme {
   --color-bili: #fb7299;
   --color-bili-dark: #e45c84;
+  --color-bili-light: #ff9dbd;
   --color-sky: #00aeec;
 
   --animate-fade: fade 0.16s ease-out;
@@ -21,6 +24,112 @@
       opacity: 0;
       transform: scale(0.97) translateY(4px);
     }
+  }
+}
+
+[data-brand='youtube'] {
+  --color-bili: #ff1f3d;
+  --color-bili-dark: #d9001b;
+  --color-bili-light: #ff7a8c;
+  --color-sky: #3ea6ff;
+}
+
+/* ---------- 切换 B站 / YouTube 的动画 ----------
+   品牌色登记成 <color> 类型，切换时颜色能平滑过渡（不支持 View Transitions 时的退路，也让切换按钮的滑块颜色跟着渐变） */
+@property --color-bili {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #fb7299;
+}
+@property --color-bili-dark {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e45c84;
+}
+@property --color-bili-light {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ff9dbd;
+}
+@property --color-sky {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #00aeec;
+}
+
+html {
+  transition:
+    --color-bili 0.45s ease,
+    --color-bili-dark 0.45s ease,
+    --color-bili-light 0.45s ease,
+    --color-sky 0.45s ease;
+}
+
+/* 侧栏和空状态的标志：两个叠在一起，当前平台的淡入、另一个旋转缩小着淡出 */
+.logo-mark {
+  transform-origin: 50% 50%;
+  transition:
+    opacity 0.4s ease,
+    transform 0.6s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+.logo-youtube,
+[data-brand='youtube'] .logo-bili {
+  opacity: 0;
+  transform: scale(0.55) rotate(-30deg);
+}
+[data-brand='youtube'] .logo-bili {
+  transform: scale(0.55) rotate(30deg);
+}
+[data-brand='youtube'] .logo-youtube {
+  opacity: 1;
+  transform: none;
+}
+
+/* 整个界面从切换按钮的位置圆形展开（store.ts 的 switchSite 用 View Transitions 触发，--vt-x / --vt-y 是按钮中心） */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: site-reveal 0.62s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+/* 旧画面同步挖出一样大的洞：macOS 侧栏是透明的毛玻璃，新画面透明处不能再透出旧画面，否则会有重影 */
+@property --vt-hole {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+::view-transition-old(root) {
+  mask-image: radial-gradient(
+    circle at var(--vt-x, 50%) var(--vt-y, 0%),
+    transparent var(--vt-hole),
+    #000 calc(var(--vt-hole) + 0.5px)
+  );
+  animation: site-hole 0.62s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+@keyframes site-reveal {
+  from {
+    clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 0%));
+  }
+  to {
+    clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0%));
+  }
+}
+@keyframes site-hole {
+  to {
+    --vt-hole: var(--vt-r, 150vmax);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  .logo-mark {
+    transition: none;
+  }
+  ::view-transition-new(root),
+  ::view-transition-old(root) {
+    animation: none;
   }
 }
 
@@ -187,5 +296,20 @@ summary:focus-visible {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* View Transitions 展开期间不做品牌色渐变（新界面直接是最终配色） */
+html.vt-site {
+  transition: none;
+}
+
+/* 平台切换器的滑块：平滑移动，不回弹 */
+.site-thumb {
+  transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-thumb {
+    transition: none;
   }
 }

@@ -1,6 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState, ParseResult, Settings, SourceDetails, SourceRef } from '@shared/types'
-import { api, openSource, parseBatch, parseLink, reopenParseRecord, updateAccounts, updateAuth, updateSettings, useStore } from './store'
+import {
+  api,
+  openLogin,
+  openSource,
+  parseBatch,
+  parseLink,
+  reopenParseRecord,
+  reopenYtParseRecord,
+  switchSite,
+  updateAccounts,
+  updateAuth,
+  updateSettings,
+  useStore,
+  ytParseBatch,
+  ytParseLink
+} from './store'
 
 // store 在导入时读取 window.api，只在加载模块期间模拟 window。
 const fakeApi = vi.hoisted(() => {
@@ -8,7 +23,8 @@ const fakeApi = vi.hoisted(() => {
     settings: { set: vi.fn() },
     sources: { open: vi.fn() },
     parse: vi.fn(),
-    parseBatch: vi.fn()
+    parseBatch: vi.fn(),
+    yt: { parse: vi.fn(), parseBatch: vi.fn() }
   }
   vi.stubGlobal('window', { api })
   return api
@@ -269,5 +285,166 @@ describe.each([
     fn.mockRejectedValue(new Error('解析失败'))
     await run()
     expect(useStore.getState()).toMatchObject({ error: '解析失败', parse: before, parsing: false, progress: null })
+  })
+})
+
+describe('switchSite', () => {
+  it('还没拿到设置、或已经是这个平台时什么都不做', async () => {
+    await switchSite('youtube')
+    useStore.setState({ settings: { uiSite: 'youtube' } as Settings })
+    await switchSite('youtube')
+    expect(fakeApi.settings.set).not.toHaveBeenCalled()
+  })
+
+  it('先在本地切过去，再保存到主进程，最后用主进程返回的设置', async () => {
+    const before = { uiSite: 'bili', concurrency: 3 } as Settings
+    useStore.setState({ settings: before })
+    const saved = deferred<Settings>()
+    fakeApi.settings.set.mockReturnValue(saved.promise)
+    const p = switchSite('youtube')
+    expect(useStore.getState().settings).toEqual({ ...before, uiSite: 'youtube' })
+    expect(fakeApi.settings.set).toHaveBeenCalledExactlyOnceWith({ uiSite: 'youtube' })
+    const fromMain = { uiSite: 'youtube', concurrency: 3 } as Settings
+    saved.resolve(fromMain)
+    await p
+    expect(useStore.getState().settings).toBe(fromMain)
+  })
+
+  it('保存失败时写入错误', async () => {
+    useStore.setState({ settings: { uiSite: 'youtube' } as Settings })
+    fakeApi.settings.set.mockRejectedValue(new Error('保存失败'))
+    await switchSite('bili')
+    expect(useStore.getState()).toMatchObject({ error: '保存失败', settings: { uiSite: 'bili' } })
+  })
+})
+
+describe.each([
+  { name: 'ytParseLink', run: () => ytParseLink('https://youtu.be/x'), fn: fakeApi.yt.parse, other: fakeApi.yt.parseBatch, arg: 'https://youtu.be/x' },
+  { name: 'ytParseBatch', run: () => ytParseBatch(['a', 'b']), fn: fakeApi.yt.parseBatch, other: fakeApi.yt.parse, arg: ['a', 'b'] }
+])('$name', ({ run, fn, other, arg }) => {
+  it('调用 YouTube 的接口，不动 B站的解析状态', async () => {
+    const bili = result({ title: 'B站的' })
+    useStore.setState({ parse: bili, error: 'B站错误' })
+    fn.mockResolvedValue(result({ kind: 'youtube' }))
+    await run()
+    expect(fn).toHaveBeenCalledWith(arg)
+    expect(other).not.toHaveBeenCalled()
+    expect(fakeApi.parse).not.toHaveBeenCalled()
+    expect(useStore.getState()).toMatchObject({ parse: bili, error: 'B站错误' })
+  })
+
+  it('开始时进入解析状态并清空错误、提示和进度；成功后写入结果并退出解析状态', async () => {
+    const d = deferred<ParseResult>()
+    fn.mockReturnValue(d.promise)
+    useStore.setState({ ytError: '旧错误', ytNotice: '旧提示', ytProgress: { done: 1, total: 2 } })
+    const p = run()
+    expect(useStore.getState()).toMatchObject({ ytParsing: true, ytError: null, ytNotice: null, ytProgress: null })
+    useStore.getState().set({ ytProgress: { done: 1, total: 3 } })
+    const r = result({ kind: 'youtube', title: '播放列表' })
+    d.resolve(r)
+    await p
+    expect(useStore.getState()).toMatchObject({ ytParse: r, ytParsing: false, ytProgress: null, ytError: null, ytNotice: null })
+  })
+
+  it('有失败的链接时生成提示，failures 为空时不生成', async () => {
+    fn.mockResolvedValueOnce(result({ failures: [{ input: 'x', error: '视频不可用' }, { input: 'y', error: '需要登录' }] }))
+    await run()
+    expect(useStore.getState().ytNotice).toBe('2 个链接解析失败：视频不可用；需要登录')
+    fn.mockResolvedValueOnce(result({ failures: [] }))
+    await run()
+    expect(useStore.getState().ytNotice).toBeNull()
+  })
+
+  it('失败时写入 ytError，之前的结果保持不变', async () => {
+    const before = result({ title: '之前的' })
+    useStore.setState({ ytParse: before })
+    fn.mockRejectedValue(new Error('YouTube 组件解析失败'))
+    await run()
+    expect(useStore.getState()).toMatchObject({ ytError: 'YouTube 组件解析失败', ytParse: before, ytParsing: false, error: null })
+  })
+})
+
+describe('YouTube 解析的先后', () => {
+  it('先发起的解析晚返回时丢弃，不覆盖新结果、不改解析状态', async () => {
+    const old = deferred<ParseResult>()
+    fakeApi.yt.parse.mockReturnValueOnce(old.promise)
+    const first = ytParseLink('old')
+    const now = deferred<ParseResult>()
+    fakeApi.yt.parseBatch.mockReturnValueOnce(now.promise)
+    const second = ytParseBatch(['a', 'b'])
+    old.resolve(result({ title: '旧的' }))
+    await first
+    expect(useStore.getState()).toMatchObject({ ytParse: null, ytParsing: true })
+    now.resolve(result({ title: '新的' }))
+    await second
+    expect(useStore.getState()).toMatchObject({ ytParse: { title: '新的' }, ytParsing: false })
+  })
+
+  it('先发起的解析晚失败时也不写错误', async () => {
+    const old = deferred<ParseResult>()
+    fakeApi.yt.parse.mockReturnValueOnce(old.promise)
+    const first = ytParseLink('old')
+    fakeApi.yt.parse.mockResolvedValueOnce(result({ title: '新的' }))
+    await ytParseLink('new')
+    old.reject(new Error('旧的失败了'))
+    await first
+    expect(useStore.getState()).toMatchObject({ ytParse: { title: '新的' }, ytError: null, ytParsing: false })
+  })
+})
+
+describe('reopenYtParseRecord', () => {
+  it('切到下载页并用 YouTube 接口重新解析', async () => {
+    useStore.setState({ view: 'history' })
+    const r = result({ kind: 'youtube' })
+    fakeApi.yt.parse.mockResolvedValue(r)
+    const p = reopenYtParseRecord('https://www.youtube.com/playlist?list=PL1')
+    expect(useStore.getState().view).toBe('downloads')
+    await p
+    expect(fakeApi.yt.parse).toHaveBeenCalledExactlyOnceWith('https://www.youtube.com/playlist?list=PL1')
+    expect(fakeApi.parse).not.toHaveBeenCalled()
+    expect(useStore.getState().ytParse).toBe(r)
+  })
+})
+
+describe('其他 B站状态', () => {
+  it('openLogin 默认添加账号，已经打开时不改目标', () => {
+    openLogin()
+    expect(useStore.getState()).toMatchObject({ loginOpen: true, loginTarget: { mode: 'add' } })
+    openLogin({ mode: 'reauth', mid: 1, activate: true })
+    expect(useStore.getState().loginTarget).toEqual({ mode: 'add' })
+  })
+
+  it('没有账号列表时解析结果归属当前登录的账号', async () => {
+    useStore.setState({ auth: { loggedIn: true, user: { mid: 9, uname: 'u', face: '', vipActive: false, vipLabel: '' } } })
+    fakeApi.parse.mockResolvedValue(result())
+    await parseLink('BV1')
+    expect(useStore.getState().sourceAccountMid).toBe(9)
+  })
+
+  it('先发起的解析晚失败时不写错误', async () => {
+    const old = deferred<ParseResult>()
+    fakeApi.parse.mockReturnValueOnce(old.promise)
+    const first = parseLink('old')
+    fakeApi.parse.mockResolvedValueOnce(result({ title: '新的' }))
+    await parseLink('new')
+    old.reject(new Error('旧的失败了'))
+    await first
+    expect(useStore.getState()).toMatchObject({ parse: { title: '新的' }, error: null })
+  })
+
+  it('来源绑定的账号不是当前登录的账号时不打开', async () => {
+    useStore.setState({ view: 'subs', auth: { loggedIn: false } })
+    fakeApi.sources.open.mockResolvedValue({ result: result(), accountMid: 7 })
+    await openSource({ type: 'account', mid: 7, target: { type: 'pgc', seasonId: 1 } }, () => true)
+    expect(useStore.getState().parse).toBeNull()
+  })
+
+  it('有账号列表时，账号来源仍要和当前登录的账号一致才打开', async () => {
+    const user = { mid: 7, uname: 'u', face: '', vipActive: false, vipLabel: '' }
+    const source: SourceRef = { type: 'account', mid: 7, target: { type: 'pgc', seasonId: 1 } }
+    useStore.setState({ view: 'subs', auth: { loggedIn: true, user }, accounts: { activeMid: 7, accounts: [], legacyCount: 0 } })
+    fakeApi.sources.open.mockResolvedValue({ result: result(), accountMid: 7 })
+    await openSource(source, () => true)
+    expect(useStore.getState()).toMatchObject({ source, sourceAccountMid: 7 })
   })
 })

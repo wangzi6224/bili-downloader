@@ -244,7 +244,7 @@ export function Progress({ value, muted = false, className = '' }: { value: numb
   return (
     <div className={`h-1 overflow-hidden rounded-full bg-track ${className}`}>
       <div
-        className={`h-full rounded-full transition-[width] duration-500 ease-out ${muted ? 'bg-subtle' : 'bg-linear-to-r from-[#ff9dbd] to-bili'}`}
+        className={`h-full rounded-full transition-[width] duration-500 ease-out ${muted ? 'bg-subtle' : 'bg-linear-to-r from-bili-light to-bili'}`}
         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
       />
     </div>

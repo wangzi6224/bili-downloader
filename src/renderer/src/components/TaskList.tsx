@@ -27,13 +27,15 @@ import {
 } from 'lucide-react'
 import type { Key } from '@shared/i18n'
 import { itemUrl } from '@shared/parseUrl'
+import { ytItemUrl } from '@shared/site'
 import { isVideoTask } from '@shared/watermark'
 import type { AiModelStatus, PowerMode, TaskInfo, TaskStatus, WatermarkSpeed } from '@shared/types'
 import { modelPct, modelText, WATERMARK_MODES, watermarkModeHint } from '../aiRefine'
 import { fmtSpeed, thumb } from '../format'
 import { useT } from '../i18n'
 import { WatermarkOff } from '../icons'
-import { api, sysText, updateSettings, useStore } from '../store'
+import { api, sysText, updateSettings, useSite, useStore } from '../store'
+import { tasksOfSite } from '../ytView'
 import { ACTIVE, buildEntries } from '../taskOrder'
 import {
   clearCounts,
@@ -115,8 +117,9 @@ function useNow(enabled: boolean): number {
 function TitleLink({ href, children }: { href?: string; children: ReactNode }) {
   const t = useT()
   if (!href) return <>{children}</>
+  const youtube = /^https:\/\/(www|music)\.youtube\.com\//.test(href)
   return (
-    <a href={href} target="_blank" rel="noreferrer" title={t('tasks.openInBrowser')} className="hover:text-bili hover:underline">
+    <a href={href} target="_blank" rel="noreferrer" title={t(youtube ? 'ytUi.openInBrowser' : 'tasks.openInBrowser')} className="hover:text-bili hover:underline">
       {children}
     </a>
   )
@@ -168,12 +171,13 @@ function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; n
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium">
-          <TitleLink href={itemUrl(task.item)}>{task.title}</TitleLink>
+          <TitleLink href={ytItemUrl(task.item) ?? itemUrl(task.item)}>{task.title}</TitleLink>
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={task.relBase}>
           {task.qualityLabel && <Badge>{task.qualityLabel}</Badge>}
           {task.watermark?.applied && <Badge>{t('tasks.watermarked')}</Badge>}
-          <AccountOrigin mid={task.accountMid} />
+          {/* B站多账号的“发起账号”；YouTube 任务不用 B站账号 */}
+          {task.item.kind !== 'youtube' && <AccountOrigin mid={task.accountMid} />}
           {!nested && task.groupTitle !== task.title && <span className="truncate">{task.groupTitle}</span>}
         </div>
         {(active || task.status === 'paused' || retrying || manual) && (task.total > 0 || manual) && (
@@ -310,7 +314,7 @@ function GroupRow({
             {failedCount > 0
               ? t('tasks.groupStatsFailed', { count: tasks.length, done: done.length, failed: failedCount })
               : t('tasks.groupStats', { count: tasks.length, done: done.length })}
-            {' · '}<AccountOrigin mid={first.accountMid} />
+            {first.item.kind !== 'youtube' && <>{' · '}<AccountOrigin mid={first.accountMid} /></>}
           </div>
           {status !== 'done' && <Progress value={pct} muted={status !== 'downloading'} className="mt-2" />}
         </div>
@@ -469,15 +473,16 @@ function WatermarkMenu() {
 }
 
 /** 清除已完成：默认只清空任务列表，勾选“同时删除原文件”才会永久删除下载好的文件 */
-function ClearDialog({ onClose }: { onClose: () => void }) {
+function ClearDialog({ onClose, tasks }: { onClose: () => void; tasks: TaskInfo[] }) {
   const t = useT()
-  const tasks = useStore((s) => s.tasks)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const { count, files } = clearCounts(tasks)
 
   const submit = (): void => {
     onClose()
-    api.download.clearFinished(deleteFiles).catch((e: Error) => useStore.getState().set({ error: e.message }))
+    // 只清当前平台的：另一个平台的任务界面上看不到，不能顺带删掉
+    const ids = tasks.filter(settled).map((task) => task.id)
+    api.download.remove(ids, deleteFiles).catch((e: Error) => useStore.getState().set({ error: e.message }))
   }
 
   return (
@@ -523,6 +528,8 @@ function ClearDialog({ onClose }: { onClose: () => void }) {
 function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
   const t = useT()
   const settings = useStore((s) => s.settings)!
+  const site = useSite()
+  const dir = site === 'youtube' ? settings.youtube.downloadDir : settings.downloadDir
   const { speed, running, queued, done } = statusCounts(tasks)
 
   return (
@@ -545,12 +552,12 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
       <div className="flex-1" />
       <button
         type="button"
-        onClick={() => api.showInFolder(settings.downloadDir)}
-        title={t('tasks.saveTo', { dir: settings.downloadDir, fileManager: sysText.fileManager })}
+        onClick={() => api.showInFolder(dir)}
+        title={t('tasks.saveTo', { dir, fileManager: sysText.fileManager })}
         className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 hover:bg-hover hover:text-fg"
       >
         <FolderOpen size={13} strokeWidth={STROKE} className="shrink-0" />
-        <span className="max-w-64 truncate">{shortenHome(settings.downloadDir)}</span>
+        <span className="max-w-64 truncate">{shortenHome(dir)}</span>
       </button>
     </div>
   )
@@ -568,9 +575,14 @@ const KINDS: Key[] = [
   'tasks.kindShortLink'
 ]
 
+const YT_KINDS: Key[] = ['ytUi.kindVideo', 'ytUi.kindShorts', 'ytUi.kindPlaylist', 'ytUi.kindChannel', 'ytUi.kindMusic', 'ytUi.kindLive']
+
 export function TaskList() {
   const t = useT()
-  const tasks = useStore((s) => s.tasks)
+  const site = useSite()
+  const allTasks = useStore((s) => s.tasks)
+  // 只显示当前平台的任务；另一个平台的照常在后台下载
+  const tasks = useMemo(() => tasksOfSite(allTasks, site), [allTasks, site])
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
   /** 展开着的合集，默认都折叠 */
@@ -597,10 +609,10 @@ export function TaskList() {
   if (!tasks.length) {
     return (
       <div className="min-h-0 flex-1">
-        <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title={t('tasks.emptyTitle')}>
-          <div>{t('tasks.emptyHint', { key: sysText.pasteKey })}</div>
+        <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title={t(site === 'youtube' ? 'ytUi.emptyTitle' : 'tasks.emptyTitle')}>
+          <div>{t(site === 'youtube' ? 'ytUi.emptyHint' : 'tasks.emptyHint', { key: sysText.pasteKey })}</div>
           <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-            {KINDS.map((k) => (
+            {(site === 'youtube' ? YT_KINDS : KINDS).map((k) => (
               <Badge key={k}>{t(k)}</Badge>
             ))}
           </div>
@@ -621,14 +633,14 @@ export function TaskList() {
           icon={Search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('tasks.search')}
+          placeholder={t(site === 'youtube' ? 'ytUi.searchTasks' : 'tasks.search')}
           className="w-48"
         />
         <div className="flex-1" />
         <WatermarkMenu />
         <PowerMenu running={running} />
-        <IconButton icon={Pause} label={t('tasks.pauseAll')} disabled={!canPause} onClick={() => api.download.pauseAll()} />
-        <IconButton icon={Play} label={t('tasks.resumeAll')} disabled={!canResume} onClick={() => api.download.resumeAll()} />
+        <IconButton icon={Pause} label={t('tasks.pauseAll')} disabled={!canPause} onClick={() => api.download.pauseMany(tasks.filter(pausable).map((task) => task.id))} />
+        <IconButton icon={Play} label={t('tasks.resumeAll')} disabled={!canResume} onClick={() => api.download.resumeMany(tasks.filter(resumable).map((task) => task.id))} />
         <IconButton icon={ListX} label={t('tasks.clearFinished')} disabled={!finished} onClick={() => setClearing(true)} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
@@ -653,7 +665,7 @@ export function TaskList() {
         )}
       </div>
       <StatusBar tasks={tasks} />
-      {clearing && <ClearDialog onClose={() => setClearing(false)} />}
+      {clearing && <ClearDialog tasks={tasks} onClose={() => setClearing(false)} />}
       {watermarkTaskId && (
         <WatermarkDialog taskId={watermarkTaskId} onClose={() => useStore.getState().set({ watermarkTaskId: null })} />
       )}

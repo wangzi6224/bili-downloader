@@ -82,6 +82,19 @@ describe('thumb', () => {
   it('只替换开头的 http:', () => {
     expect(thumb('//i0.hdslb.com/http:/c.jpg', 48)).toBe('//i0.hdslb.com/http:/c.jpg@48w.webp')
   })
+
+  it('B站的几个图床域名都加宽度参数，大小写不限', () => {
+    expect(thumb('https://archive.biliimg.com/bfs/a.jpg', 96)).toBe('https://archive.biliimg.com/bfs/a.jpg@96w.webp')
+    expect(thumb('http://i0.bilibili.com/a.png', 64)).toBe('https://i0.bilibili.com/a.png@64w.webp')
+    expect(thumb('https://I0.HDSLB.COM/a.jpg', 64)).toBe('https://I0.HDSLB.COM/a.jpg@64w.webp')
+  })
+
+  it('其他网站（YouTube）的图片原样返回，只把 http 换成 https', () => {
+    expect(thumb('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', 96)).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
+    expect(thumb('http://yt3.ggpht.com/a.jpg', 96)).toBe('https://yt3.ggpht.com/a.jpg')
+    // 路径里出现 B站域名不算
+    expect(thumb('https://example.com/hdslb.com/a.jpg', 96)).toBe('https://example.com/hdslb.com/a.jpg')
+  })
 })
 
 describe('ago', () => {

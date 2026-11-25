@@ -65,7 +65,7 @@ describe('常量', () => {
   })
 
   it('编码的显示名', () => {
-    expect(CODEC_TEXT).toEqual({ avc: 'AVC', hevc: 'HEVC', av1: 'AV1' })
+    expect(CODEC_TEXT).toEqual({ avc: 'AVC', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9' })
   })
 })
 

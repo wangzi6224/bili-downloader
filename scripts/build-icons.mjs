@@ -1,4 +1,4 @@
-// 把 build/icon.svg 渲染成应用图标：build/icon.png（开发时的程序坞图标）、build/icons/<尺寸>.png（Linux 包和窗口、托盘用），
+// 把 build/icon.svg 渲染成应用图标（build/icon-youtube.svg 渲染成 YouTube 主题下用的 icon-youtube.png）：build/icon.png（开发时的程序坞图标）、build/icons/<尺寸>.png（Linux 包和窗口、托盘用），
 // 以及 macOS 打包用的 build/icon.icns
 // 把 build/tray.svg 渲染成 macOS 菜单栏图标：build/trayTemplate.png 和 trayTemplate@2x.png
 // 把 build/dmg-background.svg 渲染成 dmg 安装窗口背景：build/background.png 和 background@2x.png
@@ -18,6 +18,10 @@ const svg = readFileSync(join(buildDir, 'icon.svg'))
 const render = (size) => new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng()
 
 writeFileSync(join(buildDir, 'icon.png'), render(1024))
+
+// YouTube 主题下的程序坞 / 窗口图标：切到 YouTube 界面时换上，切回 B站换回 icon.png
+const ytSvg = readFileSync(join(buildDir, 'icon-youtube.svg'))
+writeFileSync(join(buildDir, 'icon-youtube.png'), new Resvg(ytSvg, { fitTo: { mode: 'width', value: 1024 } }).render().asPng())
 
 // 图标主题（hicolor）最大只有 512x512，electron-builder 按文件名的尺寸装进 /usr/share/icons/hicolor/<尺寸>/apps
 const linuxIcons = join(buildDir, 'icons')
