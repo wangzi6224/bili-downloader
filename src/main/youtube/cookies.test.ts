@@ -93,6 +93,11 @@ describe('parseYtCookieText', () => {
     expect(() => parseYtCookieText('[{bad', NOW)).toThrow()
   })
 
+  it('用 tab 缩进、带 youtube.com 的 JSON 仍按 JSON 解析', () => {
+    const text = JSON.stringify([{ name: 'SAPISID', value: 'fake', domain: '.youtube.com' }], null, '\t')
+    expect(parseYtCookieText(text, NOW).map((c) => [c.name, c.value, c.domain])).toEqual([['SAPISID', 'fake', '.youtube.com']])
+  })
+
   it('请求头格式：去掉 Cookie: 前缀，值里可以有 =，丢掉不成对的', () => {
     expect(parseYtCookieText('Cookie: SID=a; HSID=b=c;=x; junk ; ', NOW)).toEqual([
       { domain: '.youtube.com', name: 'SID', value: 'a', path: '/', secure: true, httpOnly: false, expires: NOW + HALF_YEAR, sameSite: 'unspecified' },

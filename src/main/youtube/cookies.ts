@@ -54,8 +54,10 @@ export function parseNetscape(text: string): PlainCookie[] {
 /** 手动粘贴的：cookies.txt、Cookie-Editor 导出的 JSON、或请求头里的 “a=b; c=d” */
 export function parseYtCookieText(text: string, now = Math.floor(Date.now() / 1000)): PlainCookie[] {
   const trimmed = text.trim()
-  if (/\t/.test(trimmed) && /youtube\.com/i.test(trimmed)) return parseNetscape(trimmed)
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+  // 先认 JSON：用 tab 缩进的 JSON 也带 tab 和域名，不能当成 cookies.txt
+  const json = trimmed.startsWith('[') || trimmed.startsWith('{')
+  if (!json && /\t/.test(trimmed) && /youtube\.com/i.test(trimmed)) return parseNetscape(trimmed)
+  if (json) {
     const raw = JSON.parse(trimmed) as JsonCookie | JsonCookie[]
     return (Array.isArray(raw) ? raw : [raw])
       .filter((c) => c.name && typeof c.value === 'string' && (!c.domain || isYtCookieHost(c.domain)))
