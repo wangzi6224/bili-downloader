@@ -138,11 +138,18 @@ export class DownloadManager extends EventEmitter {
     return this.tasks
   }
 
-  /** 早先没有多账号时的 B站任务归到这个账号；YouTube 任务不用 B站账号 */
+  /** 早先没有多账号时留下的任务：没下完、没绑账号的 B站任务（其他平台不用 B站账号） */
+  private legacyTasks(): TaskInfo[] {
+    return this.tasks.filter((task) => task.accountMid === undefined && task.status !== 'done' && siteOf(task) === 'bili')
+  }
+
+  /** 有多少条旧任务可以分给账号 */
+  legacyCount(): number {
+    return this.legacyTasks().length
+  }
+
   assignLegacy(mid: number): void {
-    for (const task of this.tasks) {
-      if (task.accountMid === undefined && task.status !== 'done' && siteOf(task) === 'bili') this.patch(task, { accountMid: mid })
-    }
+    for (const task of this.legacyTasks()) this.patch(task, { accountMid: mid })
   }
 
   /** 等待登录的任务重启后没有可等的 B站账号：不分账号时、任务没绑账号，或者是 YouTube 任务（重启后由用户手动继续） */

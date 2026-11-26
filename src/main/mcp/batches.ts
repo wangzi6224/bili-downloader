@@ -11,6 +11,7 @@ import type {
   WatermarkRegion
 } from '@shared/types'
 import { t } from '@shared/i18n'
+import { siteOfKind } from '@shared/site'
 import type { EnqueueResult } from '../download/manager'
 import type { accounts as accountRegistry } from '../auth/accounts'
 import { AuthExpiredError } from '../bili/http'
@@ -138,10 +139,17 @@ export class BatchManager extends EventEmitter {
     return this.batches
   }
 
+  /** 早先没有多账号时留下的批次：还有条目没处理完、没绑账号的 B站批次 */
+  private legacyBatches(): Batch[] {
+    return this.batches.filter((b) => b.accountMid === undefined && siteOfKind(b.kind) === 'bili' && (b.pending.length || b.failed.length))
+  }
+
+  legacyCount(): number {
+    return this.legacyBatches().length
+  }
+
   assignLegacy(mid: number): void {
-    for (const b of this.batches) {
-      if (b.accountMid === undefined && (b.pending.length || b.failed.length)) b.accountMid = mid
-    }
+    for (const b of this.legacyBatches()) b.accountMid = mid
     this.changed()
   }
 

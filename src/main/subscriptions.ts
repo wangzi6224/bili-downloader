@@ -108,10 +108,18 @@ export class SubscriptionManager extends EventEmitter {
     return this.subs
   }
 
+  /** 早先没有多账号时留下的订阅：没绑账号的 B站订阅 */
+  private legacySubs(): Subscription[] {
+    return this.subs.filter((sub) => sub.accountMid === undefined && siteOf(sub) === 'bili')
+  }
+
+  legacyCount(): number {
+    return this.legacySubs().length
+  }
+
   assignLegacy(mid: number): void {
     let changed = false
-    for (const sub of this.subs) {
-      if (sub.accountMid !== undefined || siteOf(sub) !== 'bili') continue
+    for (const sub of this.legacySubs()) {
       sub.accountMid = mid
       // 旧的「稍后再看」可能查过别的账号。绑定后用新账号的列表建立基线。
       if (parseInput(sub.input)?.type === 'watchlater') {

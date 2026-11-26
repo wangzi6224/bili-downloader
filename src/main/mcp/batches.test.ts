@@ -607,3 +607,19 @@ describe('等待', () => {
     expect(queue.listenerCount('update')).toBe(0)
   })
 })
+
+describe('旧批次归到账号', () => {
+  it('只数、只分给没绑账号的 B站批次；YouTube 和抖音的不用 B站账号', async () => {
+    const m = make()
+    // 展开失败的批次停在“没处理完”，认领的就是这种
+    for (let i = 0; i < 3; i++) expand.mockRejectedValueOnce(new AuthExpiredError())
+    for (const [fingerprint, kind] of [['b', 'ugc'], ['y', 'youtube'], ['d', 'douyin']] as const) {
+      m.submit(request([lazy(fingerprint)], { fingerprint, kind }))
+    }
+    await settle()
+    expect(m.legacyCount()).toBe(1)
+    m.assignLegacy(7)
+    expect(m.list().map((b) => [b.kind, b.accountMid])).toEqual([['ugc', 7], ['youtube', undefined], ['douyin', undefined]])
+    expect(m.legacyCount()).toBe(0)
+  })
+})

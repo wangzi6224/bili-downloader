@@ -507,9 +507,7 @@ async function start(): Promise<void> {
       void subs.accountReady(mid).catch((e) => console.warn('恢复订阅检查失败', e))
     }
   }, {
-    count: () => manager.list().filter((task) => task.accountMid === undefined && task.status !== 'done').length
-      + subs.list().filter((sub) => sub.accountMid === undefined).length
-      + mcpTools.batches.list().filter((batch) => batch.accountMid === undefined && (batch.pending.length || batch.failed.length)).length,
+    count: () => manager.legacyCount() + subs.legacyCount() + mcpTools.batches.legacyCount(),
     assign: (mid) => {
       manager.assignLegacy(mid)
       manager.flush()

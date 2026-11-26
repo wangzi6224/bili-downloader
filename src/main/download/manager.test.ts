@@ -1777,6 +1777,20 @@ describe('YouTube 任务不用 B站账号', () => {
     expect(m.list().map((t) => t.accountMid)).toEqual([7, undefined, undefined])
   })
 
+  it('要认领的数量也只算没下完、没绑账号的 B站任务', () => {
+    seed([
+      task({ id: 'b' }),
+      task({ id: 'y', item: ytItem('abc') }),
+      task({ id: 'dy', item: item(3, { key: 'dy:1', kind: 'douyin', dyId: '1' }) }),
+      task({ id: 'd', status: 'done' }),
+      task({ id: 'bound', accountMid: 1 })
+    ])
+    const m = make()
+    expect(m.legacyCount()).toBe(1)
+    m.assignLegacy(7)
+    expect(m.legacyCount()).toBe(0)
+  })
+
   it('分账号时，没绑账号的 YouTube 任务照常开始，B站任务等待登录', async () => {
     const m = new DownloadManager(join(root, 'tmp'), stateFile(), () => settings, accounts)
     m.enqueue(req([item(1)]))

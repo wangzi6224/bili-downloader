@@ -871,6 +871,8 @@ describe('YouTube 订阅', () => {
 
   it('旧订阅绑定 B站账号时跳过 YouTube 订阅；稍后再看清空基线，没有要绑的就不保存', () => {
     m.replaceAll([ytSub(), sub({ id: 'b', input: 'fav', seen: ['x'] }), sub({ id: 'w', input: 'watchlater', seen: ['x'], pending: [item('p')] })])
+    // 要认领的数量里同样没有 YouTube 订阅
+    expect(m.legacyCount()).toBe(2)
     const update = vi.fn()
     m.on('update', update)
     m.assignLegacy(7)
