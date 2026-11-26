@@ -3,7 +3,7 @@ import { Download, FileDown, FileUp, Gauge, Trash2, Wifi, X } from 'lucide-react
 import type { AiModelStatus, NetworkStatus, ProxyMode } from '@shared/types'
 import { modelSettingsText } from '../aiRefine'
 import { useT } from '../i18n'
-import { api, updateSettings, useStore } from '../store'
+import { api, updateSettings, useSite, useStore } from '../store'
 import { pingLabel, sortPings } from '../viewLogic'
 import { Button, Group, IconButton, Input, Row, Select } from './ui'
 
@@ -11,6 +11,7 @@ export function AdvancedSettings() {
   const t = useT()
   const s = useStore((st) => st.settings)!
   const set = useStore((st) => st.set)
+  const site = useSite()
   const [proxyUrl, setProxyUrl] = useState(s.proxy.url)
   const [netStatus, setNetStatus] = useState<NetworkStatus | null>(null)
   const [testResult, setTestResult] = useState('')
@@ -78,41 +79,46 @@ export function AdvancedSettings() {
             </Button>
           </Row>
         )}
-        <Row label={t('advanced.cdn')} hint={t('advanced.cdnHint')}>
-          <Select value={s.cdn} onChange={(e) => updateSettings({ cdn: e.target.value })} className="max-w-56">
-            <option value="">{t('advanced.cdnAuto')}</option>
-            {hosts.map((h) => (
-              <option key={h.host} value={h.host}>
-                {h.label}
-                {pings && ` · ${pingLabel(pings[h.host])}`}
-              </option>
-            ))}
-          </Select>
-          <IconButton
-            icon={Gauge}
-            label={t('advanced.ping')}
-            onClick={async () => {
-              setPings({})
-              const r = await api.net.pingCdn()
-              setPings(Object.fromEntries(r.map((x) => [x.host, x.ms])))
-            }}
-          />
-        </Row>
-        {pings && (
-          <div className="px-4 py-3">
-            {!Object.keys(pings).length ? (
-              <div className="text-xs text-muted">{t('advanced.pinging')}</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted">
-                {sortPings(hosts, pings).map((h) => (
-                  <div key={h.host} className="flex justify-between">
-                    <span>{h.label}</span>
-                    <span className={`tabular-nums ${h.ms === null ? 'text-red-600 dark:text-red-400' : ''}`}>{pingLabel(h.ms)}</span>
-                  </div>
+        {/* CDN 节点是 B站的镜像，别的平台用不上 */}
+        {site === 'bili' && (
+          <>
+            <Row label={t('advanced.cdn')} hint={t('advanced.cdnHint')}>
+              <Select value={s.cdn} onChange={(e) => updateSettings({ cdn: e.target.value })} className="max-w-56">
+                <option value="">{t('advanced.cdnAuto')}</option>
+                {hosts.map((h) => (
+                  <option key={h.host} value={h.host}>
+                    {h.label}
+                    {pings && ` · ${pingLabel(pings[h.host])}`}
+                  </option>
                 ))}
+              </Select>
+              <IconButton
+                icon={Gauge}
+                label={t('advanced.ping')}
+                onClick={async () => {
+                  setPings({})
+                  const r = await api.net.pingCdn()
+                  setPings(Object.fromEntries(r.map((x) => [x.host, x.ms])))
+                }}
+              />
+            </Row>
+            {pings && (
+              <div className="px-4 py-3">
+                {!Object.keys(pings).length ? (
+                  <div className="text-xs text-muted">{t('advanced.pinging')}</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted">
+                    {sortPings(hosts, pings).map((h) => (
+                      <div key={h.host} className="flex justify-between">
+                        <span>{h.label}</span>
+                        <span className={`tabular-nums ${h.ms === null ? 'text-red-600 dark:text-red-400' : ''}`}>{pingLabel(h.ms)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </>
         )}
       </Group>
 

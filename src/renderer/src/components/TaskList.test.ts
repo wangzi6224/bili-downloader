@@ -127,6 +127,20 @@ describe('按平台显示', () => {
   })
 })
 
+describe('去水印总开关', () => {
+  const button = () => findButton(m.container, /下载后去水印/)
+
+  it('只在 B站主题显示：它改的是 B站的默认下载选项，也只有 B站能自动识别水印', async () => {
+    await render('bili')
+    expect(button()).toBeTruthy()
+    for (const site of ['youtube', 'douyin'] as const) {
+      await act(async () => useStore.setState({ settings: { ...settings, uiSite: site, douyin: { downloadDir: '/d' } as Settings['douyin'] } }))
+      await act(async () => useStore.setState({ tasks: [b1, y1, task('d1', 'paused', { kind: 'douyin', dyId: '1', cid: 0 })] }))
+      expect(button()).toBeFalsy()
+    }
+  })
+})
+
 describe('批量操作只作用于当前平台', () => {
   it('全部暂停、全部继续只带当前平台的任务 id', async () => {
     await render('youtube')

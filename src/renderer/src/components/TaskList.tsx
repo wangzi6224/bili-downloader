@@ -632,8 +632,8 @@ export function TaskList() {
           className="w-48"
         />
         <div className="flex-1" />
-        {/* 抖音直接下无水印版本，没有 B站那样的角标可识别 */}
-        {site !== 'douyin' && <WatermarkMenu />}
+        {/* 总开关改的是 B站的默认下载选项，自动识别的也只是 B站水印 */}
+        {site === 'bili' && <WatermarkMenu />}
         <PowerMenu running={running} />
         <IconButton icon={Pause} label={t('tasks.pauseAll')} disabled={!canPause} onClick={() => api.download.pauseMany(tasks.filter(pausable).map((task) => task.id))} />
         <IconButton icon={Play} label={t('tasks.resumeAll')} disabled={!canResume} onClick={() => api.download.resumeMany(tasks.filter(resumable).map((task) => task.id))} />
