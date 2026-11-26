@@ -352,7 +352,7 @@ export class BatchManager extends EventEmitter {
       hint: this.hint(b, state, counts),
       failed: include.has('failed') && failed.length ? failed.slice(0, MAX_FAILED) : undefined,
       failed_more: include.has('failed') && failed.length > MAX_FAILED ? failed.length - MAX_FAILED : undefined,
-      files: include.has('files') ? done.slice(0, MAX_FILES).map((t) => t.outputPath) : undefined,
+      files: include.has('files') ? done.flatMap((t) => [t.outputPath, ...(t.extraPaths ?? [])]).slice(0, MAX_FILES) : undefined,
       running: include.has('running') ? running.slice(0, MAX_RUNNING).map(summarizeTask) : undefined
     }
   }

@@ -1,4 +1,3 @@
-import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { t as tr } from '@shared/i18n'
 import type { TaskInfo } from '@shared/types'
@@ -8,12 +7,12 @@ import { getPlayInfo, isDolbyVision, isHevc, pickStreams, streamUrls, type DashS
 import { preferCdn } from '../../net/cdn'
 import { AbortError } from '../errors'
 import { prepareExtras } from '../extras'
-import { fetchFile } from '../fetchFile'
 import type { OutFormat } from '../mux'
-import type { Acquired, PlatformDriver } from './types'
+import { fetchParts, type DirectPart } from './direct'
+import type { AvAcquired, AvDriver } from './types'
 
 interface StreamPlan {
-  parts: { name: string; urls: string[]; fingerprint: string; estimate: number }[]
+  parts: DirectPart[]
   video?: DashStream
   hasAudio: boolean
   format: OutFormat
@@ -57,42 +56,13 @@ async function planStreams(t: TaskInfo, cdn: string): Promise<StreamPlan> {
   }
 }
 
-export const biliDriver: PlatformDriver = {
-  async acquire(t, ctx): Promise<Acquired> {
+export const biliDriver: AvDriver = {
+  async acquire(t, ctx): Promise<AvAcquired> {
     const plan = await ctx.withAccount(() => planStreams(t, ctx.settings().cdn))
     if (ctx.signal.aborted) throw new AbortError()
     ctx.onPlanned({ qualityLabel: plan.qualityLabel, videoQn: plan.video?.id })
-    mkdirSync(ctx.tmp, { recursive: true })
-
-    const parts = plan.parts
-    // 拿到真实大小之前先用估算值
-    const sizes = parts.map((p) => p.estimate)
-    const done = parts.map(() => 0)
-    const report = (): void => ctx.onProgress(done.reduce((a, b) => a + b, 0), sizes.reduce((a, b) => a + b, 0))
-
     // 音视频两个文件同时下载，各自再分段
-    await Promise.all(
-      parts.map(async (part, i) => {
-        const dest = join(ctx.tmp, part.name)
-        if (!existsSync(dest)) {
-          await fetchFile({
-            urls: part.urls,
-            dest,
-            fingerprint: part.fingerprint,
-            threads: ctx.settings().threads,
-            headers: BASE_HEADERS,
-            signal: ctx.signal,
-            onProgress: (d, total) => {
-              done[i] = d
-              if (total) sizes[i] = total
-              report()
-            }
-          })
-        }
-        done[i] = sizes[i] = statSync(dest).size
-        report()
-      })
-    )
+    await fetchParts(plan.parts, ctx, { headers: BASE_HEADERS })
     return {
       video: plan.video ? join(ctx.tmp, 'video.m4s') : undefined,
       audio: plan.hasAudio ? join(ctx.tmp, 'audio.m4s') : undefined,

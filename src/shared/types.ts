@@ -49,6 +49,8 @@ export type MediaKind = 'ugc' | 'pgc' | 'cheese' | 'audio' | 'youtube'
 
 /** 一个可下载的单元：普通视频的一个分P，或番剧/电影的一集 */
 export interface MediaItem {
+  /** 图文作品的图片数：成品是一个目录，不是单个视频 */
+  images?: number
   key: string
   kind: MediaKind
   title: string
@@ -112,7 +114,11 @@ export interface PageResult {
   page: number
   total: number
   hasMore: boolean
+  /** 按游标翻页的来源：下一页要用的来源（带新游标） */
+  next?: PagedSource
 }
+
+export type WaitReason = 'login' | 'verify'
 
 /** 整个视频 / 合集 / 剧集的元数据，用于命名和 NFO */
 export interface MediaMeta {
@@ -421,6 +427,10 @@ export interface TaskInfo {
   processing?: ProcessingInfo
   /** YouTube：第一次取流时选定的格式（视频+音频的 format_id），继续下载时沿用，保证续传的是同一份文件 */
   ytFormat?: string
+  /** 等待中的原因：缺省是等登录；verify 要用户手动完成平台的验证 */
+  waitReason?: WaitReason
+  /** 多文件作品（图文、实况图）除 outputPath 以外的成品文件；有这个字段说明成品是一个目录 */
+  extraPaths?: string[]
   createdAt: number
 }
 

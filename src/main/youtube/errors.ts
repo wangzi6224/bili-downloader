@@ -1,10 +1,10 @@
 // 把 yt-dlp 的报错归到下载队列认识的几类：要登录、风控（过一会儿再试）、无法下载、网络、磁盘、组件问题
 import { t } from '@shared/i18n'
 import { UnsupportedError } from '../bili/http'
-import { DiskError, DownloadError } from '../download/errors'
+import { DiskError, DownloadError, NeedsUserError } from '../download/errors'
 
 /** 要登录 YouTube 才能下（年龄限制、会员专享、私享、个人列表）：任务改为等待登录，只影响它自己 */
-export class YtLoginRequiredError extends Error {}
+export class YtLoginRequiredError extends NeedsUserError {}
 
 /** YouTube 的机器人验证、429：过一会儿再试，导入 cookie 后通常就好了 */
 export class YtRateLimitError extends DownloadError {}

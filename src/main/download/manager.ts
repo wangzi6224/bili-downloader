@@ -9,17 +9,17 @@ import { downloadDirOf, SITES, siteConcurrency, siteItemUrl, siteOf, siteOfKind 
 import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, Site, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
 import { withWatermarkNote, WM_NOTE } from '@shared/watermark'
 import { AuthExpiredError, UnsupportedError } from '../bili/http'
-import { YtLoginRequiredError } from '../youtube/errors'
 import { readJsonArray, writeJson } from '../store'
 import { aiModel, spawnHost } from '../watermark/ai'
 import { refineVideo } from '../watermark/ai/refine'
 import { autoRemove, detectOnly, ensureModel } from '../watermark/auto'
 import { replaceVideo, requireVideoTask, type DoneVideoTask } from '../watermark/manual'
 import { removeQuietly, removeTaskOutputs } from './cleanup'
-import { AbortError, isRetryable, retryDelay, toDiskError } from './errors'
+import { commitFiles } from './commit'
+import { AbortError, CooldownError, isRetryable, NeedsUserError, retryDelay, toDiskError } from './errors'
 import { placeSidecars } from './extras'
 import type { accounts as accountRegistry } from '../auth/accounts'
-import { driverFor, type DriverContext } from './drivers'
+import { driverFor, type DriverContext, type FilesAcquired } from './drivers'
 import { uniquePath } from './filename'
 import { canEmbedCover } from './formats'
 import { mux } from './mux'
@@ -326,6 +326,7 @@ export class DownloadManager extends EventEmitter {
       error: undefined,
       note: undefined,
       outputPath: undefined,
+      extraPaths: undefined,
       watermark: undefined,
       downloaded: 0,
       total: 0,
@@ -419,6 +420,12 @@ export class DownloadManager extends EventEmitter {
           this.patch(t, { status: 'waitingAuth', speed: 0 })
           continue
         }
+        const hold = driverFor(t).hold?.(t)
+        if (hold === 'cooling') continue
+        if (hold) {
+          this.patch(t, { status: 'waitingAuth', waitReason: hold, speed: 0 })
+          continue
+        }
         busy[site]++
         void this.run(t)
       }
@@ -433,11 +440,12 @@ export class DownloadManager extends EventEmitter {
   }
 
   /** 网络类错误：按 30 秒起翻倍（最长 5 分钟）的间隔自动重新排队 */
-  private scheduleRetry(t: TaskInfo, message: string): boolean {
+  private scheduleRetry(t: TaskInfo, message: string, until?: number): boolean {
     const max = this.settings().autoRetry
     const n = t.retries ?? 0
     if (n >= max) return false
-    const retryAt = Date.now() + retryDelay(n)
+    // 平台限流时按它给的时间等
+    const retryAt = until ?? Date.now() + retryDelay(n)
     this.patch(t, { status: 'error', error: message, speed: 0, retryAt })
     this.retryTimers.set(
       t.id,
@@ -596,13 +604,52 @@ export class DownloadManager extends EventEmitter {
     }
   }
 
+  /** 按实际拿到的画质、编码重新套一次命名模板，并建好上级目录 */
+  private outputBase(t: TaskInfo, quality: string, codec: string): { relBase: string; base: string } {
+    const relBase = t.template ? renderTemplate(t.template, { ...t.nameValues, quality, codec }) : t.relBase
+    const base = join(this.rootOf(t), relBase)
+    try {
+      mkdirSync(dirname(base), { recursive: true })
+    } catch (e) {
+      throw toDiskError(e, dirname(base))
+    }
+    return { relBase, base }
+  }
+
+  /** 多文件作品整个放进一个按命名模板起名的目录 */
+  private async saveFiles(
+    t: TaskInfo,
+    plan: FilesAcquired,
+    signal: AbortSignal,
+    claim: (dir: string) => void
+  ): Promise<{ outputPath: string; extraPaths: string[]; relBase: string; size: number }> {
+    this.patch(t, { status: 'merging' })
+    const { relBase, base } = this.outputBase(t, plan.quality, plan.codec)
+    const dir = uniquePath(base, '', (p) => this.claimed.has(p))
+    claim(dir)
+    if (t.tmpOutput) rmSync(t.tmpOutput, { recursive: true, force: true })
+    const staging = `${dir}.${t.id.slice(0, 8)}.tmp`
+    this.patch(t, { tmpOutput: staging })
+    const [outputPath, ...extraPaths] = await commitFiles(plan.files, dir, staging, signal)
+    this.patch(t, { tmpOutput: undefined })
+    const size = [outputPath, ...extraPaths].reduce((sum, p) => sum + statSync(p).size, 0)
+    return { outputPath, extraPaths, relBase, size }
+  }
+
+  private complete(t: TaskInfo, r: { outputPath: string; extraPaths?: string[]; relBase: string; note?: string; size: number }): void {
+    const { size, ...fields } = r
+    this.batch.done++
+    this.patch(t, { ...fields, status: 'done', speed: 0, downloaded: size, total: size, retries: 0 })
+    this.emit('done', t)
+  }
+
   private async run(t: TaskInfo): Promise<void> {
     const ac = new AbortController()
     this.running.set(t.id, ac)
     this.emitActive()
     const tmp = join(this.tmpRoot, t.id)
-    /** 已经合并出来的成品，取消时要一起删掉 */
-    let produced: string | undefined
+    /** 已经做出来的成品，取消时要一起删掉 */
+    let produced: Pick<TaskInfo, 'outputPath' | 'extraPaths'> = {}
     let claimed: string | undefined
     // 暂停/取消后不能再改写状态
     const check = (): void => {
@@ -630,10 +677,19 @@ export class DownloadManager extends EventEmitter {
       onProgress: (downloaded, total) => this.patch(t, { downloaded, total, speed: meter(downloaded) })
     }
     try {
-      this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0, watermark: undefined })
+      this.patch(t, { status: 'fetching', error: undefined, note: undefined, speed: 0, watermark: undefined, waitReason: undefined })
       const plan = await driver.acquire(t, ctx)
 
       check()
+      if ('files' in plan) {
+        const saved = await this.saveFiles(t, plan, ac.signal, (dir) => this.claimed.add((claimed = dir)))
+        produced = saved
+        // 保存期间被删除了：不能再标记完成、记进下载历史
+        if (this.canceled.has(t.id)) throw new AbortError()
+        removeQuietly(tmp)
+        this.complete(t, { ...saved, note: plan.notes.join('；') || undefined })
+        return
+      }
       this.patch(t, { status: 'extras', speed: 0 })
       const extras = await driver.extras(t, ctx)
 
@@ -679,19 +735,12 @@ export class DownloadManager extends EventEmitter {
 
       check()
       this.patch(t, { status: 'merging' })
-      // 按实际拿到的画质、编码重新套一次命名模板
-      const relBase = t.template ? renderTemplate(t.template, { ...t.nameValues, quality: plan.quality, codec }) : t.relBase
-      const base = join(this.rootOf(t), relBase)
-      try {
-        mkdirSync(dirname(base), { recursive: true })
-      } catch (e) {
-        throw toDiskError(e, dirname(base))
-      }
+      const { relBase, base } = this.outputBase(t, plan.quality, codec)
       const format = plan.format
       const out = uniquePath(base, `.${format}`, (p) => this.claimed.has(p))
       this.claimed.add((claimed = out))
       // 上次合并到一半退出了应用，留下的半成品先删掉
-      if (t.tmpOutput) rmSync(t.tmpOutput, { force: true })
+      if (t.tmpOutput) rmSync(t.tmpOutput, { recursive: true, force: true })
       this.patch(t, { tmpOutput: `${out}.tmp` })
       const o = t.options
       // WebM、Opus 写不进封面：要嵌入的封面改为另存在旁边
@@ -721,7 +770,7 @@ export class DownloadManager extends EventEmitter {
       )
       // 先写到目标目录里的 .tmp 再改名，避免跨卷移动和半成品文件
       renameSync(`${out}.tmp`, out)
-      produced = out
+      produced = { outputPath: out }
       this.patch(t, { tmpOutput: undefined })
 
       const sidecarTask = coverInside || !o.embedCover ? t : { ...t, options: { ...o, cover: true } }
@@ -732,9 +781,7 @@ export class DownloadManager extends EventEmitter {
       removeQuietly(tmp)
       const size = statSync(out).size
       const note = [...plan.notes, ...extras.notes, ...sideNotes, ...(wmNote ? [wmNote] : [])].join('；') || undefined
-      this.batch.done++
-      this.patch(t, { status: 'done', outputPath: out, relBase, note, speed: 0, downloaded: size, total: size, retries: 0 })
-      this.emit('done', t)
+      this.complete(t, { outputPath: out, relBase, note, size })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       if (ac.signal.aborted) {
@@ -744,13 +791,13 @@ export class DownloadManager extends EventEmitter {
         const refreshed = this.accounts && mid !== undefined
           && this.accounts.partition(mid) !== partition && this.accounts.status(mid) === 'ready'
         this.patch(t, { status: refreshed ? 'queued' : 'waitingAuth', speed: 0 })
-      } else if (e instanceof YtLoginRequiredError) {
-        // 只影响这个任务：导入 YouTube 登录后由 ytLoginChanged 重新排队
-        this.patch(t, { status: 'waitingAuth', error: message, speed: 0 })
+      } else if (e instanceof NeedsUserError) {
+        // 只影响这个任务：登录或完成验证后由对应平台重新排队
+        this.patch(t, { status: 'waitingAuth', waitReason: e.reason, error: message, speed: 0 })
       } else if (e instanceof UnsupportedError) {
         this.batch.failed++
         this.patch(t, { status: 'unsupported', error: message, speed: 0 })
-      } else if (!(isRetryable(e) && this.scheduleRetry(t, message))) {
+      } else if (!(isRetryable(e) && this.scheduleRetry(t, message, e instanceof CooldownError ? e.until : undefined))) {
         this.batch.failed++
         this.patch(t, { status: 'error', error: message, speed: 0 })
       }
@@ -760,7 +807,7 @@ export class DownloadManager extends EventEmitter {
       if (this.running.get(t.id) === ac) this.running.delete(t.id)
       if (this.canceled.delete(t.id)) {
         removeQuietly(tmp)
-        removeTaskOutputs({ outputPath: produced, tmpOutput: t.tmpOutput }, this.rootOf(t))
+        removeTaskOutputs({ ...produced, tmpOutput: t.tmpOutput }, this.rootOf(t))
       } else if (t.tmpOutput) {
         // 合并被暂停或出错打断，半成品没用，下次重新合并
         removeQuietly(t.tmpOutput)

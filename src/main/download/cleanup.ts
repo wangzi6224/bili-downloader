@@ -58,15 +58,17 @@ export function pruneDirs(dir: string, root: string): void {
 
 /**
  * 永久删除任务产出的文件：成品、附加文件、合并到一半的 .tmp，再清掉因此变空的目录。
+ * 多文件作品（有 extraPaths）只删记录下来的那些文件，用户自己放进目录里的东西不动；
+ * tmpOutput 是我们自己建的暂存文件或目录，整个删。
  * 只删 root（任务的下载目录）里面的文件，返回没能删掉的路径。
  */
-export function removeTaskOutputs(t: { outputPath?: string; tmpOutput?: string }, root: string): string[] {
-  const files = [...(t.outputPath ? [t.outputPath, ...sidecarFiles(t.outputPath)] : []), ...(t.tmpOutput ? [t.tmpOutput] : [])]
+export function removeTaskOutputs(t: { outputPath?: string; extraPaths?: string[]; tmpOutput?: string }, root: string): string[] {
+  const outputs = !t.outputPath ? [] : t.extraPaths ? [t.outputPath, ...t.extraPaths] : [t.outputPath, ...sidecarFiles(t.outputPath)]
   const failed: string[] = []
-  for (const f of files) {
+  for (const f of [...outputs, ...(t.tmpOutput ? [t.tmpOutput] : [])]) {
     if (!isInside(root, f)) continue
     try {
-      rmSync(f, { force: true })
+      rmSync(f, { force: true, recursive: f === t.tmpOutput })
     } catch {
       failed.push(f)
     }

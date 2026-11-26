@@ -44,9 +44,9 @@ export function defaultRegion(W: number, H: number): WatermarkRegion {
   return clampRegion(box, W, H) ?? { x: 1, y: 1, w: Math.max(1, W - 2), h: Math.max(1, H - 2) }
 }
 
-/** 结果里有画面，才谈得上去水印 */
-export const isVideoTask = (t: { item: Pick<MediaItem, 'kind'>; options: Pick<DownloadOptions, 'output'> }): boolean =>
-  t.item.kind !== 'audio' && t.options.output !== 'audio'
+/** 结果里有画面（并且是单个视频文件），才谈得上去水印 */
+export const isVideoTask = (t: { item: Pick<MediaItem, 'kind' | 'images'>; options: Pick<DownloadOptions, 'output'> }): boolean =>
+  t.item.kind !== 'audio' && t.options.output !== 'audio' && !t.item.images
 
 /**
  * 去水印提示开头的标记（U+2060 WORD JOINER，不占位置、看不见）。任务提示会存进 tasks.json，

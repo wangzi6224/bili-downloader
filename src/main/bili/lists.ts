@@ -295,7 +295,7 @@ export async function loadAllPages(
       seen.add(it.key)
       items.push(it)
     }
-    paging = { ...paging, page: p.page, total: p.total, hasMore: p.hasMore }
+    paging = { source: p.next ?? paging.source, page: p.page, total: p.total, hasMore: p.hasMore }
   }
   return { result: { ...result, groups: [{ ...first, items }, ...rest], paging }, complete: !paging.hasMore, error }
 }
@@ -306,9 +306,11 @@ export const isAscending = (source: PagedSource): boolean => source.type === 'sp
 /** 倒序来源从首页往后查，到遇到上次已见的条目为止。 */
 export async function loadHeadPages(paging: Paging, isSeen: (item: MediaItem) => boolean, interval = 1000): Promise<MediaItem[]> {
   const items: MediaItem[] = []
+  let source = paging.source
   for (let page = paging.page + 1, more = paging.hasMore; more; page++) {
     await sleep(interval)
-    const next = await loadPage(paging.source, page)
+    const next = await loadPage(source, page)
+    source = next.next ?? source
     const boundary = next.items.findIndex(isSeen)
     if (boundary !== -1) {
       items.push(...next.items.slice(0, boundary))

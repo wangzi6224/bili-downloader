@@ -5,7 +5,7 @@ import { biliDriver } from './bili'
 import type { PlatformDriver } from './types'
 import { createYoutubeDriver } from './youtube'
 
-export type { Acquired, DriverContext, PlatformDriver } from './types'
+export type { Acquired, AvAcquired, DriverContext, FilesAcquired, PlatformDriver } from './types'
 
 const DRIVERS: Record<Site, PlatformDriver> = { bili: biliDriver, youtube: createYoutubeDriver(youtube) }
 

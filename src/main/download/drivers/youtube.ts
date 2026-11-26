@@ -10,7 +10,7 @@ import { prepareYtExtras } from '../../youtube/extras'
 import { parseProgress, PROGRESS_ARGS } from '../../youtube/run'
 import type { YoutubeService } from '../../youtube/service'
 import type { YtFormat, YtVideoInfo } from '../../youtube/types'
-import type { Acquired, PlatformDriver } from './types'
+import type { AvAcquired, AvDriver } from './types'
 
 /** 估算大小：有的格式只给码率 */
 const estimate = (f: YtFormat, duration: number): number =>
@@ -24,14 +24,14 @@ function fileOf(tmp: string, f: YtFormat): string {
   return other ? join(tmp, other) : exact
 }
 
-export function createYoutubeDriver(yt: () => YoutubeService): PlatformDriver {
+export function createYoutubeDriver(yt: () => YoutubeService): AvDriver {
   /** acquire 到 extras 之间要用的：本次运行取到的视频信息 */
   const runs = new Map<string, { info: YtVideoInfo; infoPath: string }>()
   // 任务的账号；没绑账号的不登录（不是“当前账号”：下载期间用户可能切换了账号）
   const account = (t: TaskInfo): string | null => t.ytAccount ?? null
 
   return {
-    async acquire(t, ctx): Promise<Acquired> {
+    async acquire(t, ctx): Promise<AvAcquired> {
       const id = t.item.ytId
       if (!id || t.item.unavailable) throw new UnsupportedError(t.item.unavailable ?? t.title)
       const info = await yt().info(ytWatchUrl(id), { account: account(t), signal: ctx.signal, fresh: Boolean(t.retries) })

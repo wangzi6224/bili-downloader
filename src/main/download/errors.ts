@@ -1,8 +1,29 @@
 import { t } from '@shared/i18n'
+import type { WaitReason } from '@shared/types'
 import { BiliError, isTransient } from '../bili/http'
 
 /** 网络类错误：断连、超时、CDN 返回异常，值得自动重试 */
 export class DownloadError extends Error {}
+
+/** 平台在限流：到 until 之前重试没有用 */
+export class CooldownError extends DownloadError {
+  constructor(
+    message: string,
+    public until: number
+  ) {
+    super(message)
+  }
+}
+
+/** 任务等用户做一件事才能继续：登录，或者手动完成验证。只影响这个任务 */
+export class NeedsUserError extends Error {
+  constructor(
+    message: string,
+    public reason: WaitReason = 'login'
+  ) {
+    super(message)
+  }
+}
 
 /** 磁盘类错误：空间不足、无权限、目录不可用，重试没有意义 */
 export class DiskError extends Error {}
