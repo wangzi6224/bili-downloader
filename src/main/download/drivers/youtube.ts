@@ -82,6 +82,7 @@ export function createYoutubeDriver(yt: () => YoutubeService): PlatformDriver {
       return {
         video: pick.video && fileOf(ctx.tmp, pick.video),
         audio: pick.audio && fileOf(ctx.tmp, pick.audio),
+        muxed: pick.muxed,
         format: pick.format,
         qualityLabel: pick.qualityLabel,
         quality: pick.quality,

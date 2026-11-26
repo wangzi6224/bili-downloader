@@ -113,6 +113,13 @@ describe('acquire', () => {
     })
   })
 
+  it('整合流：只下一个文件，告诉合并步骤里面带声音', async () => {
+    const combined = { ...V137, format_id: '18', acodec: 'mp4a.40.2' }
+    const { yt } = fakeService({ ...VIDEO, formats: [combined] })
+    const got = await createYoutubeDriver(yt).acquire(task(), ctxOf())
+    expect(got).toMatchObject({ video: join(tmp, '18.mp4'), audio: undefined, muxed: true })
+  })
+
   it('用任务绑定的账号；重试时不用缓存的信息', async () => {
     const { service, exec, yt } = fakeService()
     await createYoutubeDriver(yt).acquire(task({ ytAccount: 'acc', retries: 1 }), ctxOf())

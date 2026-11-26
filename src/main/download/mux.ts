@@ -116,6 +116,8 @@ export type { OutFormat } from './formats'
 export interface MuxOptions {
   video?: string
   audio?: string
+  /** 声音在视频文件里：没有单独音轨时从视频文件取第一条音轨 */
+  muxed?: boolean
   out: string
   format: OutFormat
   title: string
@@ -150,6 +152,7 @@ export function buildMuxArgs(o: MuxOptions): string[] {
 
   if (vi >= 0) args.push('-map', `${vi}:v:0`)
   if (ai >= 0) args.push('-map', `${ai}:a:0`)
+  else if (vi >= 0 && o.muxed) args.push('-map', `${vi}:a:0?`)
   if (ci >= 0) args.push('-map', `${ci}:v:0`)
   for (const i of si) args.push('-map', `${i}:s:0`)
   if (chi >= 0) args.push('-map_chapters', String(chi))

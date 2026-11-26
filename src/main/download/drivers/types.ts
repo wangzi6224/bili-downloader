@@ -8,6 +8,8 @@ export interface Acquired {
   /** 临时目录里的视频文件；只要音频时没有 */
   video?: string
   audio?: string
+  /** 声音在视频文件里，没有单独的音轨 */
+  muxed?: boolean
   format: OutFormat
   qualityLabel: string
   /** 命名模板的 {quality}、{codec} */

@@ -100,6 +100,15 @@ describe('buildMuxArgs', () => {
     expect(args).not.toContain('-c:s')
   })
 
+  it('视频文件里带声音时一起映射，声音是可选的', () => {
+    const args = buildMuxArgs({ video: 'v', out: 'o', format: 'mp4', title: 'T', muxed: true, cover: 'c.jpg' }).join(' ')
+    expect(args).toContain('-map 0:v:0 -map 0:a:0? -map 1:v:0')
+    // 单独给了音轨时只用单独的那条
+    expect(buildMuxArgs({ video: 'v', audio: 'a', out: 'o', format: 'mp4', title: 'T', muxed: true }).join(' ')).not.toContain('0:a:0')
+    // 没有标记时只取画面
+    expect(buildMuxArgs({ video: 'v', out: 'o', format: 'mp4', title: 'T' }).join(' ')).not.toContain('0:a:0')
+  })
+
   it('杜比视界写 dvh1 标签', () => {
     const args = buildMuxArgs({ video: 'v', audio: 'a', out: 'o', format: 'mp4', title: 'T', hevc: true, dolbyVision: true }).join(' ')
     expect(args).toContain('-tag:v:0 dvh1 -strict unofficial')

@@ -64,6 +64,8 @@ export function pickAudio(info: Pick<YtVideoInfo, 'formats'>, pref: YtAudioPref)
 export interface YtPick {
   video?: YtFormat
   audio?: YtFormat
+  /** 声音在视频流里（整合流），合并时要一起带走 */
+  muxed?: boolean
   format: OutFormat
   qualityLabel: string
   /** 命名模板的 {quality} */
@@ -118,6 +120,8 @@ export function pickYtFormats(info: YtVideoInfo, o: Pick<DownloadOptions, 'qn' |
   return {
     video,
     audio,
+    // 编码认不出（甚至没写）的整合流也算：合并时声音是可选映射，没有也不报错
+    muxed: o.output !== 'video' && video && !audio && video.acodec !== 'none' ? true : undefined,
     format,
     qualityLabel: video ? qualityText(video) : t('yt.audioOnlyLabel', { label: audioText }),
     quality: video ? `${video.height}p` : audioText,

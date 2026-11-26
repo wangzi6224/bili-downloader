@@ -238,6 +238,21 @@ describe('pickYtFormats', () => {
     const p = pickYtFormats(info([v('18', 360, 'avc1.42001E', { acodec: 'mp4a.40.2' }), a('140', 'mp4a')]), opts(0))
     expect(p.spec).toBe('18')
     expect(p.audio).toBeUndefined()
+    expect(p.muxed).toBe(true)
+  })
+
+  it('只有整合流时标记 muxed，合并时把里面的声音一起带走', () => {
+    const only = info([v('18', 360, 'avc1', { acodec: 'mp4a' })])
+    // 续传沿用同一个格式时也一样
+    expect(pickYtFormats(only, opts(0), '18').muxed).toBe(true)
+    // 声音编码认不出、也没有单独音轨时照样带走
+    expect(pickYtFormats(info([v('95', 720, 'avc1', { acodec: 'ac-3' })]), opts(0)).muxed).toBe(true)
+    // 只要画面时不带声音
+    expect(pickYtFormats(only, opts(0, 'video')).muxed).toBeUndefined()
+    // 音视频分开下时没有这个标记
+    expect(pickYtFormats(VIDEO, opts(1080)).muxed).toBeUndefined()
+    // 明确没有声音的纯视频流
+    expect(pickYtFormats(info([v('137', 1080, 'avc1')]), opts(0)).muxed).toBeUndefined()
   })
 
   it('WebM 装不下 AVC 或 AAC 时改存 MKV 并备注', () => {

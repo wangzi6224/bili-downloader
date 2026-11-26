@@ -700,6 +700,7 @@ export class DownloadManager extends EventEmitter {
         {
           video,
           audio: plan.audio,
+          muxed: plan.muxed,
           out: `${out}.tmp`,
           format,
           title: t.title,
