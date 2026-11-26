@@ -6,6 +6,7 @@ import { downloadedMatcher, downloadStatusMatcher } from '@shared/downloaded'
 import { siteOf } from '@shared/site'
 import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
+import { dyTargetUrl, parseDyInput } from '@shared/douyinUrl'
 import { parseYtInput, ytTargetUrl } from '@shared/ytUrl'
 import type {
   DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, Site, SourceDownloadChoice, SourceDownloadResult, Subscription
@@ -20,6 +21,7 @@ import { downloadedKeys } from './history'
 import { prepareEnqueueItems } from './enqueue'
 import { readJsonArray, writeJson } from './store'
 import { youtube } from './youtube/service'
+import { douyin } from './douyin/service'
 
 const TICK_MS = 60_000
 
@@ -27,13 +29,16 @@ const isAscendingTarget = (target: Target | null): boolean => target?.type === '
 /** 记住的已见条目上限，防止大收藏夹让文件无限变大 */
 const MAX_SEEN = 5000
 const DEFAULT_INTERVAL = 360
-/** 同一来源的不同写法算同一个：B站按识别结果，YouTube 按规范链接 */
+/** 同一来源的不同写法算同一个：B站按识别结果，YouTube 和抖音按规范链接 */
 const sourceKey = (input: string): string => {
   const yt = parseYtInput(input)
-  return JSON.stringify(parseInput(input) ?? (yt ? ytTargetUrl(yt) : input.trim()))
+  const dy = parseDyInput(input)
+  return JSON.stringify(parseInput(input) ?? (yt ? ytTargetUrl(yt) : dy ? dyTargetUrl(dy) : input.trim()))
 }
 /** YouTube 播放列表一次最多读这么多项来找新内容 */
 const YT_PLAYLIST_SCAN = 5000
+/** 抖音合集、收藏夹一次最多读这么多项来找新内容：请求太多容易触发验证 */
+const DY_SCAN = 500
 
 interface SourceDownload {
   input: string
@@ -161,7 +166,9 @@ export class SubscriptionManager extends EventEmitter {
   async add(req: NewSubscription, accountMid?: number): Promise<Subscription[]> {
     // 同一来源的不同写法（例如收藏夹的 ml123 和 favlist?fid=123）也算重复
     const key = sourceKey(req.input)
-    if (this.subs.some((s) => sourceKey(s.input) === key && (s.accountMid === accountMid || (!this.accounts && s.accountMid === undefined)))) {
+    const binding = this.dyBinding(req)
+    // 抖音自己的列表按账号区分：两个账号的“喜欢”是两份不同的内容
+    if (this.subs.some((s) => sourceKey(s.input) === key && s.dyAccount === binding.dyAccount && (s.accountMid === accountMid || (!this.accounts && s.accountMid === undefined)))) {
       throw new Error(t('subsErr.duplicate'))
     }
     if (this.downloading.has(this.workKey(req.input, accountMid))) throw new Error(t('subs.quickBusy'))
@@ -174,6 +181,7 @@ export class SubscriptionManager extends EventEmitter {
       enabled: true,
       options: req.options,
       ...(accountMid === undefined ? {} : { accountMid }),
+      ...binding,
       // 只下载以后新增的：把现在看到的都记为已见
       seen: req.includeExisting ? [] : req.currentKeys,
       createdAt: Date.now(),
@@ -214,7 +222,8 @@ export class SubscriptionManager extends EventEmitter {
     options: DownloadOptions,
     beforeQueue: () => void,
     accountMid?: number,
-    ytAccount?: string
+    ytAccount?: string,
+    dyAccount?: string
   ): Promise<{ count: number; pending: MediaItem[]; note?: string }> {
     const unique = new Map(candidates.map((item) => [item.key, item]))
     const list = [...unique.values()]
@@ -230,7 +239,8 @@ export class SubscriptionManager extends EventEmitter {
       items: missing,
       options,
       accountMid,
-      ytAccount
+      ytAccount,
+      dyAccount
     }) : 0
     const failedKeys = new Set(failed.map((item) => item.key))
     return { count, pending: [...unique.values()].filter((item) => failedKeys.has(item.key)), note }
@@ -334,7 +344,7 @@ export class SubscriptionManager extends EventEmitter {
     const site = siteOf(sub)
     // B站按账号检查（往下走）；其他平台各有自己的检查方式
     if (site !== 'bili') {
-      const external: Record<Exclude<Site, 'bili'>, () => Promise<Subscription[]>> = { youtube: () => this.checkYoutube(sub) }
+      const external: Record<Exclude<Site, 'bili'>, () => Promise<Subscription[]>> = { youtube: () => this.checkYoutube(sub), douyin: () => this.checkDouyin(sub) }
       return external[site]()
     }
     if (!this.accounts) return this.checkSource(sub)
@@ -458,6 +468,70 @@ export class SubscriptionManager extends EventEmitter {
       if (prepared.count) this.emit('found', { title: sub.title, count: prepared.count, note: prepared.note })
       this.remember(sub, [...items, ...byKey.values()], prepared.pending)
       sub.resetBaseline = undefined
+      sub.lastNew = prepared.count
+      sub.lastError = prepared.note
+    } catch (e) {
+      if (!this.subs.includes(sub)) return this.subs
+      sub.lastError = e instanceof Error ? e.message : String(e)
+    } finally {
+      this.checking.delete(id)
+    }
+    sub.lastCheck = Date.now()
+    this.save()
+    return this.subs
+  }
+
+  /** 订阅自己的列表时记下现在用的账号 */
+  private dyBinding(req: NewSubscription): { dyAccount?: string } {
+    if (req.kind !== 'douyin' || parseDyInput(req.input)?.type !== 'self') return {}
+    return { dyAccount: douyin().currentAccount() }
+  }
+
+  /**
+   * 抖音订阅：博主主页、喜欢、历史新内容在最前，从第一页翻到见过的为止（置顶的不算边界）；
+   * 合集和收藏夹顺序不定，限量读一遍再比对。账号被要求验证、限流或失效时这次跳过，
+   * 读到一半被拒绝时整次作废，免得把没读到的当成基线
+   */
+  private async checkDouyin(sub: Subscription): Promise<Subscription[]> {
+    const { id } = sub
+    if (this.checking.has(id) || this.downloading.has(this.workKey(sub.input, undefined)) || !this.subs.includes(sub)) return this.subs
+    const service = douyin()
+    const account = sub.dyAccount ?? service.currentAccount()
+    if (account !== undefined && service.hold(account)) return this.subs
+    this.checking.add(id)
+    try {
+      if (account === undefined) throw new Error(t('dy.subNeedsLogin'))
+      if (!service.hasAccount(account)) throw new Error(t('dy.errAccountMissing'))
+      let r = await service.parse(sub.input, { account, background: true })
+      if (!r) throw new Error(t('dy.badLink'))
+      const seen = new Set(sub.seen)
+      const wasSeen = (item: MediaItem): boolean => seen.has(item.key)
+      const boundary = (item: MediaItem): boolean => !item.pinned && wasSeen(item)
+      const isDownloaded = downloadedMatcher(downloadedKeys())
+      let items = r.groups.flatMap((g) => g.items)
+      if (r.paging?.hasMore) {
+        const target = parseDyInput(sub.input)
+        // 还没有任何已见记录说明现有内容也要下载，和合集一样限量读一遍
+        if (!seen.size || target?.type === 'mix' || (target?.type === 'self' && target.tab === 'collection')) {
+          const all = await loadAllPages(r, { maxItems: DY_SCAN })
+          if (all.error) throw new Error(all.error)
+          r = all.result
+          items = r.groups.flatMap((g) => g.items)
+        } else if (!items.some(boundary)) {
+          items = [...items, ...await loadHeadPages(r.paging, boundary)]
+        }
+      }
+      if (!this.subs.includes(sub)) return this.subs
+      const pending = sub.pending ?? []
+      const retry = new Set(pending.map((item) => item.key))
+      const byKey = new Map(pending.map((item) => [item.key, item]))
+      for (const item of items) if (retry.has(item.key) || !(wasSeen(item) || isDownloaded(item))) byKey.set(item.key, item)
+      const candidates = [...byKey.values()].filter((item) => !item.unavailable)
+      const prepared = await this.prepareAndEnqueue(r, candidates, sub.options, () => {
+        if (!this.subs.includes(sub)) throw new Error(t('subs.sourceUnavailable'))
+      }, undefined, undefined, account)
+      if (prepared.count) this.emit('found', { title: sub.title, count: prepared.count, note: prepared.note })
+      this.remember(sub, [...items, ...byKey.values()], prepared.pending)
       sub.lastNew = prepared.count
       sub.lastError = prepared.note
     } catch (e) {

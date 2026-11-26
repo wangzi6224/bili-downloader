@@ -3,7 +3,7 @@ export default {
   siteBili: 'B站',
   switchSite: '切换平台',
   siteSetting: '界面平台',
-  siteSettingHint: '只切换界面，两边的下载照常进行。快捷键 ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: '只切换界面，各平台的下载照常进行。快捷键 ⌘⇧Y / Ctrl+Shift+Y 依次切换',
   otherRunning: '这边有 {count} 个任务在下载',
   placeholder: '粘贴 YouTube 链接：视频、Shorts、播放列表、频道、YouTube Music',
   clipboardLink: '剪贴板里有 YouTube 链接',

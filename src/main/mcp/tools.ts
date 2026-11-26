@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
 import { joinList, t, translate, type Key } from '@shared/i18n'
-import { normalizeOptions } from '@shared/options'
+import { DY_ORIGINAL_QN, normalizeOptions } from '@shared/options'
 import { isSite, siteOf, siteOfKey, siteOfKind, SITES } from '@shared/site'
 import type { AuthState, HistoryEntry, MediaItem, ParseRecord, ParseResult, Settings, Site, TaskInfo } from '@shared/types'
 import { AuthExpiredError } from '../bili/http'
@@ -52,7 +52,8 @@ import type { LoginFlow } from './loginFlow'
 import { activeScope, authScope, inAuthScope, isRetired } from '../auth/scope'
 import { loginDefinitions, LoginTools } from './loginTools'
 import { lookupDefinitions, LookupTools } from './lookupTools'
-import { definitions as youtubeDefinitions, parseYtArgs, YoutubeTools, ytOptionsOut, type YoutubeMcpDeps } from './youtubeTools'
+import { definitions as youtubeDefinitions, parseYtArgs, YoutubeTools, ytOptionsOut, type BatchHooks, type YoutubeMcpDeps } from './youtubeTools'
+import { definitions as douyinDefinitions, DouyinTools, dyOptionsOut, parseDyArgs, type DouyinMcpDeps } from './douyinTools'
 import { ParseCache } from './parseCache'
 import { batchWatermark, METHODS, plannedWatermark, removeTargets, removeWatermark, watermarkStatus, type WatermarkDeps } from './watermark'
 
@@ -81,6 +82,8 @@ export interface McpDeps {
   watermark: WatermarkDeps
   /** YouTube 工具（youtube_*）用的服务；不传时没有这组工具 */
   youtube?: YoutubeMcpDeps
+  /** 抖音工具（douyin_*）用的服务；不传时没有这组工具 */
+  douyin?: DouyinMcpDeps
 }
 
 /** 这些工具可以按平台筛选：platform 为某个平台，不传表示全部 */
@@ -96,6 +99,17 @@ function withPlatformInput(def: ToolDefinition): ToolDefinition {
         properties: {
           ...schema.properties,
           ui_platform: { type: 'string', enum: [...SITES], description: t('mcpYoutube.argUiPlatform') },
+          douyin: {
+            type: 'object',
+            description: t('mcpDouyin.argDouyinSettings'),
+            properties: {
+              download_dir: { type: 'string' },
+              concurrency: { type: 'integer', minimum: 1, maximum: 3 },
+              default_quality: { type: 'integer', minimum: 0, description: t('mcpDouyin.argQuality') },
+              defaults: { type: 'object', description: t('mcpDouyin.optionsDesc') }
+            },
+            additionalProperties: false
+          },
           youtube: {
             type: 'object',
             description: t('mcpYoutube.argYoutubeSettings'),
@@ -450,6 +464,7 @@ export class McpTools implements ToolSet {
   private lookup: LookupTools
   private login: LoginTools
   private yt?: YoutubeTools
+  private dy?: DouyinTools
 
   constructor(
     private deps: McpDeps,
@@ -460,25 +475,26 @@ export class McpTools implements ToolSet {
     this.lookup = new LookupTools(deps.lookup, deps.authState, { now })
     this.login = new LoginTools(deps.login, (mid) => this.batches.list()
       .filter((b) => b.accountMid === mid && this.batches.state(b) === 'interrupted').map((b) => b.id), deps.accounts)
-    if (deps.youtube) {
-      this.yt = new YoutubeTools(deps.youtube, {
-        findDuplicate: (requestId, fingerprint) => this.batches.findDuplicate(requestId, fingerprint, undefined),
-        submit: (n) => this.submitted(this.batches.submit(n)),
-        deduplicated: (b) => this.deduplicated(b)
-      })
+    const hooks: BatchHooks = {
+      findDuplicate: (requestId, fingerprint) => this.batches.findDuplicate(requestId, fingerprint, undefined),
+      submit: (n) => this.submitted(this.batches.submit(n)),
+      deduplicated: (b) => this.deduplicated(b)
     }
+    if (deps.youtube) this.yt = new YoutubeTools(deps.youtube, hooks)
+    if (deps.douyin) this.dy = new DouyinTools(deps.douyin, hooks)
   }
 
   definitions(): ToolDefinition[] {
     const shared = [...definitions(), ...loginDefinitions(), ...lookupDefinitions(), ...accountDefinitions()].map(withAccountInput).map(withPlatformInput)
-    return this.yt ? [...shared, ...youtubeDefinitions()] : shared
+    return [...shared, ...(this.yt ? youtubeDefinitions() : []), ...(this.dy ? douyinDefinitions() : [])]
   }
 
   async call(name: string, args: Args): Promise<ToolResult> {
     let mid: number | undefined
     try {
-      // YouTube 工具不用 B站账号，也不进 B站的会话作用域
+      // YouTube、抖音工具不用 B站账号，也不进 B站的会话作用域
       if (this.yt?.handles(name)) return result(await this.yt.call(name, args))
+      if (this.dy?.handles(name)) return result(await this.dy.call(name, args))
       if (this.login.handles(name)) return result(await this.login.call(name, args))
       if (usesBiliAccount(name)) {
         mid = requestedMid(args)
@@ -593,11 +609,12 @@ export class McpTools implements ToolSet {
       active_account_mid: registry?.snapshot().activeMid ?? null,
       login,
       queue: { total: tasks.length, ...counts, speed_bps: totalSpeed(tasks) },
-      queue_by_platform: this.yt ? SITES.map((site) => {
+      queue_by_platform: this.yt || this.dy ? SITES.map((site) => {
         const group = tasks.filter((task) => siteOf(task) === site)
         return { platform: site, total: group.length, ...countStatuses(group) }
       }) : undefined,
       youtube_hint: this.yt ? t('mcpYoutube.statusPointer') : undefined,
+      douyin_hint: this.dy ? t('mcpDouyin.statusPointer') : undefined,
       queue_by_account: registry ? Array.from(countByAccount(tasks), ([account_mid, group]) => ({
         account_mid: account_mid ?? null, total: group.length, ...countStatuses(group)
       })) : undefined,
@@ -1072,6 +1089,12 @@ export class McpTools implements ToolSet {
         default_quality: s.youtube.defaultQn,
         auto_update: s.youtube.autoUpdate,
         defaults: ytOptionsOut(s.youtube.defaults)
+      },
+      douyin: {
+        download_dir: s.douyin.downloadDir,
+        concurrency: s.douyin.concurrency,
+        default_quality: s.douyin.defaultQn,
+        defaults: dyOptionsOut(s.douyin.defaults)
       }
     }
   }
@@ -1104,9 +1127,26 @@ export class McpTools implements ToolSet {
       set('ui_platform', 'uiSite', args.ui_platform)
     }
     if (args.youtube !== undefined) set('youtube', 'youtube', this.youtubePatch(args.youtube, cur))
-    if (!changed.length) throw invalid(t('mcpTools.nothingToUpdate', { names: joinList([...Object.keys(SETTING_EFFECTS), 'ui_platform', 'youtube']) }))
+    if (args.douyin !== undefined) set('douyin', 'douyin', this.douyinPatch(args.douyin, cur))
+    if (!changed.length) throw invalid(t('mcpTools.nothingToUpdate', { names: joinList([...Object.keys(SETTING_EFFECTS), 'ui_platform', 'youtube', 'douyin']) }))
     const next = this.deps.updateSettings(patch)
     return { settings: this.settingsOut(next), effects: Object.fromEntries(changed.map((k) => [k, t(SETTING_EFFECTS[k] ?? 'mcpTools.effectNow')])) }
+  }
+
+  /** update_settings 的 douyin 段：只改传了的字段 */
+  private douyinPatch(raw: unknown, cur: Settings): Settings['douyin'] {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw invalid(t('mcpDouyin.badDouyinSettings'))
+    const d = raw as Args
+    const known = new Set(['download_dir', 'concurrency', 'default_quality', 'defaults'])
+    const extra = Object.keys(d).filter((k) => !known.has(k))
+    if (extra.length) throw invalid(t('mcpDouyin.unknownOptions', { keys: extra.join(', '), allowed: [...known].join(', ') }))
+    const next = { ...cur.douyin }
+    const dir = optionalString(d, 'download_dir')
+    if (dir !== undefined) next.downloadDir = prepareDir(dir)
+    if (d.concurrency !== undefined) next.concurrency = optionalInt(d, 'concurrency', 1, 3, next.concurrency)
+    if (d.default_quality !== undefined) next.defaultQn = optionalInt(d, 'default_quality', 0, DY_ORIGINAL_QN, next.defaultQn)
+    if (d.defaults !== undefined) next.defaults = parseDyArgs(d.defaults, { ...next.defaults, dy: { ...next.defaults.dy } })
+    return next
   }
 
   /** update_settings 的 youtube 段：只改传了的字段 */

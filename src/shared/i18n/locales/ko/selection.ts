@@ -10,6 +10,7 @@ export default {
   kindCheese: '강의',
   kindAudio: '오디오',
   kindYoutube: 'YouTube',
+  kindDouyin: 'Douyin',
   sources: '소스 {count}개',
   loadedOf: '{count} / {total}개 항목 불러옴',
   totalItems: '총 {count}개 항목',

@@ -34,7 +34,15 @@
   --color-sky: #3ea6ff;
 }
 
-/* ---------- 切换 B站 / YouTube 的动画 ----------
+/* 抖音：青绿主色（黑色在暗色模式里看不见），红色点缀 */
+[data-brand='douyin'] {
+  --color-bili: #0fb5ae;
+  --color-bili-dark: #06827e;
+  --color-bili-light: #5ad6d0;
+  --color-sky: #fe2c55;
+}
+
+/* ---------- 切换平台的动画 ----------
    品牌色登记成 <color> 类型，切换时颜色能平滑过渡（不支持 View Transitions 时的退路，也让切换按钮的滑块颜色跟着渐变） */
 @property --color-bili {
   syntax: '<color>';
@@ -65,7 +73,7 @@ html {
     --color-sky 0.45s ease;
 }
 
-/* 侧栏和空状态的标志：两个叠在一起，当前平台的淡入、另一个旋转缩小着淡出 */
+/* 侧栏和空状态的标志：叠在一起，当前平台的淡入、其他的旋转缩小着淡出 */
 .logo-mark {
   transform-origin: 50% 50%;
   transition:
@@ -73,14 +81,22 @@ html {
     transform 0.6s cubic-bezier(0.2, 0.9, 0.25, 1.15);
 }
 .logo-youtube,
-[data-brand='youtube'] .logo-bili {
+.logo-douyin,
+[data-brand='youtube'] .logo-bili,
+[data-brand='douyin'] .logo-bili {
   opacity: 0;
   transform: scale(0.55) rotate(-30deg);
 }
-[data-brand='youtube'] .logo-bili {
+[data-brand='youtube'] .logo-bili,
+[data-brand='douyin'] .logo-bili,
+[data-brand='douyin'] .logo-youtube {
   transform: scale(0.55) rotate(30deg);
 }
-[data-brand='youtube'] .logo-youtube {
+[data-brand='douyin'] .logo-youtube {
+  opacity: 0;
+}
+[data-brand='youtube'] .logo-youtube,
+[data-brand='douyin'] .logo-douyin {
   opacity: 1;
   transform: none;
 }

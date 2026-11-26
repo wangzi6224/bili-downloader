@@ -7,7 +7,6 @@ import {
   classifyYtPaste,
   currentYtAccount,
   engineLine,
-  otherSite,
   parseLangList,
   recordsOfSite,
   sizeHint,
@@ -50,13 +49,8 @@ describe('按平台筛选', () => {
       task('6', 'youtube', 'error'),
       task('7', 'youtube', 'fetching')
     ]
-    expect(activeCounts(tasks)).toEqual({ bili: 2, youtube: 2 })
-    expect(activeCounts([])).toEqual({ bili: 0, youtube: 0 })
-  })
-
-  it('otherSite 返回另一个平台', () => {
-    expect(otherSite('bili')).toBe('youtube')
-    expect(otherSite('youtube')).toBe('bili')
+    expect(activeCounts(tasks)).toEqual({ bili: 2, youtube: 2, douyin: 0 })
+    expect(activeCounts([])).toEqual({ bili: 0, youtube: 0, douyin: 0 })
   })
 })
 

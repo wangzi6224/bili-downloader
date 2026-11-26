@@ -65,10 +65,12 @@ const escapeText = (s: string): string =>
 const textWidth = (s: string, px: number): number =>
   [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0xff ? px : px * 0.55), 0)
 
-export function toAss(list: Danmaku[], o: AssOptions): string {
+/** canvas 是画面大小，缺省按 1080P 横屏；竖屏视频传自己的 */
+export function toAss(list: Danmaku[], o: AssOptions, canvas: { width: number; height: number } = { width: W, height: H }): string {
+  const { width, height } = canvas
   const basePx = Math.round(o.fontSize * 2) // B站播放器约 540 像素高，换算到 1080
   const rowH = basePx + 6
-  const rows = Math.floor(H / rowH)
+  const rows = Math.floor(height / rowH)
   const alpha = Math.round((1 - o.opacity) * 255)
     .toString(16)
     .padStart(2, '0')
@@ -96,29 +98,29 @@ export function toAss(list: Danmaku[], o: AssOptions): string {
       const free = d.mode === 5 ? topFree : bottomFree
       const row = pickRow(free, d.time)
       free[row] = d.time + FIXED_DURATION
-      const y = d.mode === 5 ? row * rowH : H - row * rowH
+      const y = d.mode === 5 ? row * rowH : height - row * rowH
       const align = d.mode === 5 ? 8 : 2
       events.push(
-        `Dialogue: 2,${assTime(d.time)},${assTime(d.time + FIXED_DURATION)},Danmaku,,0,0,0,,{\\an${align}\\pos(${W / 2},${y})${color}${fs}}${text}`
+        `Dialogue: 2,${assTime(d.time)},${assTime(d.time + FIXED_DURATION)},Danmaku,,0,0,0,,{\\an${align}\\pos(${width / 2},${y})${color}${fs}}${text}`
       )
       continue
     }
 
-    const speed = (W + w) / o.duration
+    const speed = (width + w) / o.duration
     const row = pickRow(scrollFree, d.time)
     // 下一条要等这一条的尾巴完全进入屏幕，再留一点间距
     scrollFree[row] = d.time + (w + px) / speed
     const y = row * rowH
     events.push(
-      `Dialogue: 1,${assTime(d.time)},${assTime(d.time + o.duration)},Danmaku,,0,0,0,,{\\an7\\move(${W},${y},${Math.round(-w)},${y})${color}${fs}}${text}`
+      `Dialogue: 1,${assTime(d.time)},${assTime(d.time + o.duration)},Danmaku,,0,0,0,,{\\an7\\move(${width},${y},${Math.round(-w)},${y})${color}${fs}}${text}`
     )
   }
 
   return [
     '[Script Info]',
     'ScriptType: v4.00+',
-    `PlayResX: ${W}`,
-    `PlayResY: ${H}`,
+    `PlayResX: ${width}`,
+    `PlayResY: ${height}`,
     'WrapStyle: 2',
     'ScaledBorderAndShadow: yes',
     '',

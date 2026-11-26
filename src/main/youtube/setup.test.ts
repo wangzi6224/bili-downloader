@@ -145,7 +145,7 @@ describe('registerYoutubeIpc', () => {
       return [await resolve(inputs[0])]
     })
     expect(await call('yt:parseBatch', ['a', 'b'])).toEqual([{ title: 'a' }])
-    expect(h.send).toHaveBeenCalledWith('parse:progress', { done: 1, total: 2, title: '标题' })
+    expect(h.send).toHaveBeenCalledWith('parse:progress', { done: 1, total: 2, title: '标题', site: 'youtube' })
     expect(parseAndRecord).toHaveBeenCalledWith('a')
   })
 

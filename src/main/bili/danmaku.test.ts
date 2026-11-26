@@ -74,6 +74,33 @@ describe('toAss', () => {
     expect(ass).toContain(`Style: Danmaku,PingFang SC,50,&H${alpha}FFFFFF,&H${alpha}FFFFFF,&H${alpha}000000,&H${alpha}000000,`)
   })
 
+  it('按给定的画面大小排版：竖屏视频从自己的右边缘进入、居中和贴底按自己的尺寸', () => {
+    const portrait = { width: 1080, height: 1920 }
+    const ass = toAss(
+      [dm(0, 'ab'), dm(1, '顶', { mode: 5 }), dm(2, '底', { mode: 4 })],
+      { fontSize: 25, opacity: 1, duration: 8 },
+      portrait
+    )
+    expect(ass).toContain('PlayResX: 1080\nPlayResY: 1920\n')
+    const [scroll, top, bottom] = events(ass)
+    expect(scroll).toContain('{\\an7\\move(1080,0,-55,0)}ab')
+    expect(top).toContain('{\\an8\\pos(540,0)}')
+    expect(bottom).toContain('{\\an2\\pos(540,1920)}')
+  })
+
+  it('画面高度决定能放几行', () => {
+    const rows = (height: number): number => {
+      const list = Array.from({ length: 6 }, (_, i) => dm(i * 0.01, '很长很长的一条'))
+      const ass = toAss(list, twoRows, { width: 1920, height })
+      return new Set(events(ass).map((l) => /\\move\(1920,(\d+)/.exec(l)![1])).size
+    }
+    expect([rows(1080), rows(1920)]).toEqual([2, 4])
+  })
+
+  it('不传画面大小时按 1920×1080', () => {
+    expect(toAss([], { fontSize: 25, opacity: 1, duration: 8 })).toContain('PlayResX: 1920\nPlayResY: 1080\n')
+  })
+
   it('超过 1 小时的时间带小时位', () => {
     const [scroll, fixed] = events(toAss([dm(3725.5, 'a'), dm(3725.56, 'b', { mode: 5 })], { fontSize: 25, opacity: 1, duration: 8 }))
     expect(scroll).toMatch(/^Dialogue: 1,1:02:05\.50,1:02:13\.50,/)

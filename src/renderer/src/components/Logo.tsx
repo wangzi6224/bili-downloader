@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { SITES } from '@shared/site'
 import type { Site } from '@shared/types'
 
 // 应用图标的同款图形（build/icon.svg、icon-youtube.svg 去掉留白和投影）
@@ -46,25 +47,52 @@ function YoutubeMark({ id, size, className }: { id: string; size: number; classN
   )
 }
 
+/** 抖音主题的标志：竖屏里一个下载箭头，右上角一个红点；刻意不用音符图形，避免和抖音的标志混淆 */
+function DouyinMark({ id, size, className }: { id: string; size: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 160 160" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#35D6CF" />
+          <stop offset="1" stopColor="#068C88" />
+        </linearGradient>
+      </defs>
+      <rect width="160" height="160" rx="36" fill={`url(#${id})`} />
+      <rect x="43" y="26" width="74" height="108" rx="20" fill="#fff" fillOpacity="0.16" />
+      <g fill="none" stroke="#fff" strokeWidth="9.7" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="43" y="26" width="74" height="108" rx="20" />
+        <path d="M80 55 V91 M66 78 L80 92 L94 78" />
+        <path d="M68 114 H92" />
+      </g>
+      <circle cx="117" cy="30" r="12" fill="#FE2C55" stroke="#fff" strokeWidth="5" />
+    </svg>
+  )
+}
+
 /** useId 里的特殊字符不能直接放进 url(#…) */
 const useSvgId = (): string => `logo${useId().replace(/[^\w-]/g, '')}`
+
+const MARKS: Record<Site, typeof BiliMark> = { bili: BiliMark, youtube: YoutubeMark, douyin: DouyinMark }
 
 /** 某个平台固定的标志（例如平台切换器里） */
 export function SiteMark({ site, size = 16, className = '' }: { site: Site; size?: number; className?: string }) {
   const id = useSvgId()
-  return site === 'youtube' ? <YoutubeMark id={id} size={size} className={className} /> : <BiliMark id={id} size={size} className={className} />
+  const Mark = MARKS[site]
+  return <Mark id={id} size={size} className={className} />
 }
 
 /**
- * 当前界面平台的标志，用在侧栏和空状态。两个标志叠在一起，由 <html data-brand> 决定显示哪个，
+ * 当前界面平台的标志，用在侧栏和空状态。各平台的标志叠在一起，由 <html data-brand> 决定显示哪个，
  * 切换时交叉淡入、轻微旋转缩放（index.css 的 .logo-mark）
  */
 export function Logo({ size = 28, className = '' }: { size?: number; className?: string }) {
   const id = useSvgId()
   return (
     <span className={`relative inline-block shrink-0 ${className}`} style={{ width: size, height: size }} aria-hidden="true">
-      <BiliMark id={`${id}b`} size={size} className="logo-mark logo-bili absolute inset-0" />
-      <YoutubeMark id={`${id}y`} size={size} className="logo-mark logo-youtube absolute inset-0" />
+      {SITES.map((site) => {
+        const Mark = MARKS[site]
+        return <Mark key={site} id={`${id}${site}`} size={size} className={`logo-mark logo-${site} absolute inset-0`} />
+      })}
     </span>
   )
 }

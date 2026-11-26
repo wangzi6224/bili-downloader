@@ -1,5 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import { SITES } from '@shared/site'
+import type { Site } from '@shared/types'
 import { CloseDialog } from './components/CloseDialog'
+import { DyLoginDialog } from './components/DyAccounts'
+import { DySelectionDialog } from './components/DySelectionDialog'
+import { DyUrlInput } from './components/DyUrlInput'
 import { HistoryPage } from './components/HistoryPage'
 import { LoginDialog } from './components/LoginDialog'
 import { SelectionDialog } from './components/SelectionDialog'
@@ -15,7 +20,10 @@ import { YtUrlInput } from './components/YtUrlInput'
 import { applyLanguage } from './i18n'
 import { isSettingsShortcut, isSiteShortcut } from './platform'
 import { resultId } from './selection'
+import { nextSite } from './sites'
 import { api, openLogin, switchSite, updateAccounts, updateAuth, useStore } from './store'
+
+const URL_INPUTS: Record<Site, () => ReactNode> = { bili: UrlInput, youtube: YtUrlInput, douyin: DyUrlInput }
 
 export default function App() {
   const s = useStore()
@@ -34,7 +42,11 @@ export default function App() {
     void api.update.state().then((update) => set({ update }))
     void api.yt.accounts().then((ytAccounts) => set({ ytAccounts }))
     void api.yt.engine.status().then((ytEngine) => set({ ytEngine }))
+    void api.dy.accounts().then((dyAccounts) => set({ dyAccounts }))
+    void api.dy.status().then((dyStatus) => set({ dyStatus }))
     const offs = [
+      api.dy.onAccountsChanged((dyAccounts) => set({ dyAccounts })),
+      api.dy.onStatus((dyStatus) => set({ dyStatus })),
       api.yt.onAccountsChanged((ytAccounts) => set({ ytAccounts })),
       api.yt.engine.onStatus((ytEngine) => set({ ytEngine })),
       api.auth.onRequired(openLogin),
@@ -55,10 +67,9 @@ export default function App() {
         e.preventDefault()
         set({ view: 'settings' })
       } else if (isSiteShortcut(e, api.platform)) {
-        // ⌘⇧Y / Ctrl+Shift+Y 在 B站和 YouTube 之间切换
+        // ⌘⇧Y / Ctrl+Shift+Y 在各平台之间依次切换
         e.preventDefault()
-        const current = useStore.getState().settings?.uiSite ?? 'bili'
-        void switchSite(current === 'bili' ? 'youtube' : 'bili')
+        void switchSite(nextSite(useStore.getState().settings?.uiSite ?? 'bili'))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -88,13 +99,15 @@ export default function App() {
       <main className="flex min-w-0 flex-1 flex-col border-l border-black/10 bg-canvas dark:border-black/40">
         {/* 下载页一直挂着：切到别的页面再回来，输入框内容和剪贴板检测都还在 */}
         <div className={s.view === 'downloads' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-          {/* 两个平台的输入框都一直挂着，切换后输入的内容、剪贴板检测都还在 */}
-          <div className={site === 'bili' ? 'contents' : 'hidden'}>
-            <UrlInput />
-          </div>
-          <div className={site === 'youtube' ? 'contents' : 'hidden'}>
-            <YtUrlInput />
-          </div>
+          {/* 各平台的输入框都一直挂着，切换后输入的内容、剪贴板检测都还在 */}
+          {SITES.map((x) => {
+            const Input = URL_INPUTS[x]
+            return (
+              <div key={x} className={site === x ? 'contents' : 'hidden'}>
+                <Input />
+              </div>
+            )
+          })}
           <TaskList />
         </div>
         {s.view === 'subs' && <SubscriptionsPage />}
@@ -103,11 +116,13 @@ export default function App() {
       </main>
       {site === 'bili' && s.parse && <SelectionDialog key={resultId(s.parse)} result={s.parse} fromSource={s.source !== null} />}
       {site === 'youtube' && s.ytParse && <YtSelectionDialog key={resultId(s.ytParse)} result={s.ytParse} />}
+      {site === 'douyin' && s.dyParse && <DySelectionDialog key={resultId(s.dyParse)} result={s.dyParse} />}
       {s.loginOpen && <LoginDialog />}
       {s.ytLoginOpen && <YtLoginDialog />}
+      {s.dyLoginOpen && <DyLoginDialog />}
       {s.closeAsk && <CloseDialog />}
       {/* 不打断正在进行的登录、选择和关闭询问，等它们结束再弹 */}
-      {s.updateOpen && !s.parse && !s.ytParse && !s.loginOpen && !s.ytLoginOpen && !s.closeAsk && <UpdateDialog />}
+      {s.updateOpen && !s.parse && !s.ytParse && !s.dyParse && !s.loginOpen && !s.ytLoginOpen && !s.dyLoginOpen && !s.closeAsk && <UpdateDialog />}
     </div>
   )
 }

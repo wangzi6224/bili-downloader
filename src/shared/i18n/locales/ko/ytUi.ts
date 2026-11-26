@@ -4,7 +4,7 @@ export default {
   siteBili: '빌리빌리',
   switchSite: '플랫폼 전환',
   siteSetting: '표시할 플랫폼',
-  siteSettingHint: '화면만 전환하며, 양쪽 다운로드는 그대로 진행됩니다. 단축키 ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: '화면만 바뀌며 모든 플랫폼의 다운로드는 계속됩니다. ⌘⇧Y / Ctrl+Shift+Y로 순서대로 전환',
   otherRunning: '이쪽에서 다운로드 중인 작업 {count}개',
   placeholder: 'YouTube 링크 붙여넣기: 영상, Shorts, 재생목록, 채널, YouTube Music',
   clipboardLink: '클립보드에 YouTube 링크가 있습니다',

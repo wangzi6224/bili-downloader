@@ -5,7 +5,10 @@ import type { AccountSource, AccountSourceCategory, Site, SourceDownloadChoice, 
 import { t, type Key } from '@shared/i18n'
 import { checkedAgo, thumb } from '../format'
 import { useT } from '../i18n'
-import { api, openSource, reopenYtParseRecord, useSite, useStore } from '../store'
+import { currentDyAccount } from '../dyView'
+import { SITE_TEXT } from '../sites'
+import { api, openSource, reopenOnSite, reopenYtParseRecord, useSite, useStore } from '../store'
+import { DyMyLists } from './DyMyLists'
 import { currentYtAccount } from '../ytView'
 import { pausedReason } from '../subscriptionStatus'
 import { useLazyNextPage } from '../useLazyNextPage'
@@ -69,6 +72,7 @@ export function SubscriptionsPage() {
   const t = useT()
   const site = useSite()
   const ytAccount = useStore((s) => currentYtAccount(s.ytAccounts))
+  const dyAccount = useStore((s) => currentDyAccount(s.dyAccounts))
   const [tab, setTab] = useState<'local' | 'account'>('local')
   const auth = useStore((s) => s.auth)
   const set = useStore((s) => s.set)
@@ -78,12 +82,14 @@ export function SubscriptionsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title={t('subs.title')}
-        subtitle={tab === 'local' ? t('subs.subtitle') : site === 'youtube' ? ytAccount?.name : auth?.loggedIn && auth.user.uname}
+        subtitle={tab === 'local'
+          ? t('subs.subtitle')
+          : site === 'youtube' ? ytAccount?.name : site === 'douyin' ? dyAccount?.name : auth?.loggedIn && auth.user.uname}
       />
       <div className="px-8 pb-4">
         <Segmented value={tab} onChange={setTab} options={[
           { value: 'local', label: t('subs.local') },
-          { value: 'account', label: site === 'youtube' ? t('ytUi.myLists') : t('subs.account') }
+          { value: 'account', label: t(SITE_TEXT[site].accountTab) }
         ]} />
       </div>
       {quick.pending && (
@@ -101,6 +107,8 @@ export function SubscriptionsPage() {
         <LocalSubscriptions quick={quick} site={site} />
       ) : site === 'youtube' ? (
         <YtMyLists />
+      ) : site === 'douyin' ? (
+        <DyMyLists />
       ) : auth?.loggedIn ? (
         <AccountSources key={auth.user.mid} mid={auth.user.mid} quick={quick} />
       ) : (
@@ -294,7 +302,7 @@ function LocalSubscriptions({ quick, site }: { quick: QuickDownload; site: Site 
         {subs === null && !error && <LoadingSources />}
         {mine?.length === 0 && (
           <EmptyState icon={Rss} title={t('subs.empty')}>
-            {t(site === 'youtube' ? 'ytUi.subsEmptyHint' : 'subs.emptyHint')}
+            {t(SITE_TEXT[site].subsEmptyHint)}
           </EmptyState>
         )}
         {!!mine?.length && !visible?.length && <EmptyState icon={Search} title={t('subs.noMatches')} />}
@@ -314,7 +322,7 @@ function LocalSubscriptions({ quick, site }: { quick: QuickDownload; site: Site 
                     disabled={pending !== null}
                     aria-busy={pending === s.id}
                     className={`flex max-w-full items-center gap-1.5 rounded text-left text-[13px] font-medium hover:text-bili-dark dark:hover:text-bili ${s.enabled ? '' : 'text-muted'}`}
-                    onClick={() => void (site === 'youtube' ? reopenYtParseRecord(s.input) : open({ type: 'subscription', id: s.id }, s.id))}
+                    onClick={() => void (site === 'bili' ? open({ type: 'subscription', id: s.id }, s.id) : reopenOnSite[site]({ input: s.input }))}
                   >
                     <span className="truncate">{s.title}</span>
                     {pending === s.id

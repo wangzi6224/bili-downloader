@@ -41,11 +41,11 @@ export interface BrowserProfile {
   appBoundLogin?: boolean
 }
 
-/** 平台：B站、YouTube。界面一次显示一个平台，下载队列两边共用 */
-export type Site = 'bili' | 'youtube'
+/** 平台：B站、YouTube、抖音。界面一次显示一个平台，下载队列各平台共用 */
+export type Site = 'bili' | 'youtube' | 'douyin'
 
-/** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区（以上是 B站）；youtube 是 YouTube 的视频（含 Shorts、直播回放、Music 单曲） */
-export type MediaKind = 'ugc' | 'pgc' | 'cheese' | 'audio' | 'youtube'
+/** ugc 普通视频，pgc 番剧影视，cheese 课程，audio 音频区（以上是 B站）；youtube 是 YouTube 的视频（含 Shorts、直播回放、Music 单曲）；douyin 是抖音作品（视频或图文） */
+export type MediaKind = 'ugc' | 'pgc' | 'cheese' | 'audio' | 'youtube' | 'douyin'
 
 /** 一个可下载的单元：普通视频的一个分P，或番剧/电影的一集 */
 export interface MediaItem {
@@ -82,6 +82,12 @@ export interface MediaItem {
   ytId?: string
   /** YouTube 作者频道 id（UC…） */
   channelId?: string
+  /** 抖音作品 id（kind 为 douyin 时）；超过安全整数，用字符串，cid 填 0 */
+  dyId?: string
+  /** 抖音作者的 sec_uid */
+  secUid?: string
+  /** 博主置顶的作品：订阅检查按时间找新内容时要跳过它 */
+  pinned?: boolean
 }
 
 export interface MediaGroup {
@@ -100,6 +106,8 @@ export type PagedSource =
   | { type: 'spaceSeries'; mid: number; seriesId: number }
   /** YouTube 播放列表、频道、个人列表：url 是交给 yt-dlp 的规范链接 */
   | { type: 'yt'; url: string }
+  /** 抖音列表：按游标翻页，url 是规范链接，cursor 是下一页的游标 */
+  | { type: 'dy'; url: string; cursor: string; /** 取第一页时用的账号，后面几页沿用；null 是不登录 */ account?: string | null }
 
 export interface Paging {
   source: PagedSource
@@ -146,6 +154,8 @@ export interface ParseResult {
   batch?: boolean
   /** 批量解析里失败的链接 */
   failures?: { input: string; error: string }[]
+  /** 要告诉用户的限制，例如未登录只能看到第一页 */
+  note?: string
 }
 
 export type CodecPref = 'avc' | 'hevc' | 'av1'
@@ -220,6 +230,17 @@ export interface DownloadOptions {
   watermark: WatermarkMode
   /** 只有 YouTube 任务有 */
   yt?: YtOptions
+  /** 只有抖音任务有；画质用 qn（画面短边像素，DY_ORIGINAL_QN 为原画），编码和容器沿用上面的字段 */
+  dy?: DyOptions
+}
+
+export interface DyOptions {
+  /** 图文里的实况视频一起下 */
+  live: boolean
+  /** 图文的配乐一起下 */
+  music: boolean
+  /** 有 HDR 版本时优先 */
+  hdr: boolean
 }
 
 export type WatermarkMode = 'off' | 'auto' | 'ai'
@@ -364,6 +385,8 @@ export interface EnqueueRequest {
   accountMid?: number
   /** YouTube 下载用的账号；空为不登录 */
   ytAccount?: string
+  /** 抖音下载用的账号；空为不登录 */
+  dyAccount?: string
 }
 
 export type TaskStatus =
@@ -389,6 +412,10 @@ export interface TaskInfo {
   accountMid?: number
   /** YouTube 任务用的账号（cookie 档案 id）；空为不登录 */
   ytAccount?: string
+  /** 抖音任务用的账号；空为不登录 */
+  dyAccount?: string
+  /** 抖音：第一次取流时选定的画质档，继续下载时沿用 */
+  dyFormat?: string
   options: DownloadOptions
   /** 输出文件不含扩展名的相对路径（相对下载目录）；合并时会按实际画质重新计算 */
   relBase: string
@@ -487,6 +514,8 @@ export interface Subscription {
   options: DownloadOptions
   /** 订阅检查和下载使用的账号 */
   accountMid?: number
+  /** 订阅自己的抖音列表时绑定的账号：换了账号不能拿别人的列表当新内容 */
+  dyAccount?: string
   /** 已经见过的条目 key，只有之后新增的才会下载 */
   seen: string[]
   /** 已发现但尚未成功展开分 P 的条目 */
@@ -601,6 +630,7 @@ export interface Settings {
   /** 界面当前显示哪个平台；只影响界面，下载队列两边一起跑 */
   uiSite: Site
   youtube: YoutubeSettings
+  douyin: DouyinSettings
 }
 
 /** 导入到应用里的 YouTube 登录（cookie 加密保存在本机） */
@@ -650,6 +680,16 @@ export interface YoutubeSettings {
   defaults: Omit<DownloadOptions, 'qn'> & { yt: YtOptions }
   /** 自动更新 yt-dlp */
   autoUpdate: boolean
+}
+
+export interface DouyinSettings {
+  downloadDir: string
+  /** 默认画质：画面短边像素（720、1080…），0 为最高 */
+  defaultQn: number
+  /** 抖音任务最多同时下载几个（同时计入总的同时下载数）：太多容易触发验证 */
+  concurrency: number
+  /** 新建抖音下载时的默认选项 */
+  defaults: Omit<DownloadOptions, 'qn'> & { dy: DyOptions }
 }
 
 /** 某个版本的更新说明（Markdown） */
@@ -745,10 +785,77 @@ export interface YoutubeApi {
   checkAccount(id: string): Promise<YtAccount>
 }
 
+export interface DyAccount {
+  id: string
+  name: string
+  /** 抖音号 */
+  handle?: string
+  avatar?: string
+  addedAt: number
+  checkedAt?: number
+  /** expired：登录已失效，要重新登录 */
+  status: 'ready' | 'expired'
+}
+
+export interface DyAccountsSnapshot {
+  /** 当前账号；空为不登录 */
+  current?: string
+  accounts: DyAccount[]
+}
+
+/** 需要留意的账号状态：account 为 null 是不登录时 */
+export interface DyAccountState {
+  account: string | null
+  /** verify 要手动完成验证；cooling 被限流，到 until 自动恢复；expired 登录失效 */
+  state: 'verify' | 'cooling' | 'expired'
+  until?: number
+}
+
+export type DySourceCategory = 'folders' | 'mixes' | 'following'
+
+/** 账号里的一个列表（收藏夹、收藏的合集、关注的博主） */
+export interface DyListEntry {
+  id: string
+  title: string
+  subtitle?: string
+  cover?: string
+  count?: number
+  /** 解析、订阅用的链接 */
+  url: string
+}
+
+export interface DouyinBridgeApi {
+  parse(input: string): Promise<ParseResult>
+  /** 列表的第 page 页，source 是上一页给的 paging.source 或 next */
+  parseMore(source: { url: string; cursor: string; account?: string | null }, page: number): Promise<PageResult>
+  parseBatch(inputs: string[]): Promise<ParseResult>
+  streamInfo(item: MediaItem): Promise<StreamInfo>
+  /** 用当前抖音账号加入下载队列 */
+  enqueue(req: EnqueueRequest): Promise<string | undefined>
+  accounts(): Promise<DyAccountsSnapshot>
+  onAccountsChanged(cb: (s: DyAccountsSnapshot) => void): () => void
+  /** 打开扫码登录窗口；用户关掉窗口时账号不变 */
+  login(): Promise<DyAccountsSnapshot>
+  /** 浏览器配置档；hasBiliLogin 表示有没有抖音登录 */
+  listBrowsers(browserKey?: string): Promise<BrowserProfile[]>
+  importBrowser(id: string): Promise<DyAccountsSnapshot>
+  importCookie(text: string): Promise<DyAccountsSnapshot>
+  /** 空为不登录 */
+  selectAccount(id?: string): Promise<DyAccountsSnapshot>
+  removeAccount(id: string): Promise<DyAccountsSnapshot>
+  checkAccount(id: string): Promise<DyAccountsSnapshot>
+  status(): Promise<DyAccountState[]>
+  onStatus(cb: (s: DyAccountState[]) => void): () => void
+  /** 亮出窗口让用户完成安全验证 */
+  verify(account: string | null): Promise<DyAccountState[]>
+  lists(category: DySourceCategory, cursor: string): Promise<{ entries: DyListEntry[]; cursor: string; hasMore: boolean }>
+}
+
 export interface BiliApi {
   /** 主进程的 process.platform，界面按它调整文案和布局 */
   platform: string
   yt: YoutubeApi
+  dy: DouyinBridgeApi
   auth: {
     check(): Promise<AuthState>
     accounts(): Promise<AccountState>
@@ -773,7 +880,8 @@ export interface BiliApi {
   parseMore(source: PagedSource, page: number, accountMid?: number): Promise<PageResult>
   /** 多个链接逐个解析（间隔 0.5 秒，避免触发风控） */
   parseBatch(inputs: string[]): Promise<ParseResult>
-  onParseProgress(cb: (p: { done: number; total: number; title?: string }) => void): () => void
+  /** site 缺省是 B站；各平台的输入框只认自己的进度 */
+  onParseProgress(cb: (p: { done: number; total: number; title?: string; site?: Site }) => void): () => void
   streamInfo(item: MediaItem, accountMid?: number): Promise<StreamInfo>
   /** 当前账号创建的收藏夹 */
   myFavFolders(): Promise<{ id: number; title: string; count: number }[]>

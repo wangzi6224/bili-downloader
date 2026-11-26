@@ -124,7 +124,7 @@ export function registerYoutubeIpc({ engine, accounts, service, parseAndRecord, 
   handle('yt:parse', (input: string) => parseAndRecord(input))
   handle('yt:parseMore', (url: string, page: number) => service.loadPage(url, page))
   handle('yt:parseBatch', (inputs: string[]) =>
-    resolveBatch(inputs, (done, total, title) => send('parse:progress', { done, total, title }), parseAndRecord))
+    resolveBatch(inputs, (done, total, title) => send('parse:progress', { done, total, title, site: 'youtube' }), parseAndRecord))
   handle('yt:streamInfo', (item: MediaItem) => service.streamInfo(item))
   handle('yt:enqueue', (req: EnqueueRequest) => enqueue({ ...req, ytAccount: accounts.current() }))
   handle('yt:accounts', () => accounts.snapshot())

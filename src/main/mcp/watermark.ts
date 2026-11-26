@@ -1,4 +1,5 @@
 import { t as tr, type Key } from '@shared/i18n'
+import { siteOf } from '@shared/site'
 import { clampRegion, isVideoTask } from '@shared/watermark'
 import type {
   AiModelStatus,
@@ -104,7 +105,7 @@ export function batchWatermark(options: Pick<DownloadOptions, 'watermark'>, task
   if (processing.some((t) => t.processing!.manual)) hints.push(tr('mcpWm.processing'))
   if (pending.length) {
     hints.push(tr('mcpWm.pending', { count: pending.length, choices: choice!.text, id: batchId }))
-  } else if (option === 'off' && !checked.length && unfinished(videos)) {
+  } else if (option === 'off' && !checked.length && unfinished(videos.filter((v) => siteOf(v) !== 'douyin'))) {
     hints.push(tr('mcpWm.willDetect'))
   }
   return {

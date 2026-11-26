@@ -10,7 +10,7 @@ import type { MediaKind } from './types'
  */
 
 /** 文件名模板的 {type}：影响已下载文件的命名和跳过判断，保持中文，不随界面语言变 */
-export const KIND_TYPE_LABEL: Record<MediaKind, string> = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频', youtube: 'YouTube' }
+export const KIND_TYPE_LABEL: Record<MediaKind, string> = { ugc: '视频', pgc: '番剧影视', cheese: '课程', audio: '音频', youtube: 'YouTube', douyin: '抖音' }
 
 export type NamingKind = 'text' | 'number' | 'date'
 
@@ -43,7 +43,8 @@ export const NAMING_VARS: NamingVar[] = [
   namingVar('aid', 'naming.varAid', 'number'),
   namingVar('cid', 'naming.varCid', 'number'),
   namingVar('ep_id', 'naming.varEpId', 'number'),
-  namingVar('type', 'naming.varType', 'text')
+  namingVar('type', 'naming.varType', 'text'),
+  namingVar('id', 'naming.varId', 'text')
 ]
 
 const VAR_KIND = new Map(NAMING_VARS.map((v) => [v.name, v.kind]))

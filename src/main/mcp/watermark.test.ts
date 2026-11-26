@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { fmtSeconds, sumSeconds } from './watermark'
+import { t } from '@shared/i18n'
+import type { TaskInfo } from '@shared/types'
+import { fakeWatermark, makeTask, mediaItem } from '../../test/fakeQueue'
+import { batchWatermark, fmtSeconds, sumSeconds } from './watermark'
 
 describe('fmtSeconds', () => {
   it('按量级换单位：秒、分钟、小时', () => {
@@ -24,5 +27,26 @@ describe('sumSeconds', () => {
       ])
     ).toEqual({ seconds: [15, 26], basis: 'calibrated' })
     expect(sumSeconds([{ seconds: [1, 2], basis: 'measured' }, { seconds: [1, 2], basis: 'default' }])?.basis).toBe('default')
+  })
+})
+
+describe('batchWatermark 的抖音任务', () => {
+  const douyin = (id: string, over: Partial<TaskInfo> = {}): TaskInfo =>
+    makeTask(id, { item: mediaItem(`dy:${id}`, { kind: 'douyin', cid: 0 }), ...over })
+  const hint = (tasks: TaskInfo[]) => batchWatermark({ watermark: 'off' }, tasks, 'b1', fakeWatermark())?.hint
+
+  it('只有抖音任务的批次不提示会识别水印', () => {
+    const r = batchWatermark({ watermark: 'off' }, [douyin('a'), douyin('b', { status: 'downloading' })], 'b1', fakeWatermark())
+    expect(r).toMatchObject({ option: 'off', checked: 0, found: 0, removed: 0, not_found: 0 })
+    expect(r!.hint).toBeUndefined()
+  })
+
+  it('混着还没下完的 B站视频时照常提示', () => {
+    expect(hint([makeTask('x')])).toBe(t('mcpWm.willDetect'))
+    expect(hint([douyin('a'), makeTask('x')])).toBe(t('mcpWm.willDetect'))
+  })
+
+  it('B站视频都下完了、只剩抖音任务没下完时不提示', () => {
+    expect(hint([douyin('a'), makeTask('x', { status: 'done' })])).toBeUndefined()
   })
 })

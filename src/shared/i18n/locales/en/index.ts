@@ -38,9 +38,12 @@ import mcpLogin from './mcpLogin'
 import mcpBatch from './mcpBatch'
 import mcpWm from './mcpWm'
 import agents from './agents'
+import dy from './dy'
+import dyUi from './dyUi'
 import yt from './yt'
 import ytLogin from './ytLogin'
 import ytUi from './ytUi'
+import mcpDouyin from './mcpDouyin'
 import mcpYoutube from './mcpYoutube'
 
 export default {
@@ -84,8 +87,11 @@ export default {
   mcpBatch,
   mcpWm,
   agents,
+  dy,
+  dyUi,
   yt,
   ytLogin,
   ytUi,
+  mcpDouyin,
   mcpYoutube
 }

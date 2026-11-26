@@ -13,6 +13,7 @@ export default {
   varCid: 'cid',
   varEpId: '番剧单集 ID',
   varType: '类型（视频 / 番剧影视）',
+  varId: '作品 id',
   empty: '模板不能为空',
   nested: '可选段 <…> 不能嵌套',
   extraClose: '多了一个 >',

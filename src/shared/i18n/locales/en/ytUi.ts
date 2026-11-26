@@ -3,7 +3,7 @@ export default {
   siteBili: 'Bilibili',
   switchSite: 'Switch platform',
   siteSetting: 'Platform',
-  siteSettingHint: 'Only switches the interface, downloads on both sides keep running. Shortcut ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: 'Only the interface changes; downloads on every platform keep running. ⌘⇧Y / Ctrl+Shift+Y cycles through platforms',
   otherRunning: { one: '{count} task downloading here', other: '{count} tasks downloading here' },
   placeholder: 'Paste a YouTube link: video, Shorts, playlist, channel, YouTube Music',
   clipboardLink: 'YouTube link in the clipboard',

@@ -15,6 +15,7 @@ export default {
   varCid: 'cid',
   varEpId: 'ID de l’épisode d’anime',
   varType: 'Type (vidéo / anime, films et séries)',
+  varId: 'ID de publication',
   empty: 'Le modèle ne peut pas être vide',
   nested: 'Les sections facultatives <…> ne peuvent pas être imbriquées',
   extraClose: 'Un > en trop',

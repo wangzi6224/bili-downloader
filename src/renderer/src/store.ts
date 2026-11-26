@@ -4,6 +4,8 @@ import { t, type Lang } from '@shared/i18n'
 import type {
   AccountState,
   AuthState,
+  DyAccountsSnapshot,
+  DyAccountState,
   LoginTarget,
   ParseRecord,
   ParseResult,
@@ -58,6 +60,17 @@ interface State {
   ytAccounts: YtAccountsSnapshot | null
   ytEngine: YtEngineStatus | null
   ytLoginOpen: boolean
+  // ---- 抖音：同样单独一份 ----
+  dyParse: ParseResult | null
+  dyParsing: boolean
+  dyProgress: { done: number; total: number; title?: string } | null
+  dyError: string | null
+  dyNotice: string | null
+  dyAccounts: DyAccountsSnapshot | null
+  dyStatus: DyAccountState[]
+  /** 验证窗口开着 */
+  dyVerifying: boolean
+  dyLoginOpen: boolean
   set: (patch: Partial<State>) => void
 }
 
@@ -90,6 +103,15 @@ export const useStore = create<State>((set) => ({
   ytAccounts: null,
   ytEngine: null,
   ytLoginOpen: false,
+  dyParse: null,
+  dyParsing: false,
+  dyProgress: null,
+  dyError: null,
+  dyNotice: null,
+  dyAccounts: null,
+  dyStatus: [],
+  dyVerifying: false,
+  dyLoginOpen: false,
   set: (patch) => set(patch)
 }))
 
@@ -269,4 +291,58 @@ export const ytParseBatch = (inputs: string[]): Promise<void> => runYtParse(() =
 export function reopenYtParseRecord(input: string): Promise<void> {
   useStore.getState().set({ view: 'downloads' })
   return ytParseLink(input)
+}
+
+// ---------------- 抖音 ----------------
+
+let dyRequestId = 0
+
+async function runDyParse(fn: () => Promise<ParseResult>): Promise<void> {
+  const { set } = useStore.getState()
+  const requestId = ++dyRequestId
+  const isCurrent = (): boolean => requestId === dyRequestId
+  set({ dyParsing: true, dyError: null, dyNotice: null, dyProgress: null })
+  try {
+    const result = await fn()
+    if (!isCurrent()) return
+    set({ dyParse: result })
+    if (result.failures?.length) {
+      const errors = result.failures.map((f) => f.error).join(t('input.separator'))
+      set({ dyNotice: t('input.parseFailures', { count: result.failures.length, errors }) })
+    }
+  } catch (e) {
+    if (isCurrent()) set({ dyError: (e as Error).message })
+  } finally {
+    if (isCurrent()) set({ dyParsing: false, dyProgress: null })
+  }
+}
+
+export const dyParseLink = (input: string): Promise<void> => runDyParse(() => api.dy.parse(input))
+export const dyParseBatch = (inputs: string[]): Promise<void> => runDyParse(() => api.dy.parseBatch(inputs))
+
+/** 从解析记录、订阅和“我的”列表打开：切到下载页解析 */
+export function reopenDyParseRecord(input: string): Promise<void> {
+  useStore.getState().set({ view: 'downloads' })
+  return dyParseLink(input)
+}
+
+/** 亮出窗口让用户完成抖音的安全验证 */
+export async function verifyDouyin(account: string | null): Promise<void> {
+  const { set, dyVerifying } = useStore.getState()
+  if (dyVerifying) return
+  set({ dyVerifying: true, dyError: null })
+  try {
+    set({ dyStatus: await api.dy.verify(account) })
+  } catch (e) {
+    set({ dyError: (e as Error).message })
+  } finally {
+    set({ dyVerifying: false })
+  }
+}
+
+/** 按平台重新打开一条解析记录或订阅链接 */
+export const reopenOnSite: Record<Site, (record: Pick<ParseRecord, 'input' | 'accountMid'>) => Promise<void>> = {
+  bili: reopenParseRecord,
+  youtube: (r) => reopenYtParseRecord(r.input),
+  douyin: (r) => reopenDyParseRecord(r.input)
 }

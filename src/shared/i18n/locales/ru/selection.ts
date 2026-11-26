@@ -10,6 +10,7 @@ export default {
   kindCheese: 'Курс',
   kindAudio: 'Аудио',
   kindYoutube: 'YouTube',
+  kindDouyin: 'Douyin',
   sources: {
     one: '{count} источник',
     few: '{count} источника',

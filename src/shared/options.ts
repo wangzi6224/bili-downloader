@@ -1,4 +1,4 @@
-import type { CodecPref, DownloadOptions, YtCodec, YtOptions } from './types'
+import type { CodecPref, DownloadOptions, DyOptions, YtCodec, YtOptions } from './types'
 
 export const DEFAULT_OPTIONS: Omit<DownloadOptions, 'qn'> = {
   codecOrder: ['avc', 'hevc', 'av1'],
@@ -31,6 +31,16 @@ export const DEFAULT_YT_OPTIONS: YtOptions = {
 
 const YT_CODECS: YtCodec[] = ['avc', 'vp9', 'av1']
 
+/** 抖音画质选项里的“原画”：上传的源文件，比各清晰度档大很多 */
+export const DY_ORIGINAL_QN = 100_000
+
+export const DEFAULT_DY_OPTIONS: DyOptions = { live: true, music: true, hdr: false }
+
+export function normalizeDyOptions(raw?: Partial<DyOptions>): DyOptions {
+  const o = { ...DEFAULT_DY_OPTIONS, ...raw }
+  return { live: Boolean(o.live), music: Boolean(o.music), hdr: Boolean(o.hdr) }
+}
+
 /** 补齐 YouTube 选项的缺省字段，丢掉不认识的取值 */
 export function normalizeYtOptions(raw?: Partial<YtOptions>): YtOptions {
   const o = { ...DEFAULT_YT_OPTIONS, ...raw }
@@ -56,6 +66,7 @@ export function normalizeOptions(raw: Partial<DownloadOptions> & { codec?: Codec
   o.codecOrder = [...new Set([...(o.codecOrder ?? []).filter((c) => CODECS.includes(c)), ...CODECS])]
   if (o.watermark !== 'auto' && o.watermark !== 'ai') o.watermark = 'off'
   if (raw.yt) o.yt = normalizeYtOptions(raw.yt)
+  if (raw.dy) o.dy = normalizeDyOptions(raw.dy)
   delete o.codec
   delete o.audioOnly
   return o

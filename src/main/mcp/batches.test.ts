@@ -401,6 +401,43 @@ describe('重启、重复提交、继续、重试、取消', () => {
   })
 })
 
+describe('抖音账号', () => {
+  const dy = (id: string, over: Partial<MediaItem> = {}): MediaItem => mediaItem(`dy:${id}`, { kind: 'douyin', dyId: id, cid: 0, ...over })
+
+  it('批次的 dyAccount 带到入队请求里，并写进批次记录', () => {
+    const m = make()
+    const b = m.submit(request([dy('1'), dy('2')], { kind: 'douyin', dyAccount: 'dy-acc' }))
+    expect(b.dyAccount).toBe('dy-acc')
+    expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ batchId: b.id, kind: 'douyin', dyAccount: 'dy-acc' }))
+    expect(saved()[0].dyAccount).toBe('dy-acc')
+  })
+
+  it('分段展开时每一段都带上 dyAccount', async () => {
+    const m = make(1)
+    m.submit(request([dy('1', { lazy: true }), dy('2', { lazy: true })], { kind: 'douyin', dyAccount: 'dy-acc' }))
+    await settle()
+    expect(queue.enqueue.mock.calls.map(([req]) => req.dyAccount)).toEqual(['dy-acc', 'dy-acc'])
+  })
+
+  it('重启后接着处理中断的批次时仍用原来的抖音账号', async () => {
+    expand.mockImplementationOnce(() => new Promise(() => {}))
+    const first = make()
+    const { id } = first.submit(request([dy('1', { lazy: true })], { kind: 'douyin', dyAccount: 'dy-acc' }))
+    first.flush()
+    const second = make()
+    const b = second.find(id)!
+    expect(b).toMatchObject({ state: 'interrupted', dyAccount: 'dy-acc' })
+    second.resume(b)
+    await settle()
+    expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ batchId: id, dyAccount: 'dy-acc' }))
+  })
+
+  it('不登录时入队请求里没有 dyAccount', () => {
+    make().submit(request([dy('1')], { kind: 'douyin' }))
+    expect(queue.enqueue.mock.calls[0][0].dyAccount).toBeUndefined()
+  })
+})
+
 describe('状态和报告', () => {
   const setup = (statuses: Parameters<typeof makeTask>[1][], extra: Partial<Batch> = {}) => {
     const m = make()

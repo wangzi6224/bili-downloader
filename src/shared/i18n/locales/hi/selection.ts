@@ -10,6 +10,7 @@ export default {
   kindCheese: 'कोर्स',
   kindAudio: 'ऑडियो',
   kindYoutube: 'YouTube',
+  kindDouyin: 'Douyin',
   sources: '{count} स्रोत',
   loadedOf: '{count} / {total} आइटम लोड हुए',
   totalItems: 'कुल {count} आइटम',

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MediaItem } from '@shared/types'
+import type { MediaItem, PagedSource, ParseResult } from '@shared/types'
 
 type Params = Record<string, unknown>
 const api = vi.hoisted(() => vi.fn<(url: string, params?: Params, opts?: { wbi?: boolean }) => Promise<unknown>>())
@@ -9,6 +9,8 @@ vi.mock('./http', async (orig) => ({ ...(await orig<typeof import('./http')>()),
 
 const { BiliError } = await import('./http')
 const lists = await import('./lists')
+const { setDouyin } = await import('../douyin/service')
+const { setYoutube } = await import('../youtube/service')
 
 const X = 'https://api.bilibili.com/x'
 const EP = {
@@ -403,6 +405,64 @@ describe('loadHeadPages', () => {
     expect(await lists.loadHeadPages(paging, () => false, 0)).toMatchObject([{ key: 'ugc:BV21' }])
     route({ fav: () => ({ info, has_more: true, medias: [] }) })
     await expect(lists.loadHeadPages(paging, () => false, 0)).rejects.toThrow('未能读完所有条目')
+  })
+})
+
+describe('YouTube 分页', () => {
+  afterEach(() => setYoutube(undefined))
+
+  it('交给 YouTube 服务按地址取', async () => {
+    const page = { items: [], page: 2, total: 0, hasMore: false }
+    const loadPage = vi.fn(async () => page)
+    setYoutube({ loadPage } as never)
+    expect(await lists.loadPage({ type: 'yt', url: 'https://www.youtube.com/@test' }, 2)).toBe(page)
+    expect(loadPage).toHaveBeenCalledWith('https://www.youtube.com/@test', 2)
+  })
+})
+
+describe('抖音分页', () => {
+  type DySource = Extract<PagedSource, { type: 'dy' }>
+  const source = (cursor: string): DySource => ({ type: 'dy', url: 'https://www.douyin.com/collection/700000000000000009', cursor, account: 'acc' })
+  const dy = (n: number): MediaItem => ({ key: `dy:${n}`, kind: 'douyin', title: `作品${n}`, index: n, cid: 0 })
+  const loadPage = vi.fn(async (from: DySource, page: number, _o: object) => ({
+    items: [dy(page)],
+    page,
+    total: 4,
+    hasMore: page < 4,
+    ...(page === 3 ? {} : { next: source(`${from.cursor}>${page}`) })
+  }))
+  const paging = { source: source('c1'), page: 1, total: 4, hasMore: true }
+  const first: ParseResult = { kind: 'douyin', title: '合集', cover: '', groups: [{ id: 'dy', title: '合集', items: [dy(1)] }], defaultSelected: [], paging }
+
+  beforeEach(() => {
+    loadPage.mockClear()
+    setDouyin({ loadPage } as never)
+  })
+  afterEach(() => setDouyin(undefined as never))
+
+  it('交给抖音服务按后台请求取', async () => {
+    expect(await lists.loadPage(source('c1'), 2)).toMatchObject({ items: [dy(2)], page: 2 })
+    expect(loadPage).toHaveBeenCalledWith(source('c1'), 2, { background: true })
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it('往后翻时用上一页给的新游标；没给时沿用上一次的', async () => {
+    const r = await lists.loadAllPages(first, { interval: 0 })
+    expect(r.complete).toBe(true)
+    expect(r.result.groups[0].items.map((i) => i.key)).toEqual(['dy:1', 'dy:2', 'dy:3', 'dy:4'])
+    expect(loadPage.mock.calls.map(([s]) => s.cursor)).toEqual(['c1', 'c1>2', 'c1>2'])
+    expect(r.result.paging).toMatchObject({ page: 4, hasMore: false, source: { cursor: 'c1>2>4' } })
+  })
+
+  it('中途停下时结果里记着下一次该用的游标', async () => {
+    const r = await lists.loadAllPages(first, { maxItems: 2, interval: 0 })
+    expect(r.result.paging).toMatchObject({ page: 2, hasMore: true, source: { cursor: 'c1>2' } })
+  })
+
+  it('只查新内容时同样沿着新游标翻', async () => {
+    const items = await lists.loadHeadPages(paging, (item) => item.key === 'dy:4', 0)
+    expect(items.map((i) => i.key)).toEqual(['dy:2', 'dy:3'])
+    expect(loadPage.mock.calls.map(([s, page]) => [s.cursor, page])).toEqual([['c1', 2], ['c1>2', 3], ['c1>2', 4]])
   })
 })
 

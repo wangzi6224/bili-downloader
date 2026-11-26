@@ -2,6 +2,7 @@ import { t as tr, type Key } from '@shared/i18n'
 import { isVideoTask } from '@shared/watermark'
 import type { ProcessingInfo, TaskInfo } from '@shared/types'
 import { AuthExpiredError, BiliError, LoginRequiredError } from '../bili/http'
+import { DyCooldownError, DyLoginError, DyVerifyError } from '../douyin/errors'
 import { YtLoginRequiredError, YtRateLimitError } from '../youtube/errors'
 
 /** 给 agent 看的任务状态：运行中的几个阶段合成 running，等待自动重试的 error 单独算 retrying */
@@ -107,7 +108,7 @@ export const loginThenRetry = (): string => tr('mcp.loginThenRetry', { loginHint
 /** 多条提示连成一句；没有提示时是 undefined */
 export const joinHints = (hints: string[]): string | undefined => hints.join(tr('mcp.sep')) || undefined
 
-export type ErrorCode = 'NOT_LOGGED_IN' | 'RATE_LIMITED' | 'INVALID_ARGS' | 'NOT_FOUND' | 'FAILED'
+export type ErrorCode = 'NOT_LOGGED_IN' | 'RATE_LIMITED' | 'VERIFY_REQUIRED' | 'INVALID_ARGS' | 'NOT_FOUND' | 'FAILED'
 
 /** 带错误码和下一步提示的工具错误 */
 export class ToolError extends Error {
@@ -129,7 +130,7 @@ export const batchNotFound = (id: string): ToolError =>
 const RATE_LIMIT_CODES = new Set([412, -352, -412, -799])
 
 /** 风控或登录失效：接着请求只会继续失败，批量处理时应当先停下 */
-export const stopsBatch = (e: unknown): boolean => ['NOT_LOGGED_IN', 'RATE_LIMITED'].includes(describeError(e).code)
+export const stopsBatch = (e: unknown): boolean => ['NOT_LOGGED_IN', 'RATE_LIMITED', 'VERIFY_REQUIRED'].includes(describeError(e).code)
 
 export function describeError(e: unknown): { code: ErrorCode; message: string; hint?: string } {
   if (e instanceof ToolError) return { code: e.code, message: e.message, hint: e.hint }
@@ -143,5 +144,9 @@ export function describeError(e: unknown): { code: ErrorCode; message: string; h
   // YouTube：要登录（年龄限制、会员、私享）、机器人验证
   if (e instanceof YtLoginRequiredError) return { code: 'NOT_LOGGED_IN', message, hint: tr('mcpYoutube.loginHint') }
   if (e instanceof YtRateLimitError) return { code: 'RATE_LIMITED', message, hint: tr('mcpYoutube.rateLimitedHint') }
+  // 抖音：要手动验证、要登录、被限流
+  if (e instanceof DyVerifyError) return { code: 'VERIFY_REQUIRED', message, hint: tr('mcpDouyin.verifyHint') }
+  if (e instanceof DyLoginError) return { code: 'NOT_LOGGED_IN', message, hint: tr('mcpDouyin.loginHint') }
+  if (e instanceof DyCooldownError) return { code: 'RATE_LIMITED', message, hint: tr('mcpDouyin.rateLimitedHint') }
   return { code: 'FAILED', message }
 }

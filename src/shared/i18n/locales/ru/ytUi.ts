@@ -5,7 +5,7 @@ export default {
   siteBili: 'Bilibili',
   switchSite: 'Сменить платформу',
   siteSetting: 'Платформа интерфейса',
-  siteSettingHint: 'Переключает только интерфейс, загрузки на обеих платформах продолжаются. Сочетание клавиш ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: 'Меняется только интерфейс, загрузки продолжаются. ⌘⇧Y / Ctrl+Shift+Y переключает по очереди',
   otherRunning: {
     one: 'На этой платформе идёт {count} загрузка',
     few: 'На этой платформе идут {count} загрузки',

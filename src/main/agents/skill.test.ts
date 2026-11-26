@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { setLanguage } from '@shared/i18n'
-import { installedSkillVersion, removeSkill, SKILL_DESCRIPTION, SKILL_NAMES, skillMarkdown, writeSkill, YT_SKILL_DESCRIPTION, YT_SKILL_NAME, ytSkillMarkdown } from './skill'
+import { installedSkillVersion, removeSkill, SKILL_DESCRIPTION, SKILL_NAMES, skillMarkdown, writeSkill, YT_SKILL_DESCRIPTION, YT_SKILL_NAME, ytSkillMarkdown, DY_SKILL_DESCRIPTION, DY_SKILL_NAME, dySkillMarkdown } from './skill'
 
 let root: string
 beforeEach(() => (root = mkdtempSync(join(tmpdir(), 'skill-'))))
@@ -103,7 +103,7 @@ describe('YouTube skill', () => {
     for (const word of ['YouTube 下载', '油管', 'Shorts', 'youtu.be', 'youtube_*', 'download YouTube videos', 'transcripts']) {
       expect(YT_SKILL_DESCRIPTION).toContain(word)
     }
-    expect(SKILL_NAMES).toEqual(['bili-downloader', 'youtube-downloader'])
+    expect(SKILL_NAMES).toEqual(['bili-downloader', 'youtube-downloader', 'douyin-downloader'])
   })
 
   it('frontmatter 合法，带名称、描述、生成者和版本；正文是 YouTube 的流程和排障', () => {
@@ -156,3 +156,35 @@ describe('YouTube skill', () => {
     expect(installedSkillVersion(root, YT_SKILL_NAME)).toBeUndefined()
   })
 })
+
+describe('抖音 skill', () => {
+  it('description 不超过 1024 字符，抖音的常见说法都在里面', () => {
+    expect(DY_SKILL_DESCRIPTION.length).toBeLessThanOrEqual(1024)
+    for (const word of ['抖音下载', '分享口令', 'v.douyin.com', 'douyin_*', '图文', '无水印', 'Douyin']) {
+      expect(DY_SKILL_DESCRIPTION).toContain(word)
+    }
+  })
+
+  it('frontmatter 合法；正文是抖音的流程和排障', () => {
+    const md = dySkillMarkdown('2.0.0')
+    const fm = frontmatter(md)
+    expect(fm.name).toBe(DY_SKILL_NAME)
+    expect(JSON.parse(fm.description)).toBe(DY_SKILL_DESCRIPTION)
+    expect(md).toContain('douyin_download_batch')
+    expect(md).toContain('douyin_open_verification')
+  })
+
+  it('和主 skill 一起写入、一起删除；用户自己的同名 skill 不动', () => {
+    const file = join(root, DY_SKILL_NAME, 'SKILL.md')
+    writeSkill(root, '1.0.0')
+    expect(installedSkillVersion(root, DY_SKILL_NAME)).toBe('1.0.0')
+    removeSkill(root)
+    expect(existsSync(file)).toBe(false)
+    mkdirSync(join(root, DY_SKILL_NAME), { recursive: true })
+    writeFileSync(file, '---\nname: mine\n---\n')
+    writeSkill(root, '1.0.0')
+    removeSkill(root)
+    expect(readFileSync(file, 'utf8')).toBe('---\nname: mine\n---\n')
+  })
+})
+

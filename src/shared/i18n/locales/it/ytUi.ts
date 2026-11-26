@@ -5,7 +5,7 @@ export default {
   siteBili: 'Bilibili',
   switchSite: 'Cambia piattaforma',
   siteSetting: 'Piattaforma dell’interfaccia',
-  siteSettingHint: 'Cambia solo l’interfaccia, i download di entrambe le piattaforme continuano. Scorciatoia ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: 'Cambia solo l’interfaccia; i download continuano. ⌘⇧Y / Ctrl+Shift+Y alterna le piattaforme',
   otherRunning: '{count} download in corso su questa piattaforma',
   placeholder: 'Incolla un link di YouTube: video, Shorts, playlist, canale, YouTube Music',
   clipboardLink: 'Link di YouTube negli appunti',

@@ -10,6 +10,7 @@ export default {
   kindCheese: 'Corso',
   kindAudio: 'Audio',
   kindYoutube: 'YouTube',
+  kindDouyin: 'Douyin',
   sources: { one: '{count} fonte', other: '{count} fonti' },
   loadedOf: 'Caricati {count} / {total} elementi',
   totalItems: { one: '{count} elemento in totale', other: '{count} elementi in totale' },

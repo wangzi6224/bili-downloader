@@ -1,10 +1,11 @@
+import { definitions as douyinDefinitions, dyOptionsOut, type DouyinMcpDeps } from './douyinTools'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { setLanguage } from '@shared/i18n'
 import { DICTS } from '@shared/i18n/locales'
-import { DEFAULT_OPTIONS, normalizeOptions, DEFAULT_YT_OPTIONS } from '@shared/options'
+import { DEFAULT_OPTIONS, normalizeOptions, DEFAULT_YT_OPTIONS, DEFAULT_DY_OPTIONS } from '@shared/options'
 import type { AccountState, AuthState, BiliAccount, MediaItem, ParseResult, Settings } from '@shared/types'
 import { fakeWatermark, FakeQueue, makeTask, mediaItem, WM_REGION } from '../../test/fakeQueue'
 import { activeScope, authScope, inAuthScope, setActiveScope } from '../auth/scope'
@@ -24,6 +25,7 @@ const fs = await import('node:fs')
 const { statfs } = await import('node:fs/promises')
 const { AuthExpiredError, BiliError, LoginRequiredError } = await import('../bili/http')
 const { McpTools } = await import('./tools')
+const { DyCooldownError, DyLoginError, DyVerifyError } = await import('../douyin/errors')
 type Lookup = import('../bili/lookup').BiliLookup
 type LoginFlow = import('./loginFlow').LoginFlow
 type LoginSnapshot = import('./loginFlow').LoginSnapshot
@@ -140,6 +142,12 @@ beforeEach(() => {
       concurrency: 2,
       defaults: { ...DEFAULT_OPTIONS, yt: { ...DEFAULT_YT_OPTIONS } },
       autoUpdate: true
+    },
+    douyin: {
+      downloadDir: join(dir, 'dy'),
+      defaultQn: 0,
+      concurrency: 1,
+      defaults: { ...DEFAULT_OPTIONS, subtitle: false, dy: { ...DEFAULT_DY_OPTIONS } }
     }
   } as Settings
   tools = makeTools()
@@ -1146,6 +1154,12 @@ describe('设置', () => {
         watermark: 'off'
       },
       ui_platform: 'bili',
+      douyin: {
+        download_dir: join(dir, 'dy'),
+        concurrency: 1,
+        default_quality: 0,
+        defaults: dyOptionsOut(settings.douyin.defaults)
+      },
       youtube: {
         download_dir: join(dir, 'yt'),
         concurrency: 2,
@@ -1540,11 +1554,11 @@ describe('按平台区分（B站 / YouTube）', () => {
     const defs = tools.definitions()
     const props = (name: string) => defs.find((d) => d.name === name)!.inputSchema.properties as Record<string, any>
     for (const name of ['list_tasks', 'control_tasks', 'list_batches', 'list_download_history', 'list_parse_history', 'remove_watermark']) {
-      expect(props(name).platform).toMatchObject({ type: 'string', enum: ['bili', 'youtube'] })
+      expect(props(name).platform).toMatchObject({ type: 'string', enum: ['bili', 'youtube', 'douyin'] })
     }
     expect(props('get_status').platform).toBeUndefined()
     expect(props('update_settings').platform).toBeUndefined()
-    expect(props('update_settings').ui_platform).toMatchObject({ enum: ['bili', 'youtube'] })
+    expect(props('update_settings').ui_platform).toMatchObject({ enum: ['bili', 'youtube', 'douyin'] })
     expect(Object.keys(props('update_settings').youtube.properties)).toEqual(['download_dir', 'concurrency', 'default_quality', 'auto_update', 'defaults'])
     expect(defs.some((d) => d.name.startsWith('youtube_'))).toBe(false)
   })
@@ -1576,7 +1590,8 @@ describe('按平台区分（B站 / YouTube）', () => {
     r = await data('get_status')
     expect(r.queue_by_platform).toEqual([
       expect.objectContaining({ platform: 'bili', total: 1, queued: 1 }),
-      expect.objectContaining({ platform: 'youtube', total: 2, queued: 1, done: 1 })
+      expect.objectContaining({ platform: 'youtube', total: 2, queued: 1, done: 1 }),
+      expect.objectContaining({ platform: 'douyin', total: 0 })
     ])
     expect(r.youtube_hint).toContain('youtube_get_status')
   })
@@ -1599,7 +1614,7 @@ describe('按平台区分（B站 / YouTube）', () => {
     expect((await data('list_batches', { platform: 'youtube' })).batches.map((b: { batch_id: string }) => b.batch_id)).toContain(first.batch_id)
     expect((await data('list_batches', { platform: 'youtube' })).total).toBe(2)
     expect((await data('list_batches', { platform: 'bili' })).total).toBe(1)
-    expect(await error('list_batches', { platform: 'douyin' })).toMatchObject({ code: 'INVALID_ARGS' })
+    expect(await error('list_batches', { platform: 'tiktok' })).toMatchObject({ code: 'INVALID_ARGS' })
   })
 
   it('list_tasks 按平台筛选；非法的 platform 报错', async () => {
@@ -1659,7 +1674,7 @@ describe('按平台区分（B站 / YouTube）', () => {
       expect(deps.updateSettings).toHaveBeenCalledWith({ uiSite: 'youtube' })
       expect(r.settings.ui_platform).toBe('youtube')
       expect(r.effects).toEqual({ ui_platform: '立即生效' })
-      expect(await error('update_settings', { ui_platform: 'douyin' })).toMatchObject({ code: 'INVALID_ARGS' })
+      expect(await error('update_settings', { ui_platform: 'tiktok' })).toMatchObject({ code: 'INVALID_ARGS' })
     })
 
     it('youtube：只改传了的字段，defaults 按 YouTube 选项解析', async () => {
@@ -1700,5 +1715,239 @@ describe('按平台区分（B站 / YouTube）', () => {
     history = [plain(1).key]
     const r = await data('download_batch', { url: 'x', ids: [plain(1).key, 'ugc:BV9:9'] })
     expect(r).toMatchObject({ batch_id: null, unknown_ids: ['ugc:BV9:9'] })
+  })
+})
+
+describe('抖音工具接入 McpTools', () => {
+  const dyId = (n: number) => `700000000000000000${n}`
+  const dyItem = (n: number) => mediaItem(`dy:${dyId(n)}`, { kind: 'douyin', dyId: dyId(n), cid: 0 })
+  const dyAccount = { id: 'dyacc', name: '示例账号', addedAt: 1, status: 'ready' as const }
+  let dyService: { parse: Mock; target: Mock; aweme: Mock; remember: Mock }
+
+  /** 假的抖音依赖：只看 McpTools 有没有把 douyin_* 交过去，各工具本身在 douyinTools.test.ts */
+  const dyDeps = (over: Partial<DouyinMcpDeps> = {}): DouyinMcpDeps => ({
+    service: () => dyService as unknown as ReturnType<DouyinMcpDeps['service']>,
+    api: () => ({ searchVideos: vi.fn(), searchUsers: vi.fn(), comments: vi.fn(), replies: vi.fn() }),
+    accounts: { snapshot: () => ({ current: 'dyacc', accounts: [dyAccount] }), select: vi.fn(), remove: vi.fn() },
+    controller: { status: () => [], login: vi.fn(), importBrowser: vi.fn(), listBrowsers: () => [], verify: vi.fn() },
+    confirmRemove: vi.fn(),
+    queue,
+    settings: () => settings,
+    downloadedKeys: () => history,
+    ...over
+  })
+  /** 只需要工具定义和队列提示，YouTube 工具不会真的被调用 */
+  const noYoutube = {} as NonNullable<import('./tools').McpDeps['youtube']>
+
+  beforeEach(() => {
+    dyService = {
+      parse: vi.fn(),
+      target: vi.fn(),
+      aweme: vi.fn(async (id: string) => ({ aweme_id: id, desc: `示例作品 ${id.slice(-1)}`, video: { play_addr: { url_list: ['https://cdn.example.com/v.mp4'] } } })),
+      remember: vi.fn()
+    }
+  })
+
+  describe('工具列表', () => {
+    it('没有 douyin 依赖时没有 douyin_* 工具，调用时报没有这个工具', async () => {
+      expect(tools.definitions().some((d) => d.name.startsWith('douyin_'))).toBe(false)
+      expect(await error('douyin_get_status')).toMatchObject({ code: 'NOT_FOUND', message: '没有这个工具：douyin_get_status' })
+    })
+
+    it('有 douyin 依赖时工具列表末尾追加 14 个 douyin_* 工具，不加账号和平台参数', () => {
+      tools = makeTools({ douyin: dyDeps() })
+      const defs = tools.definitions()
+      expect(defs).toHaveLength(23 + 14)
+      expect(defs.slice(0, 23).some((d) => d.name.startsWith('douyin_'))).toBe(false)
+      expect(defs.slice(23)).toEqual(douyinDefinitions())
+      expect(defs[23].name).toBe('douyin_get_status')
+    })
+
+    it('两个平台都有时 youtube_* 在前、douyin_* 在后', () => {
+      tools = makeTools({ youtube: noYoutube, douyin: dyDeps() })
+      const names = tools.definitions().map((d) => d.name)
+      expect(names).toHaveLength(23 + 15 + 14)
+      expect(names.slice(23, 38).every((n) => n.startsWith('youtube_'))).toBe(true)
+      expect(names.slice(38).every((n) => n.startsWith('douyin_'))).toBe(true)
+    })
+
+    it('update_settings 多了 douyin 段', () => {
+      const props = tools.definitions().find((d) => d.name === 'update_settings')!.inputSchema.properties as Record<string, any>
+      expect(props.douyin).toMatchObject({ type: 'object', additionalProperties: false })
+      expect(Object.keys(props.douyin.properties)).toEqual(['download_dir', 'concurrency', 'default_quality', 'defaults'])
+      expect(props.douyin.properties.concurrency).toMatchObject({ minimum: 1, maximum: 3 })
+    })
+  })
+
+  describe('调用分发', () => {
+    it('douyin_* 交给抖音工具处理，不进 B站的账号作用域', async () => {
+      tools = makeTools({ douyin: dyDeps() })
+      const r = await data('douyin_get_status')
+      expect(r).toMatchObject({ login: { logged_in: true, account_id: 'dyacc' }, download_dir: settings.douyin.downloadDir })
+      expect(r.account_mid).toBeUndefined()
+      expect(deps.authState).not.toHaveBeenCalled()
+      expect(await error('douyin_switch_account', { account_id: 'nope' })).toMatchObject({ code: 'NOT_FOUND' })
+    })
+
+    it('抖音的验证、登录、限流错误按 MCP 的错误格式返回', async () => {
+      tools = makeTools({ douyin: dyDeps() })
+      const url = `https://www.douyin.com/video/${dyId(1)}`
+      for (const [thrown, code] of [
+        [new DyVerifyError(), 'VERIFY_REQUIRED'],
+        [new DyLoginError(), 'NOT_LOGGED_IN'],
+        [new DyCooldownError(Date.now() + 60_000), 'RATE_LIMITED']
+      ] as const) {
+        dyService.parse.mockRejectedValueOnce(thrown)
+        expect(await error('douyin_parse_link', { url })).toEqual({ code, message: thrown.message, hint: expect.any(String) })
+      }
+      expect(await error('douyin_parse_link', {})).toMatchObject({ code: 'INVALID_ARGS' })
+    })
+
+    it('douyin_download_batch 用 McpTools 的批次：任务带上抖音账号，能查重、按平台列出和查状态', async () => {
+      tools = makeTools({ douyin: dyDeps() })
+      await data('download_batch', { url: 'x', all: true })
+      const args = { videos: [dyId(1), dyId(2)] }
+      const first = await data('douyin_download_batch', args)
+      expect(first).toMatchObject({ selected: 2, logged_in: true, dir: settings.douyin.downloadDir, batch_id: expect.any(String) })
+      expect(queue.enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'douyin', batchId: first.batch_id, dyAccount: 'dyacc' }))
+      expect(queue.list().filter((task) => task.item.kind === 'douyin').map((task) => task.item.key)).toEqual([`dy:${dyId(1)}`, `dy:${dyId(2)}`])
+
+      expect(await data('douyin_download_batch', args)).toMatchObject({ batch_id: first.batch_id, deduplicated: true })
+      expect((await data('douyin_download_batch', { ...args, request_id: 'dy1' })).deduplicated).toBeUndefined()
+      expect(await data('douyin_download_batch', { videos: [dyId(3)], request_id: 'dy1' })).toMatchObject({ deduplicated: true })
+
+      expect((await data('list_batches')).total).toBe(3)
+      expect((await data('list_batches', { platform: 'douyin' })).total).toBe(2)
+      expect((await data('list_batches', { platform: 'bili' })).total).toBe(1)
+      const status = await data('get_batch_status', { batch_id: first.batch_id })
+      expect(status.counts.total).toBe(2)
+      // 抖音下的是无水印版本，不提示识别水印
+      expect(status.watermark.hint).toBeUndefined()
+    })
+
+    it('list_tasks、control_tasks 按 douyin 平台筛选', async () => {
+      queue.add(makeTask('a'), makeTask('d', { item: dyItem(1) }))
+      expect((await data('list_tasks', { platform: 'douyin' })).tasks.map((t: { id: string }) => t.id)).toEqual(['d'])
+      await data('control_tasks', { action: 'pause', platform: 'douyin' })
+      expect(queue.pauseMany).toHaveBeenCalledWith(['d'])
+    })
+  })
+
+  describe('get_status', () => {
+    beforeEach(() => {
+      queue.add(makeTask('a'), makeTask('d', { item: dyItem(1), status: 'done' }), makeTask('e', { item: dyItem(2), status: 'waitingAuth' }))
+    })
+
+    it('有 douyin 依赖时按平台分组统计队列，并提示用 douyin_get_status', async () => {
+      tools = makeTools({ douyin: dyDeps() })
+      const r = await data('get_status')
+      expect(r.queue_by_platform).toEqual([
+        expect.objectContaining({ platform: 'bili', total: 1, queued: 1 }),
+        expect.objectContaining({ platform: 'youtube', total: 0 }),
+        expect.objectContaining({ platform: 'douyin', total: 2, done: 1, waiting_auth: 1 })
+      ])
+      expect(r.douyin_hint).toContain('douyin_get_status')
+      expect(r.youtube_hint).toBeUndefined()
+    })
+
+    it('只有 youtube 依赖时没有 douyin_hint；都没有时两个提示和分组都没有', async () => {
+      let r = await data('get_status')
+      expect([r.queue_by_platform, r.youtube_hint, r.douyin_hint]).toEqual([undefined, undefined, undefined])
+      tools = makeTools({ youtube: noYoutube })
+      r = await data('get_status')
+      expect(r.douyin_hint).toBeUndefined()
+      expect(r.youtube_hint).toContain('youtube_get_status')
+    })
+
+    it('douyin_hint 随界面语言变', async () => {
+      tools = makeTools({ douyin: dyDeps() })
+      setLanguage('en')
+      try {
+        expect((await data('get_status')).douyin_hint).toBe(DICTS.en.mcpDouyin.statusPointer)
+      } finally {
+        setLanguage('zh-CN')
+      }
+    })
+  })
+
+  describe('update_settings 的 douyin', () => {
+    const patched = () => vi.mocked(deps.updateSettings).mock.lastCall![0]
+
+    it('改传了的字段，defaults 按抖音选项解析', async () => {
+      const target = join(dir, 'dy-new')
+      const r = await data('update_settings', {
+        douyin: { download_dir: target, concurrency: '3', default_quality: 100_000, defaults: { container: 'mkv', live_photos: false } }
+      })
+      expect(statSync(target).isDirectory()).toBe(true)
+      expect(Object.keys(patched())).toEqual(['douyin'])
+      expect(patched().douyin).toMatchObject({ downloadDir: target, concurrency: 3, defaultQn: 100_000 })
+      expect(patched().douyin!.defaults).toMatchObject({ container: 'mkv', subtitle: false, dy: { live: false, music: true, hdr: false } })
+      expect(patched().douyin!.defaults).not.toHaveProperty('qn')
+      expect(r.settings.douyin).toMatchObject({ download_dir: target, concurrency: 3, default_quality: 100_000, defaults: { container: 'mkv', live_photos: false } })
+      expect(r.effects).toEqual({ douyin: '立即生效' })
+    })
+
+    it('只传一项时其他保持原样，不改动当前设置对象', async () => {
+      settings.douyin.defaults = { ...settings.douyin.defaults, nfo: true, dy: { live: false, music: true, hdr: true } }
+      const before = settings.douyin
+      const copy = structuredClone(before)
+
+      await data('update_settings', { douyin: { default_quality: 0 } })
+      expect(patched().douyin).toEqual(copy)
+      await data('update_settings', { douyin: { concurrency: 2 } })
+      expect(patched().douyin).toEqual({ ...copy, concurrency: 2 })
+      await data('update_settings', { douyin: { defaults: { music: false } } })
+      expect(patched().douyin!.defaults).toMatchObject({ nfo: true, dy: { live: false, music: false, hdr: true } })
+      expect(before).toEqual(copy)
+    })
+
+    it('空对象和空目录不改变任何字段', async () => {
+      const copy = structuredClone(settings.douyin)
+      await data('update_settings', { douyin: {} })
+      expect(patched().douyin).toEqual(copy)
+      await data('update_settings', { douyin: { download_dir: '' } })
+      expect(patched().douyin).toEqual(copy)
+    })
+
+    it('可以和其他设置一起改', async () => {
+      const r = await data('update_settings', { ui_platform: 'douyin', youtube: { concurrency: 1 }, douyin: { concurrency: 2 } })
+      expect(Object.keys(r.effects)).toEqual(['ui_platform', 'youtube', 'douyin'])
+      expect(r.settings).toMatchObject({ ui_platform: 'douyin', youtube: { concurrency: 1 }, douyin: { concurrency: 2 } })
+    })
+
+    it('不是对象时报错', async () => {
+      for (const v of ['x', 1, null, [1]]) {
+        expect(await error('update_settings', { douyin: v })).toEqual({ code: 'INVALID_ARGS', message: 'douyin 应该是对象' })
+      }
+      expect(deps.updateSettings).not.toHaveBeenCalled()
+    })
+
+    it('不认识的字段报错，并列出可用字段', async () => {
+      expect(await error('update_settings', { douyin: { concurrency: 2, auto_update: true, foo: 1 } })).toMatchObject({
+        code: 'INVALID_ARGS',
+        message: expect.stringMatching(/auto_update, foo.*download_dir, concurrency, default_quality, defaults/)
+      })
+      expect(deps.updateSettings).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['并发太小', { concurrency: 0 }],
+      ['并发太大', { concurrency: 4 }],
+      ['画质为负', { default_quality: -1 }],
+      ['画质超过原画', { default_quality: 100_001 }],
+      ['画质不是整数', { default_quality: '最高' }],
+      ['选项取值不对', { defaults: { container: 'webm' } }],
+      ['选项有不认识的字段', { defaults: { subtitle: true } }],
+      ['选项不是对象', { defaults: 'x' }],
+      ['目录不是绝对路径', { download_dir: 'relative' }],
+      ['目录不是字符串', { download_dir: 5 }]
+    ])('%s时报错，不保存', async (_name, douyin) => {
+      expect(await error('update_settings', { douyin })).toMatchObject({ code: 'INVALID_ARGS' })
+      expect(deps.updateSettings).not.toHaveBeenCalled()
+    })
+
+    it('没传任何设置时，提示里列出 douyin', async () => {
+      expect(await error('update_settings', {})).toMatchObject({ message: expect.stringContaining('douyin') })
+    })
   })
 })

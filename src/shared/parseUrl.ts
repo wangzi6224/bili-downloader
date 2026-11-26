@@ -1,5 +1,6 @@
 import { t, type Key } from './i18n'
 import type { MediaItem } from './types'
+import { isDyText } from './douyinUrl'
 
 export type Target =
   | { type: 'short'; url: string }
@@ -80,7 +81,8 @@ function urlOf(raw: string): URL | undefined {
 /** 从粘贴内容（可能是带标题的分享文案）中识别出要下载的对象 */
 export function parseInput(input: string): Target | null {
   const text = input.trim()
-  if (!text) return null
+  // 抖音链接里的长串可能碰巧像 BV 号、av 号，先让开
+  if (!text || isDyText(text)) return null
   if (/^(稍后再看|watchlater)$/i.test(text)) return { type: 'watchlater' }
   if (/^每周必看$/.test(text)) return { type: 'weekly' }
   if (/^排行榜$/.test(text)) return { type: 'rank', slug: 'all' }

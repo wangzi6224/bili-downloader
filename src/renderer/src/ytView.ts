@@ -2,7 +2,7 @@
 import { t } from '@shared/i18n'
 import { KIND_TYPE_LABEL, renderTemplate, type NamingTemplates } from '@shared/naming'
 import { DEFAULT_YT_OPTIONS } from '@shared/options'
-import { siteOf } from '@shared/site'
+import { siteOf, SITES } from '@shared/site'
 import type {
   DownloadOptions,
   MediaGroup,
@@ -31,12 +31,10 @@ export const recordsOfSite = <T extends Pick<ParseRecord, 'kind'>>(records: T[],
 
 /** 各平台正在下载和排队的任务数：侧栏角标、另一个平台的提示用 */
 export function activeCounts(tasks: TaskInfo[]): Record<Site, number> {
-  const counts: Record<Site, number> = { bili: 0, youtube: 0 }
+  const counts = Object.fromEntries(SITES.map((site) => [site, 0])) as Record<Site, number>
   for (const task of tasks) if (ACTIVE.has(task.status) || task.status === 'queued') counts[siteOf(task)]++
   return counts
 }
-
-export const otherSite = (site: Site): Site => (site === 'bili' ? 'youtube' : 'bili')
 
 /** 粘贴的内容：多个 YouTube 链接批量解析，一个就直接解析 */
 export function classifyYtPaste(text: string): { type: 'batch'; inputs: string[] } | { type: 'single' } | { type: 'none' } {

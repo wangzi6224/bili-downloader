@@ -166,7 +166,9 @@ export function UrlInput() {
     submit(input)
   }
 
-  useEffect(() => api.onParseProgress((p) => set({ progress: p })), [set])
+  useEffect(() => api.onParseProgress((p) => {
+    if (!p.site || p.site === 'bili') set({ progress: p })
+  }), [set])
 
   // 启动和窗口回到前台时，如果剪贴板里有新的 B站链接就提示
   useEffect(() => {

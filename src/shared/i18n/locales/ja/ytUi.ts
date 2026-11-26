@@ -5,7 +5,7 @@ export default {
   siteBili: 'ビリビリ',
   switchSite: 'プラットフォームを切り替え',
   siteSetting: '表示するプラットフォーム',
-  siteSettingHint: '画面だけを切り替えます。両方のダウンロードはそのまま続きます。ショートカット ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: '画面だけが切り替わり、各プラットフォームのダウンロードは継続します。⌘⇧Y / Ctrl+Shift+Y で順に切り替え',
   otherRunning: 'こちらでダウンロード中のタスク：{count} 件',
   placeholder: 'YouTube のリンクを貼り付け：動画、Shorts、再生リスト、チャンネル、YouTube Music',
   clipboardLink: 'クリップボードに YouTube のリンクがあります',

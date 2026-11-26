@@ -8,6 +8,7 @@ export default {
   kindCheese: '课程',
   kindAudio: '音频',
   kindYoutube: 'YouTube',
+  kindDouyin: '抖音',
   sources: '{count} 个来源',
   loadedOf: '已加载 {count} / {total} 项',
   totalItems: '共 {count} 项',

@@ -15,6 +15,7 @@ export default {
   varCid: 'cid',
   varEpId: '애니메이션 회차 ID',
   varType: '유형(영상 / 애니메이션·영화·드라마)',
+  varId: '게시물 ID',
   empty: '템플릿은 비워 둘 수 없습니다',
   nested: '선택 구간 <…>은 중첩할 수 없습니다',
   extraClose: '> 가 하나 더 있습니다',

@@ -1,7 +1,8 @@
 // 平台之间的差异都按 Record<Site, …> 写成表：新增平台时漏掉哪一处，类型检查就在哪一处报错
+import { dyVideoUrl } from './douyinUrl'
 import type { MediaItem, MediaKind, Settings, Site } from './types'
 
-type ItemRef = Pick<MediaItem, 'kind' | 'ytId'>
+type ItemRef = Pick<MediaItem, 'kind' | 'ytId' | 'dyId'>
 
 interface SiteInfo {
   /** 下载记录键的前缀；B站的键没有统一前缀（BV 号、ep、cheese 等） */
@@ -16,6 +17,9 @@ interface SiteInfo {
   /** 这个平台自己的同时下载上限（另受总上限限制） */
   concurrency: (s: Settings) => number
 }
+
+/** 抖音作品的下载记录键 */
+export const dyKey = (id: string): string => `dy:${id}`
 
 /** YouTube 视频的下载记录键：只到视频级，没有分P */
 export const ytKey = (id: string): string => `yt:${id}`
@@ -37,6 +41,14 @@ const INFO: Record<Site, SiteInfo> = {
     downloadDir: (s) => s.youtube.downloadDir,
     dirPatch: (s, downloadDir) => ({ youtube: { ...s.youtube, downloadDir } }),
     concurrency: (s) => s.youtube?.concurrency ?? s.concurrency
+  },
+  douyin: {
+    keyPrefix: 'dy:',
+    itemUrl: (item) => (item.dyId ? dyVideoUrl(item.dyId) : undefined),
+    nfo: { type: 'douyin', id: (item) => item.dyId ?? item.key },
+    downloadDir: (s) => s.douyin.downloadDir,
+    dirPatch: (s, downloadDir) => ({ douyin: { ...s.douyin, downloadDir } }),
+    concurrency: (s) => s.douyin?.concurrency ?? s.concurrency
   }
 }
 
@@ -45,7 +57,7 @@ export const SITES = Object.keys(INFO) as readonly Site[]
 
 export const isSite = (v: unknown): v is Site => typeof v === 'string' && Object.hasOwn(INFO, v)
 
-const KIND_SITE: Record<MediaKind, Site> = { ugc: 'bili', pgc: 'bili', cheese: 'bili', audio: 'bili', youtube: 'youtube' }
+const KIND_SITE: Record<MediaKind, Site> = { ugc: 'bili', pgc: 'bili', cheese: 'bili', audio: 'bili', youtube: 'youtube', douyin: 'douyin' }
 
 /** 条目类型属于哪个平台；认不出的（损坏的旧数据）按 B站 */
 export const siteOfKind = (kind: MediaKind): Site => KIND_SITE[kind] ?? 'bili'

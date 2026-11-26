@@ -5,7 +5,7 @@ export default {
   siteBili: 'Bilibili',
   switchSite: 'प्लेटफ़ॉर्म बदलें',
   siteSetting: 'इंटरफ़ेस प्लेटफ़ॉर्म',
-  siteSettingHint: 'सिर्फ़ इंटरफ़ेस बदलता है, दोनों तरफ़ के डाउनलोड चलते रहते हैं। शॉर्टकट ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: 'केवल इंटरफ़ेस बदलता है; सभी डाउनलोड जारी रहते हैं। ⌘⇧Y / Ctrl+Shift+Y से क्रम में बदलें',
   otherRunning: { one: 'इस प्लेटफ़ॉर्म पर {count} डाउनलोड जारी है', other: 'इस प्लेटफ़ॉर्म पर {count} डाउनलोड जारी हैं' },
   placeholder: 'YouTube लिंक पेस्ट करें: वीडियो, Shorts, प्लेलिस्ट, चैनल, YouTube Music',
   clipboardLink: 'क्लिपबोर्ड में YouTube लिंक है',

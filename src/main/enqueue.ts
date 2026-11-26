@@ -32,6 +32,7 @@ export async function prepareEnqueueItems(items: MediaItem[], ytAccount?: string
  * 列表里的视频先查出分P，失效的跳过并返回提示。
  */
 export function makeEnqueue(manager: DownloadManager) {
+  // 抖音条目不需要展开（列表里拿到的就是完整信息），expandLazy 只处理标了 lazy 的 B站条目
   return async (req: EnqueueRequest, beforeQueue?: () => void): Promise<string | undefined> => {
     const { items, note } = await prepareEnqueueItems(req.items, req.ytAccount)
     beforeQueue?.()

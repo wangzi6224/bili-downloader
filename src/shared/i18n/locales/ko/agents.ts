@@ -46,5 +46,7 @@ export default {
     '- MCP 서비스가 꺼져 있다는 오류: 사용자에게 {appName} > 설정 > AI 어시스턴트에서 “MCP 서비스 켜기”를 켜 달라고 합니다.\n' +
     '- bili-downloader 도구가 아예 보이지 않음: 사용자에게 {appName} > 설정 > AI 어시스턴트에서 지금 쓰는 AI 어시스턴트의 “설치”를 누르고 다시 시작해 달라고 합니다.',
   ytSkillIntro: '{appName}(이 컴퓨터에서 실행)으로 YouTube 영상, Shorts, 재생목록, 채널, YouTube Music을 다운로드하고, 영상 검색과 자막·댓글 읽기도 합니다. 앱이 열려 있고 “설정 → AI 어시스턴트”에서 서비스가 켜져 있어야 합니다. YouTube를 처음 사용할 때 YouTube 구성 요소(yt-dlp)가 자동으로 다운로드됩니다.',
-  ytSkillTroubleshootBody: '- 구성 요소 업데이트가 필요하다고 나옴: youtube_update_engine을 호출합니다.\n- 로봇이 아닌지 확인을 요구하거나 회원 전용 / 연령 제한 영상을 받을 수 없음: youtube_start_login으로 YouTube 로그인을 가져옵니다. 브라우저를 읽을 때 시스템이 권한을 요청할 수 있으니 사용자에게 허용해 달라고 합니다.\n- 중국 본토에서는 YouTube에 접속하려면 프록시가 필요합니다: 사용자에게 앱의 “설정 → 네트워크 및 고급”에서 프록시를 설정해 달라고 합니다(HTTP와 SOCKS 지원).\n- 자동 번역 자막은 YouTube가 요청을 자주 제한하므로, 받을 수 없으면 잠시 후 다시 시도하거나 직접 만든 자막으로 바꿉니다.'
+  ytSkillTroubleshootBody: '- 구성 요소 업데이트가 필요하다고 나옴: youtube_update_engine을 호출합니다.\n- 로봇이 아닌지 확인을 요구하거나 회원 전용 / 연령 제한 영상을 받을 수 없음: youtube_start_login으로 YouTube 로그인을 가져옵니다. 브라우저를 읽을 때 시스템이 권한을 요청할 수 있으니 사용자에게 허용해 달라고 합니다.\n- 중국 본토에서는 YouTube에 접속하려면 프록시가 필요합니다: 사용자에게 앱의 “설정 → 네트워크 및 고급”에서 프록시를 설정해 달라고 합니다(HTTP와 SOCKS 지원).\n- 자동 번역 자막은 YouTube가 요청을 자주 제한하므로, 받을 수 없으면 잠시 후 다시 시도하거나 직접 만든 자막으로 바꿉니다.',
+  dySkillIntro: '이 컴퓨터의 {appName}로 Douyin 동영상, 사진 게시물, 모음, 크리에이터 게시물을 받고 검색, 상세 정보, 댓글을 볼 수 있습니다. 앱을 열고 “설정 → AI 도우미”에서 서비스를 켜야 합니다. Douyin에는 자막과 AI 요약이 없습니다.',
+  dySkillTroubleshootBody: '- VERIFY_REQUIRED: douyin_open_verification을 호출해 사용자가 창에서 인증하게 하고 반복 재시도하지 마세요.\n- RATE_LIMITED: 몇 분 기다리세요.\n- 로그인이 필요하면 douyin_start_login으로 QR 코드를 스캔하게 하세요.\n- 대량 작업은 인증이 쉽게 발생하니 적당히 제출하세요.'
 }

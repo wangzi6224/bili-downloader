@@ -20,6 +20,10 @@ import { AdvancedSettings } from './AdvancedSettings'
 import { AgentIntegrations } from './AgentIntegrations'
 import { AccountSettings } from './AccountControls'
 import { OptionsEditor } from './OptionsEditor'
+import { SITES } from '@shared/site'
+import { siteName, SITE_TEXT } from '../sites'
+import { DyAccountSettings } from './DyAccounts'
+import { DyConcurrencyRow, DyDirRow, DyFormatSettings } from './DySettings'
 import { YtAccountSettings } from './YtAccounts'
 import { YtConcurrencyRow, YtDirRow, YtFormatSettings } from './YtSettings'
 import { Button, fieldCls, Group, Input, PageHeader, rich, Row, Segmented, Select, Switch } from './ui'
@@ -218,6 +222,8 @@ export function SettingsPage() {
               <Group title={t('settings.storage')}>
                 {site === 'youtube' ? (
                   <YtDirRow />
+                ) : site === 'douyin' ? (
+                  <DyDirRow />
                 ) : (
                   <>
                     <Row label={t('settings.downloadDir')} hint={<span className="break-all">{s.downloadDir}</span>}>
@@ -239,7 +245,7 @@ export function SettingsPage() {
                 <Row label={t('ytUi.siteSetting')} hint={t('ytUi.siteSettingHint')}>
                   <Segmented
                     value={site}
-                    options={[{ value: 'bili' as const, label: t('ytUi.siteBili') }, { value: 'youtube' as const, label: 'YouTube' }]}
+                    options={SITES.map((value) => ({ value, label: siteName(value, t) }))}
                     onChange={(next) => void switchSite(next)}
                   />
                 </Row>
@@ -281,7 +287,7 @@ export function SettingsPage() {
                 <Row label={t('settings.notify')} hint={t('settings.notifyHint')}>
                   <Switch checked={s.notify} onChange={(notify) => updateSettings({ notify })} />
                 </Row>
-                <Row label={t('settings.clipboard')} hint={t(site === 'youtube' ? 'ytUi.clipboardHint' : 'settings.clipboardHint')}>
+                <Row label={t('settings.clipboard')} hint={t(SITE_TEXT[site].clipboardHint)}>
                   <Switch checked={s.clipboardWatch} onChange={(clipboardWatch) => updateSettings({ clipboardWatch })} />
                 </Row>
               </Group>
@@ -321,6 +327,7 @@ export function SettingsPage() {
               <div ref={accountSection} className="flex flex-col gap-6">
                 <AccountSettings />
                 <YtAccountSettings />
+                <DyAccountSettings />
               </div>
             </>
           )}
@@ -365,6 +372,7 @@ export function SettingsPage() {
                   <span className="text-xs text-muted">KB/s</span>
                 </Row>
                 {site === 'youtube' && <YtConcurrencyRow />}
+                {site === 'douyin' && <DyConcurrencyRow />}
                 <Row label={t('settings.autoRetry')} hint={t('settings.autoRetryHint')}>
                   <Select value={s.autoRetry} onChange={(e) => updateSettings({ autoRetry: Number(e.target.value) })}>
                     {[0, 3, 5, 10, 20].map((n) => (
@@ -385,7 +393,7 @@ export function SettingsPage() {
                   </Select>
                 </Row>
               </Group>
-              {site === 'bili' && <Group title={t('settings.danmakuGroup')}>
+              {site !== 'youtube' && <Group title={t('settings.danmakuGroup')}>
                 <Row label={t('settings.danmakuStyle')} hint={t('settings.danmakuStyleHint')} wide>
                   <div className="flex flex-wrap items-center gap-5 text-[13px]">
                     <label className="flex items-center gap-2">
@@ -433,6 +441,7 @@ export function SettingsPage() {
           )}
 
           {tab === 'format' && site === 'youtube' && <YtFormatSettings />}
+          {tab === 'format' && site === 'douyin' && <DyFormatSettings />}
           {tab === 'format' && site === 'bili' && (
             <>
               <Group>

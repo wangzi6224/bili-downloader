@@ -3,9 +3,9 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import { isLanguageSetting, t } from '@shared/i18n'
 import { DEFAULT_TEMPLATES, validateTemplate } from '@shared/naming'
-import { DEFAULT_OPTIONS, DEFAULT_YT_OPTIONS, normalizeOptions, normalizeYtOptions } from '@shared/options'
+import { DEFAULT_DY_OPTIONS, DEFAULT_OPTIONS, DEFAULT_YT_OPTIONS, normalizeDyOptions, normalizeOptions, normalizeYtOptions } from '@shared/options'
 import { isSite } from '@shared/site'
-import type { CodecPref, Settings, YoutubeSettings } from '@shared/types'
+import type { CodecPref, DouyinSettings, Settings, YoutubeSettings } from '@shared/types'
 import { readJson, writeJson } from './store'
 
 function defaults(): Settings {
@@ -38,6 +38,13 @@ function defaults(): Settings {
       concurrency: 2,
       defaults: { ...DEFAULT_OPTIONS, yt: { ...DEFAULT_YT_OPTIONS } },
       autoUpdate: true
+    },
+    douyin: {
+      downloadDir: join(app.getPath('downloads'), 'Douyin'),
+      defaultQn: 0,
+      concurrency: 1,
+      // 抖音没有字幕
+      defaults: { ...DEFAULT_OPTIONS, subtitle: false, dy: { ...DEFAULT_DY_OPTIONS } }
     }
   }
 }
@@ -54,6 +61,18 @@ function normalizeYoutube(saved: Partial<YoutubeSettings> | undefined, d: Youtub
     concurrency: clamp(y.concurrency, 1, 5),
     defaults: { ...opts, yt: normalizeYtOptions(y.defaults?.yt) },
     autoUpdate: y.autoUpdate !== false
+  }
+}
+
+/** 抖音设置：补齐缺省字段并把取值收进范围 */
+function normalizeDouyin(saved: Partial<DouyinSettings> | undefined, d: DouyinSettings): DouyinSettings {
+  const y = { ...d, ...saved }
+  const { qn: _qn, ...opts } = normalizeOptions({ ...y.defaults })
+  return {
+    downloadDir: typeof y.downloadDir === 'string' && y.downloadDir ? y.downloadDir : d.downloadDir,
+    defaultQn: Math.max(0, Math.round(y.defaultQn) || 0),
+    concurrency: clamp(y.concurrency, 1, 3),
+    defaults: { ...opts, dy: normalizeDyOptions(y.defaults?.dy) }
   }
 }
 
@@ -91,7 +110,8 @@ function migrate(saved: Partial<Settings> & LegacySettings, d: Settings): Settin
     mcp: { ...d.mcp, ...saved.mcp },
     language: isLanguageSetting(saved.language) ? saved.language : d.language,
     uiSite: isSite(saved.uiSite) ? saved.uiSite : d.uiSite,
-    youtube: normalizeYoutube(saved.youtube, d.youtube)
+    youtube: normalizeYoutube(saved.youtube, d.youtube),
+    douyin: normalizeDouyin(saved.douyin, d.douyin)
   }
 }
 
@@ -117,6 +137,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   if (!isSite(next.uiSite)) next.uiSite = prev.uiSite
   // 只改了其中几项时，其余的保持原样
   if (patch.youtube) next.youtube = normalizeYoutube({ ...prev.youtube, ...patch.youtube }, prev.youtube)
+  if (patch.douyin) next.douyin = normalizeDouyin({ ...prev.douyin, ...patch.douyin }, prev.douyin)
   if (patch.defaults) {
     const { qn: _qn, ...opts } = normalizeOptions(patch.defaults)
     next.defaults = opts

@@ -34,13 +34,14 @@ import { aiModel } from './watermark/ai'
 import { inspectWatermark, requireVideoTask } from './watermark/manual'
 import { initOrphans } from './watermark/orphans'
 import { estimateTime, initSpeed, speedRatio } from './watermark/speed'
-import { closeDecision, restoreBounds, type Bounds } from './windowState'
+import { closeDecision, quitWhenAllClosed, restoreBounds, type Bounds } from './windowState'
 import { getMainWindow, hideMainWindow, send, setMainWindow, showDialog } from './windows'
 import { applyLanguage } from './i18n'
 import { bridgeEntry, installBridge } from './agents/entry'
 import { Integrations } from './agents/integrations'
 import { agentEnv, AGENTS } from './agents/registry'
 import { getLanguage, t } from '@shared/i18n'
+import { setupDouyin } from './douyin/setup'
 import { setupYoutube } from './youtube/setup'
 import { YT_SITE } from './youtube/cookies'
 
@@ -59,7 +60,8 @@ const appIcon = (): string =>
 /** 各平台大图标（1024px）的文件名：打包后在资源目录，开发时在 build/ */
 const SITE_ICONS: Record<Site, { packaged: string; dev: string }> = {
   bili: { packaged: 'icon-bili.png', dev: 'icon.png' },
-  youtube: { packaged: 'icon-youtube.png', dev: 'icon-youtube.png' }
+  youtube: { packaged: 'icon-youtube.png', dev: 'icon-youtube.png' },
+  douyin: { packaged: 'icon-douyin.png', dev: 'icon-douyin.png' }
 }
 
 /** 界面平台对应的大图标：程序坞和窗口图标跟着界面平台换 */
@@ -83,6 +85,11 @@ function applySiteIcon(site: Site): void {
 
 /** 窗口隐藏到后台后从这里找回来。存着引用，免得被回收后图标消失 */
 let tray: Tray | undefined
+
+/** 主窗口开过又被关掉了 */
+let mainClosed = false
+/** 装配完抖音功能后换成关掉它的隐藏网页 */
+let closeHiddenPages = (): void => {}
 
 /** 上次的窗口位置；所在的显示器已经不在了就不用 */
 const savedBounds = (): Partial<Bounds> =>
@@ -117,7 +124,13 @@ function createWindow(): BrowserWindow {
     else if (decision === 'hide') hideMainWindow()
     else send('app:closeRequested')
   })
-  win.on('closed', () => setMainWindow(null))
+  mainClosed = false
+  win.on('closed', () => {
+    setMainWindow(null)
+    mainClosed = true
+    // 抖音的隐藏网页还开着的话，“所有窗口已关闭”不会触发
+    closeHiddenPages()
+  })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) shell.openExternal(url)
     return { action: 'deny' }
@@ -127,7 +140,8 @@ function createWindow(): BrowserWindow {
   win.on('focus', () => {
     void inAuthScope(activeScope(), async () => {
       const auth = await checkAuthThrottled(10 * 60_000)
-      if (!auth.loggedIn) requireLogin()
+      // 其他平台的主题下不弹 B站登录（B站任务真要登录时还会提示）
+      if (!auth.loggedIn && getSettings().uiSite === 'bili') requireLogin()
     }).catch(() => {})
   })
 
@@ -332,6 +346,8 @@ async function start(): Promise<void> {
 
   const enqueue = makeEnqueue(manager)
   const youtube = setupYoutube({ userData: app.getPath('userData'), settings: getSettings, manager, enqueue })
+  const douyin = setupDouyin({ userData: app.getPath('userData'), settings: getSettings, manager, enqueue, showWindow: showMainWindow })
+  closeHiddenPages = douyin.stop
   const subs = new SubscriptionManager((request) => manager.enqueue(request).created.length, accounts)
   subs.on('update', (list) => send('subs:update', list))
   subs.on('found', ({ title, count }: { title: string; count: number }) =>
@@ -414,6 +430,27 @@ async function start(): Promise<void> {
       settings: getSettings,
       downloadedKeys,
       proxy: () => ytProxy(getSettings())
+    },
+    douyin: {
+      service: () => douyin.service,
+      api: () => douyin.api,
+      accounts: douyin.accounts,
+      controller: douyin.controller,
+      // 移除账号要用户本人确认：AI 助手读到的评论里可能有注入的指令
+      confirmRemove: async (name) => {
+        const r = await showDialog({
+          type: 'question',
+          buttons: [t('mcpDouyin.confirmRemoveYes'), t('mcpDouyin.confirmRemoveNo')],
+          defaultId: 1,
+          cancelId: 1,
+          message: t('mcpDouyin.confirmRemoveTitle', { name }),
+          detail: t('mcpDouyin.confirmRemoveDetail')
+        })
+        return r.response === 0
+      },
+      queue: manager,
+      settings: getSettings,
+      downloadedKeys
     },
     watermark: {
       estimate: estimateTime,
@@ -514,6 +551,7 @@ async function start(): Promise<void> {
     void mcp.stop()
     updater.stop()
     youtube.stop()
+    douyin.stop()
   })
 
   endAccount = (mid, requester) => endAccountWith({
@@ -556,5 +594,5 @@ async function start(): Promise<void> {
 }
 
 app.on('window-all-closed', () => {
-  if (!isMac) app.quit()
+  if (quitWhenAllClosed({ isMac, mainClosed })) app.quit()
 })

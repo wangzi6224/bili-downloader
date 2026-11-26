@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeOptions } from '@shared/options'
 import type { EnqueueRequest, MediaItem, NewSubscription, ParseResult, Subscription } from '@shared/types'
-import { authScope, inAuthScope } from './auth/scope'
+import { authScope, inAuthScope, retirePartition } from './auth/scope'
 
 const h = vi.hoisted(() => ({
   userData: '',
@@ -915,5 +915,140 @@ describe('按账号检查', () => {
       throw new Error('x')
     })
     expect(await m.check('a')).toEqual([])
+  })
+})
+
+describe('多账号与中途变化', () => {
+  const ready = (run: unknown = async (_mid: number, fn: () => Promise<unknown>) => fn()) =>
+    new SubscriptionManager(enqueue, { status: () => 'ready', run: run as never })
+  const ascending = { source: { type: 'spaceSeason' as const, mid: 1, seasonId: 2 }, page: 1, total: 63, hasMore: true }
+
+  it('同一来源绑在别的账号上不算重复；没分账号时没绑账号的旧订阅算重复', async () => {
+    await m.add(newSub(), 1)
+    expect(saved()[0].accountMid).toBe(1)
+    await m.add(newSub(), 2)
+    expect(m.list()).toHaveLength(2)
+    m.replaceAll([sub({ input: newSub().input })])
+    await expect(m.add(newSub(), 5)).rejects.toThrow('已经订阅过这个来源')
+    m = ready()
+    m.replaceAll([sub({ input: newSub().input })])
+    expect(await m.add(newSub(), 5)).toHaveLength(2)
+  })
+
+  it('来源正在一键下载时不能添加订阅', async () => {
+    let finish!: (r: ParseResult) => void
+    h.resolveInput.mockReturnValue(new Promise<ParseResult>((r) => (finish = r)))
+    const quick = m.downloadSource({ input: newSub().input, defaults: OPTIONS, verifyAccount: vi.fn() })
+    await expect(m.add(newSub())).rejects.toThrow('此来源正在检查或准备下载')
+    finish(result([]))
+    await quick
+  })
+
+  it('没有要转的订阅时不保存；修改不存在的订阅什么都不变', () => {
+    m.replaceAll([sub({ input: 'watchlater', accountMid: 1 })])
+    const update = vi.fn()
+    m.on('update', update)
+    m.transferAccount(1, 2)
+    expect(update).not.toHaveBeenCalled()
+    expect(m.update('nobody', { enabled: false })[0].enabled).toBe(true)
+  })
+
+  it('分账号时一键下载只认本账号名下的订阅', async () => {
+    m = ready()
+    m.replaceAll([sub({ id: 'legacy', input: 'fav' })])
+    h.resolveInput.mockResolvedValue(result([item('a')]))
+    expect(await m.downloadSource({ input: 'fav', accountMid: 3, defaults: OPTIONS, verifyAccount: vi.fn() })).toMatchObject({ subscribed: true })
+    expect(m.list()).toHaveLength(2)
+  })
+
+  it('单集链接订阅正在检查时，从整部番剧一键下载报忙', async () => {
+    m = ready()
+    m.replaceAll([sub({ id: 'ep', input: 'ep55', kind: 'pgc', accountMid: 1 })])
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 1 } })
+    let finish!: (r: ParseResult) => void
+    h.resolveInput.mockReturnValueOnce(new Promise<ParseResult>((r) => (finish = r)))
+    const checking = m.check('ep')
+    h.resolveInput.mockResolvedValue({ ...result([item('pgc:55', { kind: 'pgc', epId: 55 })]), kind: 'pgc' })
+    await expect(m.downloadSource({ input: 'ss12', accountMid: 1, defaults: OPTIONS, verifyAccount: vi.fn() })).rejects.toThrow(
+      '此来源正在检查或准备下载'
+    )
+    finish(result([]))
+    await checking
+  })
+
+  it('列表没读完又没有原因时用通用说明', async () => {
+    const first = result([])
+    h.resolveInput.mockResolvedValue(first)
+    h.loadAllPages.mockResolvedValue({ result: first, complete: false })
+    await expect(m.downloadSource({ input: 'fav', defaults: OPTIONS, verifyAccount: vi.fn() })).rejects.toThrow('未能读完所有条目')
+  })
+
+  it('一键下载读取或准备期间订阅被删除：取消', async () => {
+    const subscription = sub({ id: 's', input: 'fav' })
+    h.resolveInput.mockResolvedValue(result([item('a')]))
+    const request = { input: 'fav', subscription, defaults: OPTIONS, verifyAccount: vi.fn() }
+    m.replaceAll([subscription])
+    h.loadAllPages.mockImplementationOnce(async (r) => {
+      m.remove('s')
+      return { result: r, complete: true }
+    })
+    await expect(m.downloadSource(request)).rejects.toThrow('此来源已不可用')
+    m.replaceAll([subscription])
+    h.prepare.mockImplementationOnce(async (items: MediaItem[]) => {
+      m.remove('s')
+      return { items, failed: [] }
+    })
+    await expect(m.downloadSource(request)).rejects.toThrow('此来源已不可用')
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('音频来源只下音频', async () => {
+    h.resolveInput.mockResolvedValue({ ...result([item('au:1', { kind: 'audio' })]), kind: 'audio' })
+    await m.downloadSource({ input: 'au1', defaults: OPTIONS, verifyAccount: vi.fn() })
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ options: { ...OPTIONS, output: 'audio' } }))
+  })
+
+  it('正序来源一键订阅时第一页和最后面的条目优先记为已见，并标记已补记末尾', async () => {
+    const first = { ...result([item('a'), item('b')]), paging: ascending }
+    h.resolveInput.mockResolvedValue(first)
+    h.loadAllPages.mockResolvedValue({ result: { ...first, ...result([item('a'), item('b'), item('c'), item('d')]), paging: ascending }, complete: true })
+    await m.downloadSource({ input: 'season', defaults: OPTIONS, verifyAccount: vi.fn() })
+    expect(saved()[0]).toMatchObject({ seen: ['a', 'b', 'd', 'c'], tailBaseline: true })
+  })
+
+  it('订阅账号的会话已经退出时不检查', async () => {
+    retirePartition('account-retired')
+    m = ready(async (mid: number, fn: () => Promise<unknown>) => inAuthScope({ partition: 'account-retired', mid, background: true }, fn))
+    m.replaceAll([sub({ id: 'a', input: 'a', accountMid: 7 })])
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 7 } })
+    await m.check('a')
+    expect(h.resolveInput).not.toHaveBeenCalled()
+  })
+
+  it('翻页期间账号换了：丢弃结果', async () => {
+    m.replaceAll([sub({ id: 'a', input: 'a', accountMid: 7, seen: ['old'] })])
+    h.auth.mockReturnValue({ loggedIn: true, user: { mid: 7 } })
+    h.resolveInput.mockResolvedValue({ ...result([item('new')]), paging: { source: { type: 'fav', mediaId: 1 }, page: 1, total: 9, hasMore: true } })
+    h.loadHeadPages.mockImplementationOnce(async () => {
+      h.auth.mockReturnValue({ loggedIn: true, user: { mid: 8 } })
+      return []
+    })
+    const [s] = await m.check('a')
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(s.seen).toEqual(['old'])
+  })
+
+  it('需要重建基线时只记为已见；准备期间订阅被删除时不入队', async () => {
+    m.replaceAll([sub({ id: 'a', input: 'a', resetBaseline: true })])
+    h.resolveInput.mockResolvedValue(result([item('x')]))
+    const [s] = await m.check('a')
+    expect(s).toMatchObject({ seen: ['x'], lastNew: 0, resetBaseline: undefined })
+    m.replaceAll([sub({ id: 'b', input: 'b' })])
+    h.prepare.mockImplementationOnce(async (items: MediaItem[]) => {
+      m.remove('b')
+      return { items, failed: [] }
+    })
+    expect(await m.check('b')).toEqual([])
+    expect(enqueue).not.toHaveBeenCalled()
   })
 })

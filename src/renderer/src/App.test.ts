@@ -19,6 +19,9 @@ vi.mock('./components/SelectionDialog', () => ({ SelectionDialog: dialog('Select
 vi.mock('./components/YtSelectionDialog', () => ({ YtSelectionDialog: dialog('YtSelectionDialog') }))
 vi.mock('./components/LoginDialog', () => ({ LoginDialog: marker('LoginDialog') }))
 vi.mock('./components/YtAccounts', () => ({ YtLoginDialog: marker('YtLoginDialog') }))
+vi.mock('./components/DyUrlInput', () => ({ DyUrlInput: marker('DyUrlInput') }))
+vi.mock('./components/DySelectionDialog', () => ({ DySelectionDialog: dialog('DySelectionDialog') }))
+vi.mock('./components/DyAccounts', () => ({ DyLoginDialog: marker('DyLoginDialog') }))
 vi.mock('./components/CloseDialog', () => ({ CloseDialog: marker('CloseDialog') }))
 vi.mock('./components/UpdateDialog', () => ({ UpdateDialog: marker('UpdateDialog') }))
 
@@ -40,7 +43,8 @@ const api = {
     accounts: vi.fn(),
     onAccountsChanged: on('ytAccounts'),
     engine: { status: vi.fn(), onStatus: on('ytEngine'), prepare: vi.fn() }
-  }
+  },
+  dy: { accounts: vi.fn(), status: vi.fn(), onAccountsChanged: on('dyAccounts'), onStatus: on('dyStatus') }
 }
 Object.defineProperty(window, 'api', { value: api, configurable: true })
 const { useStore } = await import('./store')
@@ -74,6 +78,8 @@ beforeEach(() => {
   api.update.state.mockResolvedValue({ current: '0.20.0' })
   api.yt.accounts.mockResolvedValue(ytAccounts)
   api.yt.engine.prepare.mockResolvedValue({ state: 'ready' })
+  api.dy.accounts.mockResolvedValue({ accounts: [] })
+  api.dy.status.mockResolvedValue([])
   api.settings.set.mockImplementation(async (patch: Partial<Settings>) => ({ ...useStore.getState().settings, ...patch }))
   m = mount()
 })
@@ -106,6 +112,16 @@ describe('启动', () => {
     expect(listeners.size).toBe(0)
     m = mount()
   })
+
+  it('读入抖音账号和状态，主进程推送时写进 store', async () => {
+    api.dy.accounts.mockResolvedValue({ current: 'd', accounts: [] })
+    api.dy.status.mockResolvedValue([{ account: null, state: 'verify' }])
+    await render()
+    expect(useStore.getState()).toMatchObject({ dyAccounts: { current: 'd' }, dyStatus: [{ state: 'verify' }] })
+    await act(async () => listeners.get('dyAccounts')!({ accounts: [] }))
+    await act(async () => listeners.get('dyStatus')!([]))
+    expect(useStore.getState()).toMatchObject({ dyAccounts: { accounts: [] }, dyStatus: [] })
+  })
 })
 
 describe('平台主题', () => {
@@ -118,13 +134,17 @@ describe('平台主题', () => {
     expect(brand()).toBe('bili')
   })
 
-  it('两个平台的输入框都挂着，只显示当前平台的', async () => {
+  it('各平台的输入框都挂着，只显示当前平台的', async () => {
     await render('bili')
     expect(mocked('UrlInput')?.parentElement?.className).toBe('contents')
     expect(mocked('YtUrlInput')?.parentElement?.className).toBe('hidden')
     await act(async () => useStore.setState({ settings: settings('youtube') }))
     expect(mocked('UrlInput')?.parentElement?.className).toBe('hidden')
     expect(mocked('YtUrlInput')?.parentElement?.className).toBe('contents')
+    expect(mocked('DyUrlInput')?.parentElement?.className).toBe('hidden')
+    await act(async () => useStore.setState({ settings: settings('douyin') }))
+    expect(mocked('DyUrlInput')?.parentElement?.className).toBe('contents')
+    expect(brand()).toBe('douyin')
   })
 })
 
@@ -151,11 +171,13 @@ describe('YouTube 组件', () => {
 })
 
 describe('快捷键', () => {
-  it('⌘⇧Y 在 B站和 YouTube 之间来回切换', async () => {
+  it('⌘⇧Y 按 B站、YouTube、抖音依次切换', async () => {
     await render('bili')
     await pressKey(document.body, 'Y', { metaKey: true, shiftKey: true })
     expect(api.settings.set).toHaveBeenLastCalledWith({ uiSite: 'youtube' })
     expect(brand()).toBe('youtube')
+    await pressKey(document.body, 'y', { metaKey: true, shiftKey: true })
+    expect(api.settings.set).toHaveBeenLastCalledWith({ uiSite: 'douyin' })
     await pressKey(document.body, 'y', { metaKey: true, shiftKey: true })
     expect(api.settings.set).toHaveBeenLastCalledWith({ uiSite: 'bili' })
     expect(brand()).toBe('bili')
@@ -199,6 +221,20 @@ describe('选择窗口按平台显示', () => {
     await act(async () => useStore.setState({ ytLoginOpen: true }))
     expect(mocked('YtLoginDialog')).not.toBeNull()
     expect(mocked('LoginDialog')).toBeNull()
+  })
+
+  it('抖音的选择窗口和登录窗口：只在抖音主题显示选择窗口，更新弹窗不打断它们', async () => {
+    await render('bili')
+    await act(async () => useStore.setState({ dyParse: result('抖音合集'), updateOpen: true }))
+    expect(mocked('DySelectionDialog')).toBeNull()
+    expect(mocked('UpdateDialog')).toBeNull()
+    await act(async () => useStore.setState({ settings: settings('douyin') }))
+    expect(mocked('DySelectionDialog')?.textContent).toBe('抖音合集')
+    await act(async () => useStore.setState({ dyParse: null, dyLoginOpen: true }))
+    expect(mocked('DyLoginDialog')).not.toBeNull()
+    expect(mocked('UpdateDialog')).toBeNull()
+    await act(async () => useStore.setState({ dyLoginOpen: false }))
+    expect(mocked('UpdateDialog')).not.toBeNull()
   })
 
   it('更新弹窗不打断 YouTube 的选择窗口和登录窗口', async () => {

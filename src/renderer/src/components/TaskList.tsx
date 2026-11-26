@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Gauge,
   KeyRound,
+  ShieldAlert,
   ListX,
   Loader2,
   Pause,
@@ -27,14 +28,16 @@ import {
 } from 'lucide-react'
 import type { Key } from '@shared/i18n'
 import { itemUrl } from '@shared/parseUrl'
-import { siteItemUrl } from '@shared/site'
+import { isDyText } from '@shared/douyinUrl'
+import { downloadDirOf, siteItemUrl, siteOf } from '@shared/site'
+import { SITE_TEXT } from '../sites'
 import { isVideoTask } from '@shared/watermark'
 import type { AiModelStatus, PowerMode, TaskInfo, TaskStatus, WatermarkSpeed } from '@shared/types'
 import { modelPct, modelText, WATERMARK_MODES, watermarkModeHint } from '../aiRefine'
 import { fmtSpeed, thumb } from '../format'
 import { useT } from '../i18n'
 import { WatermarkOff } from '../icons'
-import { api, sysText, updateSettings, useSite, useStore } from '../store'
+import { api, sysText, updateSettings, useSite, useStore, verifyDouyin } from '../store'
 import { tasksOfSite } from '../ytView'
 import { ACTIVE, buildEntries } from '../taskOrder'
 import {
@@ -113,13 +116,13 @@ function useNow(enabled: boolean): number {
   return now
 }
 
-/** 标题链接：在浏览器里打开 B站页面（主进程的 setWindowOpenHandler 交给系统浏览器） */
+/** 标题链接：在浏览器里打开原页面（主进程的 setWindowOpenHandler 交给系统浏览器） */
 function TitleLink({ href, children }: { href?: string; children: ReactNode }) {
   const t = useT()
   if (!href) return <>{children}</>
-  const youtube = /^https:\/\/(www|music)\.youtube\.com\//.test(href)
+  const title = isDyText(href) ? 'dyUi.openInBrowser' : /^https:\/\/(www|music)\.youtube\.com\//.test(href) ? 'ytUi.openInBrowser' : 'tasks.openInBrowser'
   return (
-    <a href={href} target="_blank" rel="noreferrer" title={t(youtube ? 'ytUi.openInBrowser' : 'tasks.openInBrowser')} className="hover:text-bili hover:underline">
+    <a href={href} target="_blank" rel="noreferrer" title={t(title)} className="hover:text-bili hover:underline">
       {children}
     </a>
   )
@@ -132,11 +135,15 @@ function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; n
   const retrying = task.status === 'error' && task.retryAt
   // 对已完成的视频手动去水印：状态还是已完成，界面上按处理中显示
   const manual = Boolean(task.processing?.manual)
+  // 等用户完成平台的安全验证，和等登录分开显示
+  const verifying = task.status === 'waitingAuth' && task.waitReason === 'verify'
   const s = retrying
     ? { label: 'tasks.statusRetrying' as Key, color: 'text-amber-600 dark:text-amber-400', icon: Timer, spin: false }
     : manual
       ? STATUS.processing
-      : STATUS[task.status]
+      : verifying
+        ? { label: 'dyUi.statusVerify' as Key, color: 'text-amber-600 dark:text-amber-400', icon: ShieldAlert, spin: false }
+        : STATUS[task.status]
   const finished = settled(task)
   const detail = taskDetail(task, now)
 
@@ -146,6 +153,8 @@ function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; n
     primary = <IconButton icon={X} label={t('tasks.cancelWatermark')} onClick={() => api.watermark.cancel(task.id)} />
   } else if (active || task.status === 'queued') {
     primary = <IconButton icon={Pause} label={t('tasks.pause')} onClick={() => api.download.pause(task.id)} />
+  } else if (verifying) {
+    primary = <IconButton icon={ShieldAlert} label={t('dyUi.verifyButton')} onClick={() => void verifyDouyin(task.dyAccount ?? null)} />
   } else if (task.status === 'paused' || task.status === 'waitingAuth') {
     primary = <IconButton icon={Play} label={t('tasks.resume')} onClick={() => api.download.resume(task.id)} />
   } else if (task.status === 'error') {
@@ -176,8 +185,8 @@ function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; n
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={task.relBase}>
           {task.qualityLabel && <Badge>{task.qualityLabel}</Badge>}
           {task.watermark?.applied && <Badge>{t('tasks.watermarked')}</Badge>}
-          {/* B站多账号的“发起账号”；YouTube 任务不用 B站账号 */}
-          {task.item.kind !== 'youtube' && <AccountOrigin mid={task.accountMid} />}
+          {/* B站多账号的“发起账号”；其他平台的任务不用 B站账号 */}
+          {siteOf(task) === 'bili' && <AccountOrigin mid={task.accountMid} />}
           {!nested && task.groupTitle !== task.title && <span className="truncate">{task.groupTitle}</span>}
         </div>
         {(active || task.status === 'paused' || retrying || manual) && (task.total > 0 || manual) && (
@@ -314,7 +323,7 @@ function GroupRow({
             {failedCount > 0
               ? t('tasks.groupStatsFailed', { count: tasks.length, done: done.length, failed: failedCount })
               : t('tasks.groupStats', { count: tasks.length, done: done.length })}
-            {first.item.kind !== 'youtube' && <>{' · '}<AccountOrigin mid={first.accountMid} /></>}
+            {siteOf(first) === 'bili' && <>{' · '}<AccountOrigin mid={first.accountMid} /></>}
           </div>
           {status !== 'done' && <Progress value={pct} muted={status !== 'downloading'} className="mt-2" />}
         </div>
@@ -529,7 +538,7 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
   const t = useT()
   const settings = useStore((s) => s.settings)!
   const site = useSite()
-  const dir = site === 'youtube' ? settings.youtube.downloadDir : settings.downloadDir
+  const dir = downloadDirOf(settings, site)
   const { speed, running, queued, done } = statusCounts(tasks)
 
   return (
@@ -563,20 +572,6 @@ function StatusBar({ tasks }: { tasks: TaskInfo[] }) {
   )
 }
 
-const KINDS: Key[] = [
-  'tasks.kindVideo',
-  'tasks.kindPart',
-  'tasks.kindCollection',
-  'tasks.kindBangumi',
-  'tasks.kindMovie',
-  'tasks.kindCourse',
-  'tasks.kindFavorites',
-  'tasks.kindUploader',
-  'tasks.kindShortLink'
-]
-
-const YT_KINDS: Key[] = ['ytUi.kindVideo', 'ytUi.kindShorts', 'ytUi.kindPlaylist', 'ytUi.kindChannel', 'ytUi.kindMusic', 'ytUi.kindLive']
-
 export function TaskList() {
   const t = useT()
   const site = useSite()
@@ -609,10 +604,10 @@ export function TaskList() {
   if (!tasks.length) {
     return (
       <div className="min-h-0 flex-1">
-        <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title={t(site === 'youtube' ? 'ytUi.emptyTitle' : 'tasks.emptyTitle')}>
-          <div>{t(site === 'youtube' ? 'ytUi.emptyHint' : 'tasks.emptyHint', { key: sysText.pasteKey })}</div>
+        <EmptyState art={<Logo size={64} className="mb-3 drop-shadow-md" />} title={t(SITE_TEXT[site].emptyTitle)}>
+          <div>{t(SITE_TEXT[site].emptyHint, { key: sysText.pasteKey })}</div>
           <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-            {(site === 'youtube' ? YT_KINDS : KINDS).map((k) => (
+            {SITE_TEXT[site].kinds.map((k) => (
               <Badge key={k}>{t(k)}</Badge>
             ))}
           </div>
@@ -633,11 +628,12 @@ export function TaskList() {
           icon={Search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t(site === 'youtube' ? 'ytUi.searchTasks' : 'tasks.search')}
+          placeholder={t(SITE_TEXT[site].searchTasks)}
           className="w-48"
         />
         <div className="flex-1" />
-        <WatermarkMenu />
+        {/* 抖音直接下无水印版本，没有 B站那样的角标可识别 */}
+        {site !== 'douyin' && <WatermarkMenu />}
         <PowerMenu running={running} />
         <IconButton icon={Pause} label={t('tasks.pauseAll')} disabled={!canPause} onClick={() => api.download.pauseMany(tasks.filter(pausable).map((task) => task.id))} />
         <IconButton icon={Play} label={t('tasks.resumeAll')} disabled={!canResume} onClick={() => api.download.resumeMany(tasks.filter(resumable).map((task) => task.id))} />

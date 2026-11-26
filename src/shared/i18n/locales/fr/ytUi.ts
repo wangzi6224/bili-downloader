@@ -5,7 +5,7 @@ export default {
   siteBili: 'Bilibili',
   switchSite: 'Changer de plateforme',
   siteSetting: 'Plateforme de l’interface',
-  siteSettingHint: 'Change seulement l’interface, les téléchargements des deux plateformes continuent. Raccourci ⌘⇧Y / Ctrl+Shift+Y',
+  siteSettingHint: 'Seule l’interface change ; les téléchargements continuent. ⌘⇧Y / Ctrl+Shift+Y fait défiler les plateformes',
   otherRunning: {
     one: '{count} téléchargement en cours sur cette plateforme',
     other: '{count} téléchargements en cours sur cette plateforme'

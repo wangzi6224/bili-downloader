@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState, ParseResult, Settings, SourceDetails, SourceRef } from '@shared/types'
 import {
   api,
+  dyParseBatch,
+  dyParseLink,
   openLogin,
   openSource,
   parseBatch,
   parseLink,
+  reopenOnSite,
   reopenParseRecord,
   reopenYtParseRecord,
   switchSite,
@@ -13,6 +16,7 @@ import {
   updateAuth,
   updateSettings,
   useStore,
+  verifyDouyin,
   ytParseBatch,
   ytParseLink
 } from './store'
@@ -24,7 +28,8 @@ const fakeApi = vi.hoisted(() => {
     sources: { open: vi.fn() },
     parse: vi.fn(),
     parseBatch: vi.fn(),
-    yt: { parse: vi.fn(), parseBatch: vi.fn() }
+    yt: { parse: vi.fn(), parseBatch: vi.fn() },
+    dy: { parse: vi.fn(), parseBatch: vi.fn(), verify: vi.fn() }
   }
   vi.stubGlobal('window', { api })
   return api
@@ -448,3 +453,65 @@ describe('其他 B站状态', () => {
     expect(useStore.getState()).toMatchObject({ source, sourceAccountMid: 7 })
   })
 })
+
+describe('抖音解析和验证', () => {
+  const dy = (extra: Partial<ParseResult> = {}): ParseResult => result({ kind: 'douyin', ...extra })
+
+  it('解析结果单独存放，失败链接汇总成提示', async () => {
+    fakeApi.dy.parse.mockResolvedValue(dy())
+    const pending = dyParseLink('链接')
+    expect(useStore.getState().dyParsing).toBe(true)
+    await pending
+    expect(useStore.getState()).toMatchObject({ dyParse: { kind: 'douyin' }, dyParsing: false, dyError: null, parse: null, ytParse: null })
+    fakeApi.dy.parseBatch.mockResolvedValue(dy({ failures: [{ input: 'a', error: '坏链接' }] }))
+    await dyParseBatch(['a', 'b'])
+    expect(useStore.getState().dyNotice).toContain('坏链接')
+  })
+
+  it('出错时记下原因；旧请求的结果和错误不覆盖新的', async () => {
+    fakeApi.dy.parse.mockRejectedValueOnce(new Error('打不开'))
+    await dyParseLink('a')
+    expect(useStore.getState()).toMatchObject({ dyError: '打不开', dyParsing: false })
+    const slow = deferred<ParseResult>()
+    const failing = deferred<ParseResult>()
+    fakeApi.dy.parse.mockReturnValueOnce(slow.promise).mockReturnValueOnce(failing.promise).mockResolvedValue(dy({ title: '新' }))
+    const first = dyParseLink('慢')
+    const second = dyParseLink('错')
+    await dyParseLink('新')
+    slow.resolve(dy({ title: '旧' }))
+    failing.reject(new Error('旧错误'))
+    await Promise.all([first, second])
+    expect(useStore.getState()).toMatchObject({ dyParse: { title: '新' }, dyError: null })
+  })
+
+  it('按平台重新打开记录', async () => {
+    useStore.setState({ view: 'history' })
+    fakeApi.dy.parse.mockResolvedValue(dy())
+    await reopenOnSite.douyin({ input: 'dy' })
+    expect(useStore.getState().view).toBe('downloads')
+    expect(fakeApi.dy.parse).toHaveBeenCalledWith('dy')
+    fakeApi.yt.parse.mockResolvedValue(result({ kind: 'youtube' }))
+    await reopenOnSite.youtube({ input: 'yt' })
+    expect(fakeApi.yt.parse).toHaveBeenCalledWith('yt')
+    fakeApi.parse.mockResolvedValue(result())
+    await reopenOnSite.bili({ input: 'bv' })
+    expect(fakeApi.parse).toHaveBeenCalledWith('bv')
+  })
+
+  it('验证：同时只开一个窗口，成功后更新状态，失败记下原因', async () => {
+    const waiting = deferred<never[]>()
+    fakeApi.dy.verify.mockReturnValue(waiting.promise)
+    useStore.setState({ dyStatus: [{ account: null, state: 'verify' }] })
+    const first = verifyDouyin(null)
+    await verifyDouyin(null)
+    expect(fakeApi.dy.verify).toHaveBeenCalledTimes(1)
+    expect(useStore.getState().dyVerifying).toBe(true)
+    waiting.resolve([])
+    await first
+    expect(useStore.getState()).toMatchObject({ dyStatus: [], dyVerifying: false })
+    fakeApi.dy.verify.mockRejectedValue(new Error('窗口已关闭'))
+    await verifyDouyin('a')
+    expect(useStore.getState()).toMatchObject({ dyError: '窗口已关闭', dyVerifying: false })
+  })
+})
+

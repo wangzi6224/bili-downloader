@@ -15,6 +15,7 @@ export default {
   varCid: 'cid',
   varEpId: 'アニメのエピソード ID',
   varType: '種類（動画 / アニメ・映画・ドラマ）',
+  varId: '投稿 ID',
   empty: 'テンプレートを空にすることはできません',
   nested: '省略可能部分 <…> は入れ子にできません',
   extraClose: '> が 1 つ多すぎます',

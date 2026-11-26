@@ -21,3 +21,10 @@ export function closeDecision(o: { quitting: boolean; crashed: boolean; action: 
   if (o.action === 'background') return 'hide'
   return 'ask'
 }
+
+/**
+ * 所有窗口都关了要不要退出。只有主窗口被关掉才退出：抖音的隐藏网页、登录窗口自己关掉时
+ * （后台启动时没有主窗口）应用要继续在托盘里运行
+ */
+export const quitWhenAllClosed = (o: { isMac: boolean; mainClosed: boolean }): boolean => !o.isMac && o.mainClosed
+

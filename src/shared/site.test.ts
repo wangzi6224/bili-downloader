@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  downloadDirOf, downloadDirPatch, isSite, siteConcurrency, siteItemUrl, siteNfoId, siteOf, siteOfKey, siteOfKind, SITES, ytKey, ytWatchUrl
+  downloadDirOf, downloadDirPatch, dyKey, isSite, siteConcurrency, siteItemUrl, siteNfoId, siteOf, siteOfKey, siteOfKind, SITES, ytKey, ytWatchUrl
 } from './site'
 import type { MediaItem, Settings } from './types'
 
@@ -12,7 +12,7 @@ describe('site', () => {
     expect(siteOf({ item: { kind: 'ugc' } })).toBe('bili')
   })
 
-  it('isSite 只认两个平台', () => {
+  it('isSite 只认列出的平台', () => {
     expect([isSite('bili'), isSite('youtube'), isSite('x'), isSite(undefined)]).toEqual([true, true, false, false])
   })
 
@@ -34,7 +34,7 @@ describe('site', () => {
   })
 
   it('平台顺序固定', () => {
-    expect(SITES).toEqual(['bili', 'youtube'])
+    expect(SITES).toEqual(['bili', 'youtube', 'douyin'])
   })
 
   it('下载目录和改目录的补丁按平台取', () => {
@@ -57,5 +57,36 @@ describe('site', () => {
     expect(siteNfoId(item({}))).toEqual({ type: 'bilibili', id: '7' })
     expect(siteNfoId(item({ kind: 'youtube', ytId: 'y1' }))).toEqual({ type: 'youtube', id: 'y1' })
     expect(siteNfoId(item({ kind: 'youtube' }))).toEqual({ type: 'youtube', id: 'k' })
+  })
+})
+
+describe('抖音', () => {
+  const item = (o: Partial<MediaItem> = {}): MediaItem => ({ key: 'dy:k', kind: 'douyin', title: 't', index: 1, cid: 0, ...o })
+
+  it('按条目类型和记录键认出抖音', () => {
+    expect(siteOfKind('douyin')).toBe('douyin')
+    expect(siteOf({ item: { kind: 'douyin' } })).toBe('douyin')
+    expect(isSite('douyin')).toBe(true)
+    expect(dyKey('700000000000000001')).toBe('dy:700000000000000001')
+    expect(siteOfKey(dyKey('700000000000000001'))).toBe('douyin')
+  })
+
+  it('原始地址是作品页；没有作品 id 时没有地址', () => {
+    expect(siteItemUrl(item({ dyId: '700000000000000001' }))).toBe('https://www.douyin.com/video/700000000000000001')
+    expect(siteItemUrl(item())).toBeUndefined()
+    expect(siteItemUrl({ kind: 'ugc', dyId: '700000000000000001' })).toBeUndefined()
+  })
+
+  it('NFO 唯一标识用作品 id，没有时用记录键', () => {
+    expect(siteNfoId(item({ dyId: '700000000000000001' }))).toEqual({ type: 'douyin', id: '700000000000000001' })
+    expect(siteNfoId(item())).toEqual({ type: 'douyin', id: 'dy:k' })
+  })
+
+  it('用自己的下载目录和同时下载上限，旧设置没有这一段时用总上限', () => {
+    const s = { concurrency: 5, douyin: { downloadDir: '/d', concurrency: 1 } } as Settings
+    expect(downloadDirOf(s, 'douyin')).toBe('/d')
+    expect(downloadDirPatch(s, 'douyin', '/n')).toEqual({ douyin: { downloadDir: '/n', concurrency: 1 } })
+    expect(siteConcurrency(s, 'douyin')).toBe(1)
+    expect(siteConcurrency({ concurrency: 4 } as Settings, 'douyin')).toBe(4)
   })
 })

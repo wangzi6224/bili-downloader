@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_OPTIONS, normalizeOptions, DEFAULT_YT_OPTIONS, normalizeYtOptions } from './options'
+import { DEFAULT_DY_OPTIONS, DEFAULT_OPTIONS, normalizeDyOptions, normalizeOptions, DEFAULT_YT_OPTIONS, normalizeYtOptions } from './options'
 import type { CodecPref } from './types'
 
 describe('normalizeOptions', () => {
@@ -89,5 +89,27 @@ describe('normalizeYtOptions', () => {
   it('normalizeOptions 带 yt 时一并规范化，没有时不加', () => {
     expect(normalizeOptions({}).yt).toBeUndefined()
     expect(normalizeOptions({ yt: { container: 'webm' } as never }).yt).toEqual({ ...DEFAULT_YT_OPTIONS, container: 'webm' })
+  })
+})
+
+describe('normalizeDyOptions', () => {
+  it('空的补齐默认值，返回新对象', () => {
+    const o = normalizeDyOptions()
+    expect(o).toEqual({ live: true, music: true, hdr: false })
+    expect(o).not.toBe(DEFAULT_DY_OPTIONS)
+  })
+
+  it('取值换成布尔值，丢掉不认识的字段', () => {
+    expect(normalizeDyOptions({ live: 0 as never, music: '' as never, hdr: 1 as never, extra: 1 } as never)).toEqual({
+      live: false,
+      music: false,
+      hdr: true
+    })
+    expect(normalizeDyOptions({ hdr: true })).toEqual({ live: true, music: true, hdr: true })
+  })
+
+  it('下载选项里带抖音部分时一起归一化，没带时不添加', () => {
+    expect(normalizeOptions({ dy: { live: false } as never }).dy).toEqual({ live: false, music: true, hdr: false })
+    expect(normalizeOptions({})).not.toHaveProperty('dy')
   })
 })

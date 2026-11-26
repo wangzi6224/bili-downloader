@@ -15,6 +15,7 @@ export default {
   varCid: 'cid',
   varEpId: 'Anime episode ID',
   varType: 'Type (Video / Anime & TV)',
+  varId: 'Post id',
   empty: 'The template can’t be empty',
   nested: 'Optional sections <…> can’t be nested',
   extraClose: 'Extra >',

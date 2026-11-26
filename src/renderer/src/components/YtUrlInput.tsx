@@ -154,7 +154,7 @@ export function YtUrlInput() {
   }
 
   useEffect(() => api.onParseProgress((p) => {
-    if (useStore.getState().ytParsing) set({ ytProgress: p })
+    if ((!p.site || p.site === 'youtube') && useStore.getState().ytParsing) set({ ytProgress: p })
   }), [set])
 
   // 窗口回到前台时，剪贴板里有新的 YouTube 链接就提示

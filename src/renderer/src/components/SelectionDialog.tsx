@@ -53,7 +53,8 @@ const KIND_TEXT: Record<ParseResult['kind'], Key> = {
   pgc: 'selection.kindPgc',
   cheese: 'selection.kindCheese',
   audio: 'selection.kindAudio',
-  youtube: 'selection.kindYoutube'
+  youtube: 'selection.kindYoutube',
+  douyin: 'selection.kindDouyin'
 }
 /** 自动加载全部分页时每页的间隔，避免触发风控 */
 const PAGE_INTERVAL = 1000

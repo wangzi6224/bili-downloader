@@ -108,7 +108,7 @@ describe('McpServer', () => {
     setLanguage('en')
     try {
       const init = (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).body
-      expect(init.result.instructions).toBe(`Local service of ${t('common.appName')}\n${t('mcpAccounts.instructions')}\n${t('mcpYoutube.instructions')}`)
+      expect(init.result.instructions).toBe(`Local service of ${t('common.appName')}\n${t('mcpAccounts.instructions')}\n${t('mcpYoutube.instructions')}\n${t('mcpDouyin.instructions')}`)
       await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
       expect(deps.definitions).toHaveBeenCalledTimes(1)
     } finally {

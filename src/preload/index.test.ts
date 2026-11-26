@@ -28,7 +28,7 @@ vi.mock('../main/auth/loginWindow', () => ({ openLoginWindow: vi.fn() }))
 vi.mock('../main/auth/session', () => ({ biliSession: vi.fn() }))
 vi.mock('../main/watermark/ai', () => ({ aiModel: () => ({ on: vi.fn() }), aiSessions: () => ({}) }))
 vi.mock('../main/bili/audio', () => ({ audioStreamInfo: vi.fn() }))
-vi.mock('../main/bili/http', () => ({ api: vi.fn() }))
+vi.mock('../main/bili/http', () => ({ api: vi.fn(), UnsupportedError: class extends Error {} }))
 vi.mock('../main/bili/lists', () => ({ expandLazy: vi.fn(), loadPage: vi.fn(), myFavFolders: vi.fn() }))
 vi.mock('../main/bili/playurl', () => ({ getPlayInfo: vi.fn(), streamInfoFromPlay: vi.fn() }))
 vi.mock('../main/bili/resolve', () => ({ resolveBatch: vi.fn(), resolveInput: vi.fn() }))
@@ -170,9 +170,11 @@ describe('preload', () => {
     registerIpc({ manager: {}, subs: {}, mcp: {}, agents: {}, updater: {}, enqueue: vi.fn() } as unknown as IpcDeps)
     const { registerYoutubeIpc } = await import('../main/youtube/setup')
     registerYoutubeIpc({ engine: {}, accounts: {}, service: {}, parseAndRecord: vi.fn(), enqueue: vi.fn() } as never)
+    const { registerDouyinIpc } = await import('../main/douyin/setup')
+    registerDouyinIpc({ controller: {}, accounts: {}, service: {}, enqueue: vi.fn() } as never)
 
     expect([...invoked].sort()).toEqual([...h.registered].sort())
-    expect(invoked.size).toBe(98)
+    expect(invoked.size).toBe(114)
     // 每个 api 函数各用一个频道，主进程也没有重复注册
     expect(invokers).toBe(invoked.size)
     expect(new Set(h.registered).size).toBe(h.registered.length)
@@ -183,6 +185,8 @@ describe('preload', () => {
       'auth:changed',
       'auth:required',
       'dl:update',
+      'dy:accountsChanged',
+      'dy:statusChanged',
       'history:downloadsChanged',
       'i18n:changed',
       'parse:progress',

@@ -15,11 +15,14 @@ import {
   Settings,
   type LucideIcon
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { t } from '@shared/i18n'
 import { thumb } from '../format'
 import { useT } from '../i18n'
+import { SITES } from '@shared/site'
 import type { Site } from '@shared/types'
+import { currentDyAccount } from '../dyView'
+import { siteName } from '../sites'
 import { api, openLogin, switchSite, useSite, useStore, type View } from '../store'
 import { updateEntry, type UpdateIcon } from '../viewLogic'
 import { activeCounts, currentYtAccount } from '../ytView'
@@ -157,7 +160,7 @@ function YtAccountCard() {
 }
 
 /**
- * 一键切换 B站 / YouTube：只换界面，下载和账号都不受影响。
+ * 一键切换平台：只换界面，下载和账号都不受影响。
  * 只有文字的分段控件，白色滑块平滑移动；另一边有任务在下载时文字旁边一个小圆点
  */
 function SiteSwitch() {
@@ -166,19 +169,17 @@ function SiteSwitch() {
   // 选择器不能每次返回新对象，否则 zustand 会认为状态一直在变、反复重渲染
   const tasks = useStore((s) => s.tasks)
   const counts = useMemo(() => activeCounts(tasks), [tasks])
-  const options: { value: Site; label: string }[] = [
-    { value: 'bili', label: t('ytUi.siteBili') },
-    { value: 'youtube', label: 'YouTube' }
-  ]
+  const options: { value: Site; label: string }[] = SITES.map((value) => ({ value, label: siteName(value, t) }))
   return (
     <div
       role="radiogroup"
       aria-label={t('ytUi.switchSite')}
-      className="no-drag relative mx-5 mb-4 grid grid-cols-2 rounded-[9px] bg-black/[.045] p-[3px] dark:bg-white/[.07]"
+      className="no-drag relative mx-3 mb-4 grid grid-cols-3 rounded-[9px] bg-black/[.045] p-[3px] dark:bg-white/[.07]"
     >
       <span
         aria-hidden="true"
-        className={`site-thumb pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-[7px] bg-elevated shadow-[0_0_0_0.5px_rgb(0_0_0/0.06),0_1px_2px_rgb(0_0_0/0.08)] dark:bg-white/[.14] dark:shadow-none ${site === 'youtube' ? 'translate-x-full' : 'translate-x-0'}`}
+        style={{ width: `calc((100% - 6px) / ${SITES.length})`, transform: `translateX(${SITES.indexOf(site) * 100}%)` }}
+        className="site-thumb pointer-events-none absolute inset-y-[3px] left-[3px] rounded-[7px] bg-elevated shadow-[0_0_0_0.5px_rgb(0_0_0/0.06),0_1px_2px_rgb(0_0_0/0.08)] dark:bg-white/[.14] dark:shadow-none"
       />
       {options.map((o) => {
         const on = site === o.value
@@ -194,10 +195,11 @@ function SiteSwitch() {
               const r = e.currentTarget.getBoundingClientRect()
               void switchSite(o.value, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
             }}
-            className={`relative z-10 flex h-[26px] items-center justify-center gap-1.5 text-xs tracking-[0.01em] transition-colors duration-200 ${on ? 'font-medium text-fg' : 'text-muted hover:text-fg'}`}
+            className={`relative z-10 flex h-[26px] min-w-0 items-center justify-center px-1 text-xs transition-colors duration-200 ${on ? 'font-medium text-fg' : 'text-muted hover:text-fg'}`}
           >
-            {o.label}
-            {other && <span aria-label={t('ytUi.otherRunning', { count: counts[o.value] })} className="size-[5px] rounded-full bg-bili" />}
+            <span className="truncate">{o.label}</span>
+            {/* 三格很窄：小圆点放在角上，不占文字的位置 */}
+            {other && <span aria-label={t('ytUi.otherRunning', { count: counts[o.value] })} className="absolute top-[3px] right-[3px] size-[5px] rounded-full bg-bili" />}
           </button>
         )
       })}
@@ -275,11 +277,78 @@ function Account() {
   )
 }
 
+/** 抖音主题下的账号卡片：当前抖音账号，点开切换或登录 */
+function DyAccountCard() {
+  const t = useT()
+  const snapshot = useStore((s) => s.dyAccounts)
+  const set = useStore((s) => s.set)
+  const current = currentDyAccount(snapshot)
+  const card = (onClick: () => void, open?: boolean) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className={current
+        ? 'flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover aria-expanded:bg-hover'
+        : 'flex w-full items-center gap-2.5 rounded-xl border border-line-strong bg-elevated/70 px-2.5 py-2 text-left shadow-xs hover:bg-elevated'}
+    >
+      {current?.avatar ? (
+        <img src={current.avatar} referrerPolicy="no-referrer" className="h-8 w-8 shrink-0 rounded-full ring-1 ring-black/5" alt="" />
+      ) : (
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${current?.status === 'expired' ? 'bg-amber-500/15 text-amber-600' : 'bg-bili/12 text-bili'}`}>
+          {current?.status === 'expired' ? <KeyRound size={15} strokeWidth={STROKE} /> : <LogIn size={15} strokeWidth={STROKE} />}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium">{current ? current.name : t('dyUi.sidebarLogin')}</div>
+        <div className="truncate text-[11px] text-muted">
+          {current ? (current.status === 'expired' ? t('ytUi.expired') : current.handle ?? t('dyUi.siteName')) : t('dyUi.sidebarLoginHint')}
+        </div>
+      </div>
+      {open !== undefined && <AccountChevron open={open} />}
+    </button>
+  )
+  if (!snapshot?.accounts.length) return card(() => set({ dyLoginOpen: true }))
+  return (
+    <Dropdown side="top" align="start" className="w-56" button={({ open, toggle }) => card(toggle, open)}>
+      {(close) => (
+        <>
+          {snapshot.accounts.map((a) => (
+            <MenuItem
+              key={a.id}
+              icon={a.id === snapshot.current ? CircleCheck : UserRound}
+              onClick={() => {
+                close()
+                void api.dy.selectAccount(a.id)
+              }}
+            >
+              {a.name}
+            </MenuItem>
+          ))}
+          <MenuItem icon={UserX} onClick={() => { close(); void api.dy.selectAccount() }}>
+            {t('ytUi.useNoAccount')}
+          </MenuItem>
+          <MenuItem icon={KeyRound} onClick={() => { close(); set({ dyLoginOpen: true }) }}>
+            {t('ytUi.addAccount')}
+          </MenuItem>
+          <MenuItem icon={Settings} onClick={() => { close(); set({ view: 'settings', showAccountSettings: true }) }}>
+            {t('accounts.manage')}
+          </MenuItem>
+        </>
+      )}
+    </Dropdown>
+  )
+}
+
+/** 各平台主题下侧栏底部的账号卡片 */
+const ACCOUNT_CARDS: Record<Site, () => ReactNode> = { bili: Account, youtube: YtAccountCard, douyin: DyAccountCard }
+
 export function Sidebar() {
   const t = useT()
   const site = useSite()
   const running = useStore((s) => activeCounts(s.tasks)[site])
   const version = useStore((s) => s.update?.current)
+  const AccountCard = ACCOUNT_CARDS[site]
 
   return (
     <aside className="flex w-[216px] shrink-0 flex-col">
@@ -289,9 +358,9 @@ export function Sidebar() {
         <Logo size={30} className="shrink-0 drop-shadow-sm" />
         <div>
           <div className="text-[15px] font-semibold tracking-tight">{t('common.appName')}</div>
-          {/* 先占好高度，拿到版本号时布局不跳；YouTube 主题下标出来 */}
+          {/* 先占好高度，拿到版本号时布局不跳；其他平台的主题下标出来 */}
           <div className="h-4 text-[11px] leading-4 text-muted tabular-nums">
-            {site === 'youtube' && <span className="font-medium text-bili-dark dark:text-bili">YouTube · </span>}
+            {site !== 'bili' && <span className="font-medium text-bili-dark dark:text-bili">{siteName(site, t)} · </span>}
             {version && `v${version}`}
           </div>
         </div>
@@ -308,7 +377,7 @@ export function Sidebar() {
         <NavItem view="settings" label={t('sidebar.settings')} icon={Settings} />
         {/* 账号单独成块，和上面的导航分开 */}
         <div className="mx-2.5 border-t border-line" />
-        {site === 'youtube' ? <YtAccountCard /> : <Account />}
+        <AccountCard />
       </div>
     </aside>
   )

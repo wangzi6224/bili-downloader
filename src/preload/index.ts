@@ -41,6 +41,26 @@ const api: BiliApi = {
     removeAccount: (id) => invoke('yt:removeAccount', id),
     checkAccount: (id) => invoke('yt:checkAccount', id)
   },
+  dy: {
+    parse: (input) => invoke('dy:parse', input),
+    parseMore: (source, page) => invoke('dy:parseMore', source, page),
+    parseBatch: (inputs) => invoke('dy:parseBatch', inputs),
+    streamInfo: (item) => invoke('dy:streamInfo', item),
+    enqueue: (req) => invoke('dy:enqueue', req),
+    accounts: () => invoke('dy:accounts'),
+    onAccountsChanged: on('dy:accountsChanged'),
+    login: () => invoke('dy:login'),
+    listBrowsers: (browserKey) => (browserKey === undefined ? invoke('dy:listBrowsers') : invoke('dy:listBrowsers', browserKey)),
+    importBrowser: (id) => invoke('dy:importBrowser', id),
+    importCookie: (text) => invoke('dy:importCookie', text),
+    selectAccount: (id) => (id === undefined ? invoke('dy:selectAccount') : invoke('dy:selectAccount', id)),
+    removeAccount: (id) => invoke('dy:removeAccount', id),
+    checkAccount: (id) => invoke('dy:checkAccount', id),
+    status: () => invoke('dy:status'),
+    onStatus: on('dy:statusChanged'),
+    verify: (account) => invoke('dy:verify', account),
+    lists: (category, cursor) => invoke('dy:lists', category, cursor)
+  },
   auth: {
     check: () => invoke('auth:check'),
     accounts: () => invoke('auth:accounts'),

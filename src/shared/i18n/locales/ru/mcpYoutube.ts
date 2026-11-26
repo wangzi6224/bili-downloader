@@ -74,8 +74,8 @@ export default {
   argLang: 'Язык субтитров, например en, zh-Hans, ja; если не указан, выбирается автоматически',
   argReplies: 'Сколько ответов прикладывать к каждому комментарию, по умолчанию 3',
   argProfile: 'id профиля браузера (из browsers в youtube_get_login_status)',
-  argPlatform: 'Только одна платформа: bili или youtube; если не указано — обе',
-  argUiPlatform: 'Платформа, показанная в интерфейсе: bili или youtube (влияет только на интерфейс, загрузки на обеих платформах продолжаются)',
+  argPlatform: 'Только одна платформа: bili, youtube или douyin; без параметра — все',
+  argUiPlatform: 'Платформа в интерфейсе: bili, youtube или douyin (только интерфейс)',
   argYoutubeSettings:
     'Настройки YouTube: download_dir, concurrency (одновременные загрузки), default_quality (0 — максимальное), auto_update, defaults (параметры загрузки по умолчанию)',
   optionsDesc:
@@ -88,7 +88,7 @@ export default {
   badOption: '{key} может быть только одним из: {allowed}',
   unknownOptions: 'Неизвестные поля: {keys}. Доступные: {allowed}',
   badVideo: 'Не удалось распознать видео: {input}. Передайте ссылку на видео YouTube или 11-символьный id',
-  badPlatform: 'platform может быть только bili или youtube',
+  badPlatform: 'platform должен быть bili, youtube или douyin',
   badYoutubeSettings: 'youtube должен быть объектом',
   notYoutube: 'Это не ссылка YouTube: {url}',
   pagedList:

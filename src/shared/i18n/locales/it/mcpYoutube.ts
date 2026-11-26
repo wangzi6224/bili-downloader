@@ -75,8 +75,8 @@ export default {
   argLang: 'Lingua dei sottotitoli, ad esempio en, zh-Hans, ja; scelta automaticamente se omessa',
   argReplies: 'Quante risposte includere per ogni commento, predefinito 3',
   argProfile: 'id del profilo del browser (da browsers in youtube_get_login_status)',
-  argPlatform: 'Solo una piattaforma: bili o youtube; entrambe se omesso',
-  argUiPlatform: 'Piattaforma mostrata nell’interfaccia: bili o youtube (riguarda solo l’interfaccia, i download di entrambe le piattaforme continuano)',
+  argPlatform: 'Solo una piattaforma: bili, youtube o douyin; tutte se omesso',
+  argUiPlatform: 'Piattaforma mostrata: bili, youtube o douyin (solo interfaccia)',
   argYoutubeSettings:
     'Impostazioni di YouTube: download_dir, concurrency (download simultanei), default_quality (0 per la massima), auto_update, defaults (opzioni di download predefinite)',
   optionsDesc:
@@ -89,7 +89,7 @@ export default {
   badOption: '{key} deve essere uno tra {allowed}',
   unknownOptions: 'Campi sconosciuti: {keys}. Disponibili: {allowed}',
   badVideo: 'Video non riconosciuto: {input}. Passa un link di un video di YouTube o un id di 11 caratteri',
-  badPlatform: 'platform deve essere bili o youtube',
+  badPlatform: 'platform deve essere bili, youtube o douyin',
   badYoutubeSettings: 'youtube deve essere un oggetto',
   notYoutube: 'Non è un link di YouTube: {url}',
   pagedList:

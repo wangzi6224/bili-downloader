@@ -109,6 +109,10 @@ describe('updateSettings', () => {
     expect(settings.updateSettings({ [key]: value })[key]).toBe(want)
   })
 
+  it('不认识的语言改回跟随系统', () => {
+    expect(settings.updateSettings({ language: 'xx' as never }).language).toBe('system')
+  })
+
   it('MCP 端口限制在 1024–65535', () => {
     const { mcp } = settings.getSettings()
     expect(settings.updateSettings({ mcp: { ...mcp, port: 80 } }).mcp.port).toBe(1024)
@@ -159,5 +163,53 @@ describe('YouTube 设置', () => {
     expect(next.youtube).toEqual({ ...before, concurrency: 1 })
     expect(settings.updateSettings({ uiSite: 'nope' as never }).uiSite).toBe('youtube')
     expect(saved().uiSite).toBe('youtube')
+  })
+})
+
+describe('抖音设置', () => {
+  it('默认下载到单独的目录，画质最高、同时 1 个；不下字幕，实况图和配乐一起下', () => {
+    const { douyin } = settings.getSettings()
+    expect(douyin).toMatchObject({ downloadDir: join(h.downloads, 'Douyin'), defaultQn: 0, concurrency: 1 })
+    expect(douyin.defaults).toMatchObject({ subtitle: false, dy: { live: true, music: true, hdr: false } })
+    expect(douyin.defaults).not.toHaveProperty('qn')
+  })
+
+  it('旧版设置文件没有抖音部分时补齐', async () => {
+    writeFileSync(file(), JSON.stringify({ concurrency: 3 }))
+    await restart()
+    expect(settings.getSettings().douyin).toMatchObject({ concurrency: 1, defaults: { subtitle: false, dy: { live: true } } })
+  })
+
+  it('坏掉的取值换成默认或收进范围', async () => {
+    writeFileSync(
+      file(),
+      JSON.stringify({ douyin: { downloadDir: 3, concurrency: 9, defaultQn: -5, defaults: { qn: 80, codec: 'hevc', dy: { live: 0, hdr: 'yes' } } } })
+    )
+    await restart()
+    const { douyin } = settings.getSettings()
+    expect(douyin).toMatchObject({ downloadDir: join(h.downloads, 'Douyin'), concurrency: 3, defaultQn: 0 })
+    expect(douyin.defaults.dy).toEqual({ live: false, music: true, hdr: true })
+    expect(douyin.defaults.codecOrder).toEqual(['hevc', 'avc', 'av1'])
+    expect(douyin.defaults).not.toHaveProperty('qn')
+    expect(douyin.defaults).not.toHaveProperty('codec')
+  })
+
+  it('画质取整，不是数字时按最高', () => {
+    const { douyin } = settings.getSettings()
+    expect(settings.updateSettings({ douyin: { ...douyin, defaultQn: 1079.6 } }).douyin.defaultQn).toBe(1080)
+    expect(settings.updateSettings({ douyin: { ...douyin, defaultQn: Number.NaN, downloadDir: '' } }).douyin).toMatchObject({
+      defaultQn: 0,
+      downloadDir: douyin.downloadDir
+    })
+  })
+
+  it('只改其中几项时其余保持；可以切换到抖音界面', () => {
+    const before = settings.updateSettings({ douyin: { downloadDir: '/tmp/dy-test' } as never }).douyin
+    expect(before.downloadDir).toBe('/tmp/dy-test')
+    const next = settings.updateSettings({ uiSite: 'douyin', douyin: { concurrency: 0 } as never })
+    expect(next.uiSite).toBe('douyin')
+    expect(next.douyin).toEqual({ ...before, concurrency: 1 })
+    expect(saved().douyin).toEqual(next.douyin)
+    expect(settings.updateSettings({ theme: 'dark' }).douyin).toBe(next.douyin)
   })
 })

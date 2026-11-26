@@ -16,11 +16,13 @@ afterPack: scripts/afterPack.cjs
 extraResources:
   - from: resources/ffmpeg/${platform}-${arch}
     to: ffmpeg
-  # 切换 B站 / YouTube 界面时换程序坞、窗口图标（1024px）
+  # 切换平台界面时换程序坞、窗口图标（1024px）
   - from: build/icon.png
     to: icon-bili.png
   - from: build/icon-youtube.png
     to: icon-youtube.png
+  - from: build/icon-douyin.png
+    to: icon-douyin.png
 npmRebuild: false
 # Electron 自带的语言包只留界面支持的语言（src/shared/i18n 的 LANGS）：原生菜单、右键菜单、文件对话框按它显示。
 # Chromium 缺语言包时退回英文，en 不能删；繁体中文系统界面用简体，zh_TW 保留给系统对话框

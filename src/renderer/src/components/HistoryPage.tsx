@@ -3,7 +3,9 @@ import { History, Search, Trash2, X } from 'lucide-react'
 import type { ParseRecord } from '@shared/types'
 import { ago, thumb } from '../format'
 import { useT } from '../i18n'
-import { api, reopenParseRecord, reopenYtParseRecord, useSite } from '../store'
+import { siteOf } from '@shared/site'
+import { siteName } from '../sites'
+import { api, reopenOnSite, useSite } from '../store'
 import { recordsOfSite } from '../ytView'
 import { AccountOrigin } from './AccountOrigin'
 import { Badge, Button, EmptyState, IconButton, Input, PageHeader } from './ui'
@@ -16,7 +18,7 @@ export function HistoryPage() {
   const [q, setQ] = useState('')
   // 只看当前平台的记录
   const records = useMemo(() => (all ? recordsOfSite(all, site) : null), [all, site])
-  const reopen = (r: ParseRecord): Promise<void> => (site === 'youtube' ? reopenYtParseRecord(r.input) : reopenParseRecord(r))
+  const reopen = (r: ParseRecord): Promise<void> => reopenOnSite[site](r)
 
   useEffect(() => {
     void api.history.parses().then(setAll)
@@ -76,7 +78,7 @@ export function HistoryPage() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] font-medium">{r.title}</div>
               <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                <Badge>{r.kind === 'youtube' ? 'YouTube' : r.kind === 'pgc' ? t('history.kindPgc') : t('history.kindVideo')}</Badge>
+                <Badge>{r.kind === 'youtube' || r.kind === 'douyin' ? siteName(siteOf(r), t) : r.kind === 'pgc' ? t('history.kindPgc') : t('history.kindVideo')}</Badge>
                 <span className="tabular-nums">{t('history.itemCount', { count: r.count })}</span>
                 <span>·</span>
                 <span>{ago(r.at, Date.now())}</span>

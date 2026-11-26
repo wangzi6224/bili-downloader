@@ -19,9 +19,11 @@ const render = (size) => new Resvg(svg, { fitTo: { mode: 'width', value: size } 
 
 writeFileSync(join(buildDir, 'icon.png'), render(1024))
 
-// YouTube 主题下的程序坞 / 窗口图标：切到 YouTube 界面时换上，切回 B站换回 icon.png
-const ytSvg = readFileSync(join(buildDir, 'icon-youtube.svg'))
-writeFileSync(join(buildDir, 'icon-youtube.png'), new Resvg(ytSvg, { fitTo: { mode: 'width', value: 1024 } }).render().asPng())
+// 其他平台主题下的程序坞 / 窗口图标：切到对应界面时换上，切回 B站换回 icon.png
+for (const site of ['youtube', 'douyin']) {
+  const siteSvg = readFileSync(join(buildDir, `icon-${site}.svg`))
+  writeFileSync(join(buildDir, `icon-${site}.png`), new Resvg(siteSvg, { fitTo: { mode: 'width', value: 1024 } }).render().asPng())
+}
 
 // 图标主题（hicolor）最大只有 512x512，electron-builder 按文件名的尺寸装进 /usr/share/icons/hicolor/<尺寸>/apps
 const linuxIcons = join(buildDir, 'icons')

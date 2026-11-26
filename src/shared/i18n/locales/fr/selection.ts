@@ -10,6 +10,7 @@ export default {
   kindCheese: 'Cours',
   kindAudio: 'Audio',
   kindYoutube: 'YouTube',
+  kindDouyin: 'Douyin',
   sources: { one: '{count} source', other: '{count} sources' },
   loadedOf: '{count} / {total} éléments chargés',
   totalItems: { one: '{count} élément', other: '{count} éléments au total' },

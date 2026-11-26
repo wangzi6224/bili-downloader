@@ -2,6 +2,7 @@ import { t } from '@shared/i18n'
 import { rankLabel } from '@shared/parseUrl'
 import type { MediaItem, PagedSource, PageResult, Paging, ParseResult } from '@shared/types'
 import { api, BiliError } from './http'
+import { douyin } from '../douyin/service'
 import { youtube } from '../youtube/service'
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -260,6 +261,8 @@ export async function loadPage(source: PagedSource, page: number): Promise<PageR
     }
     case 'yt':
       return youtube().loadPage(source.url, page)
+    case 'dy':
+      return douyin().loadPage(source, page, { background: true })
   }
 }
 

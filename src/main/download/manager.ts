@@ -24,6 +24,12 @@ import { uniquePath } from './filename'
 import { canEmbedCover } from './formats'
 import { mux } from './mux'
 
+/** B站以外的平台：账号记在任务各自的字段上 */
+type OtherSite = Exclude<Site, 'bili'>
+const ACCOUNT_FIELD = { youtube: 'ytAccount', douyin: 'dyAccount' } as const satisfies Record<OtherSite, keyof TaskInfo>
+/** 驱动锁定的格式记在任务的哪个字段上，续传时沿用 */
+const LOCK_FIELD: Partial<Record<Site, 'ytFormat' | 'dyFormat'>> = { youtube: 'ytFormat', douyin: 'dyFormat' }
+
 const RUNNING = new Set(['fetching', 'downloading', 'merging', 'extras', 'processing'])
 const SETTLED = new Set(['done', 'unsupported'])
 
@@ -175,18 +181,38 @@ export class DownloadManager extends EventEmitter {
     this.schedule()
   }
 
-  /** YouTube 账号有变化（导入了登录、切换了账号）：等待登录的 YouTube 任务换成当前账号重新排队 */
-  ytLoginChanged(account: string | undefined): void {
+  /** 某个平台的账号有变化（登录了、切换了账号）：这个平台等待中的任务换成当前账号重新排队 */
+  siteLoginChanged(site: OtherSite, account: string | undefined): void {
+    const field = ACCOUNT_FIELD[site]
     for (const task of this.tasks) {
-      if (siteOf(task) !== 'youtube' || task.status !== 'waitingAuth') continue
-      this.patch(task, { status: 'queued', error: undefined, ...(account ? { ytAccount: account } : {}) })
+      if (siteOf(task) !== site || task.status !== 'waitingAuth') continue
+      this.patch(task, { status: 'queued', error: undefined, waitReason: undefined, ...(account ? { [field]: account } : {}) })
     }
     this.schedule()
   }
 
-  /** 这个 YouTube 账号被删掉了：还没下完的任务改为不登录 */
+  /** 这个账号被删掉了：还没下完的任务改为不登录 */
+  siteAccountRemoved(site: OtherSite, account: string): void {
+    const field = ACCOUNT_FIELD[site]
+    for (const task of this.tasks) if (task[field] === account && task.status !== 'done') this.patch(task, { [field]: undefined })
+  }
+
+  /** 这个账号过了安全验证：因为要验证而等待的任务接着排队 */
+  siteVerified(site: OtherSite, account: string | null): void {
+    const field = ACCOUNT_FIELD[site]
+    for (const task of this.tasks) {
+      if (siteOf(task) !== site || task.status !== 'waitingAuth' || task.waitReason !== 'verify') continue
+      if ((task[field] ?? null) === account) this.patch(task, { status: 'queued', error: undefined, waitReason: undefined })
+    }
+    this.schedule()
+  }
+
+  ytLoginChanged(account: string | undefined): void {
+    this.siteLoginChanged('youtube', account)
+  }
+
   ytAccountRemoved(account: string): void {
-    for (const task of this.tasks) if (task.ytAccount === account && task.status !== 'done') this.patch(task, { ytAccount: undefined })
+    this.siteAccountRemoved('youtube', account)
   }
 
   /** 退出时会被打断的任务数：运行中、排队、等待登录（之后会变成暂停），以及正在手动去水印的 */
@@ -236,6 +262,7 @@ export class DownloadManager extends EventEmitter {
         aid: item.aid,
         cid: item.cid,
         ep_id: item.epId,
+        id: item.ytId ?? item.dyId ?? item.bvid,
         type: KIND_TYPE_LABEL[req.kind]
       }
       const task: TaskInfo = {
@@ -245,6 +272,7 @@ export class DownloadManager extends EventEmitter {
         item,
         accountMid: req.accountMid,
         ytAccount: req.ytAccount,
+        dyAccount: req.dyAccount,
         options: normalizeOptions(req.options),
         relBase: renderTemplate(template, nameValues),
         template,
@@ -670,7 +698,8 @@ export class DownloadManager extends EventEmitter {
       settings: this.settings,
       withAccount,
       onPlanned: (p) => {
-        this.patch(t, { status: 'downloading', qualityLabel: p.qualityLabel, videoQn: p.videoQn, ...(p.lock ? { ytFormat: p.lock } : {}) })
+        const lock = LOCK_FIELD[siteOf(t)]
+        this.patch(t, { status: 'downloading', qualityLabel: p.qualityLabel, videoQn: p.videoQn, ...(p.lock && lock ? { [lock]: p.lock } : {}) })
         // 格式马上落盘：下载中途崩溃了，下次也能续传同一份
         if (p.lock) this.flush()
       },

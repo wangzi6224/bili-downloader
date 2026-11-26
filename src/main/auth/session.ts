@@ -46,8 +46,11 @@ export async function cookieHeader(): Promise<string> {
   return [...map].map(([k, v]) => `${k}=${v}`).join('; ')
 }
 
-export async function setBiliCookies(list: PlainCookie[]): Promise<void> {
-  const cookies = biliSession().cookies
+export const setBiliCookies = (list: PlainCookie[]): Promise<void> => setCookies(biliSession(), list)
+
+/** 把一组 cookie 写进会话并落盘 */
+export async function setCookies(target: Electron.Session, list: PlainCookie[]): Promise<void> {
+  const cookies = target.cookies
   for (const c of list) {
     const host = c.domain.replace(/^\./, '')
     await cookies.set({

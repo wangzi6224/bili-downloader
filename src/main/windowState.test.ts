@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { closeDecision, restoreBounds } from './windowState'
+import { closeDecision, quitWhenAllClosed, restoreBounds } from './windowState'
 
 const builtIn = { x: 0, y: 0, width: 1440, height: 875 }
 const external = { x: 1440, y: 0, width: 1920, height: 1055 }
@@ -35,5 +35,17 @@ describe('closeDecision', () => {
     [{ quitting: false, crashed: false, action: 'ask' }, 'ask']
   ] as const)('%o → %s', (o, want) => {
     expect(closeDecision(o)).toBe(want)
+  })
+})
+
+describe('quitWhenAllClosed', () => {
+  it.each([
+    [{ isMac: false, mainClosed: true }, true],
+    // 隐藏网页、登录窗口自己关掉时，后台运行的应用不能跟着退出
+    [{ isMac: false, mainClosed: false }, false],
+    [{ isMac: true, mainClosed: true }, false],
+    [{ isMac: true, mainClosed: false }, false]
+  ])('%o → %s', (o, want) => {
+    expect(quitWhenAllClosed(o)).toBe(want)
   })
 })

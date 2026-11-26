@@ -47,5 +47,7 @@ export default {
     '- 报错说 MCP 服务已关闭：请用户在{appName} > 设置 > AI 助手 里打开“开启 MCP 服务”。\n' +
     '- 根本看不到 bili-downloader 的工具：请用户在{appName} > 设置 > AI 助手 里给当前用的 AI 助手点“安装”，然后重启它。',
   ytSkillIntro: '用{appName}（本机运行）下载 YouTube 视频、Shorts、播放列表、频道和 YouTube Music，并搜索视频、读取字幕和评论。应用要先打开并在“设置 → AI 助手”里开启服务；第一次用 YouTube 时会自动下载 YouTube 组件（yt-dlp）。',
-  ytSkillTroubleshootBody: '- 提示需要更新组件：调用 youtube_update_engine。\n- 提示要验证不是机器人、或会员 / 年龄限制的视频下不了：用 youtube_start_login 导入 YouTube 登录；读取浏览器时系统可能弹授权，请用户允许。\n- 在中国大陆需要代理才能访问 YouTube：请用户在应用的“设置 → 网络与高级”里设置代理（支持 HTTP 和 SOCKS）。\n- 自动翻译的字幕常被 YouTube 限流，下不来时稍后重试或换成人工字幕。'
+  ytSkillTroubleshootBody: '- 提示需要更新组件：调用 youtube_update_engine。\n- 提示要验证不是机器人、或会员 / 年龄限制的视频下不了：用 youtube_start_login 导入 YouTube 登录；读取浏览器时系统可能弹授权，请用户允许。\n- 在中国大陆需要代理才能访问 YouTube：请用户在应用的“设置 → 网络与高级”里设置代理（支持 HTTP 和 SOCKS）。\n- 自动翻译的字幕常被 YouTube 限流，下不来时稍后重试或换成人工字幕。',
+  dySkillIntro: '用{appName}（本机运行）下载抖音视频、图文、合集和博主作品，并搜索作品、看详情和评论。应用要先打开并在“设置 → AI 助手”里开启服务。抖音没有字幕和 AI 总结。',
+  dySkillTroubleshootBody: '- 返回 VERIFY_REQUIRED：调用 douyin_open_verification，让用户在弹出的窗口里手动完成验证，不要自己反复重试。\n- 返回 RATE_LIMITED：抖音在限流，等几分钟再试，别连续发请求。\n- 提示要登录（主页翻页、喜欢、收藏、搜索、评论回复）：调用 douyin_start_login 让用户扫码。\n- 批量下载和订阅容易触发验证，一次别提交太多。'
 }

@@ -42,7 +42,7 @@ export interface DriverContext {
   settings: () => Settings
   /** 在任务所属账号的会话里执行（B站多账号） */
   withAccount: <T>(fn: () => Promise<T>) => Promise<T>
-  /** 选好了要下的流，开始下载；lock 是要记在任务上的格式（YouTube 续传时沿用） */
+  /** 选好了要下的流，开始下载；lock 是要记在任务上的格式（YouTube、抖音续传时沿用） */
   onPlanned: (p: { qualityLabel: string; videoQn?: number; lock?: string }) => void
   /** 已下载和总字节数（总数不知道时用估算值） */
   onProgress: (downloaded: number, total: number) => void

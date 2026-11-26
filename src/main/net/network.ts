@@ -12,6 +12,9 @@ let loginProxy: Electron.ProxyConfig = { mode: 'system' }
 export const networkStatus = (): NetworkStatus => ({ text: status.text(), error: status.error })
 export const configureLoginSession = (): Promise<void> => biliSession().setProxy(loginProxy)
 
+/** 应用里打开网页（登录窗口、抖音页面桥）用的代理，和下载走同一套设置 */
+export const chromiumProxy = (): Electron.ProxyConfig => loginProxy
+
 /**
  * 按设置切换代理：主进程的 fetch（接口和下载）用 undici 代理，
  * 登录窗口（Chromium）用 session 代理，两边保持一致。
