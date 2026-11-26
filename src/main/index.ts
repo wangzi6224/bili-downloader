@@ -520,7 +520,13 @@ async function start(): Promise<void> {
   })
   subs.start()
 
+  let proxyKey = JSON.stringify(settings.proxy)
   onSettingsChange((s) => {
+    // 代理改了：抖音的隐藏网页还连着旧代理，关掉让它按新设置重开
+    if (proxyKey !== JSON.stringify(s.proxy)) {
+      proxyKey = JSON.stringify(s.proxy)
+      douyin.stop()
+    }
     send('settings:changed', s)
     applySiteIcon(s.uiSite)
     if (applyLanguage(s.language)) {

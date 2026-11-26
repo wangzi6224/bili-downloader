@@ -51,7 +51,7 @@ export async function importConfig(win: BrowserWindow | null, subs: Subscription
   updateSettings({ ...data.settings, mcp: { ...data.settings.mcp, token: current.mcp.token } })
   // 同一来源以导入的为准，其余保留
   const imported = Array.isArray(data.subscriptions) ? data.subscriptions : []
-  const key = (s: Subscription): string => JSON.stringify([s.input, s.accountMid])
+  const key = (s: Subscription): string => JSON.stringify([s.input, s.accountMid, s.dyAccount])
   const inputs = new Set(imported.map(key))
   const retained = subs.list().filter((s) => !inputs.has(key(s)))
   const ids = new Set(retained.map((s) => s.id))
