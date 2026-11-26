@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import type { Key } from '@shared/i18n'
 import { itemUrl } from '@shared/parseUrl'
-import { ytItemUrl } from '@shared/site'
+import { siteItemUrl } from '@shared/site'
 import { isVideoTask } from '@shared/watermark'
 import type { AiModelStatus, PowerMode, TaskInfo, TaskStatus, WatermarkSpeed } from '@shared/types'
 import { modelPct, modelText, WATERMARK_MODES, watermarkModeHint } from '../aiRefine'
@@ -171,7 +171,7 @@ function TaskRow({ t: task, now, nested = false }: { t: TaskInfo; now: number; n
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium">
-          <TitleLink href={ytItemUrl(task.item) ?? itemUrl(task.item)}>{task.title}</TitleLink>
+          <TitleLink href={siteItemUrl(task.item) ?? itemUrl(task.item)}>{task.title}</TitleLink>
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={task.relBase}>
           {task.qualityLabel && <Badge>{task.qualityLabel}</Badge>}

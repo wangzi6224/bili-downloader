@@ -8,7 +8,7 @@ import { t } from '@shared/i18n'
 import { parseInput, type Target } from '@shared/parseUrl'
 import { parseYtInput, ytTargetUrl } from '@shared/ytUrl'
 import type {
-  DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, SourceDownloadChoice, SourceDownloadResult, Subscription
+  DownloadOptions, EnqueueRequest, MediaItem, NewSubscription, ParseResult, Site, SourceDownloadChoice, SourceDownloadResult, Subscription
 } from '@shared/types'
 import { getAuthState } from './auth/authGuard'
 import type { accounts as accountRegistry } from './auth/accounts'
@@ -331,7 +331,12 @@ export class SubscriptionManager extends EventEmitter {
   async check(id: string): Promise<Subscription[]> {
     const sub = this.subs.find((x) => x.id === id)
     if (!sub) return this.subs
-    if (siteOf(sub) === 'youtube') return this.checkYoutube(sub)
+    const site = siteOf(sub)
+    // B站按账号检查（往下走）；其他平台各有自己的检查方式
+    if (site !== 'bili') {
+      const external: Record<Exclude<Site, 'bili'>, () => Promise<Subscription[]>> = { youtube: () => this.checkYoutube(sub) }
+      return external[site]()
+    }
     if (!this.accounts) return this.checkSource(sub)
     const { accountMid } = sub
     if (accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(accountMid))) return this.subs

@@ -18,6 +18,7 @@ import type {
   WatermarkMethod,
   WatermarkRegion
 } from '@shared/types'
+import { downloadDirOf, downloadDirPatch, siteOfKind } from '@shared/site'
 import { checkAuth, ensureLoggedIn, getAuthState, logout, requireLogin } from './auth/authGuard'
 import type { accounts } from './auth/accounts'
 import { activeRevision, activeScope, authScope, inAuthScope, isRetired, type AuthScope } from './auth/scope'
@@ -383,26 +384,24 @@ export function registerIpc({ manager, subs, mcp, agents, enqueue, updater, acco
   handle('i18n:get', () => getLanguage())
   handle('settings:get', () => getSettings())
   handle('settings:set', (patch: Partial<Settings>) => updateSettings(patch))
-  // site 为 youtube 时改的是 YouTube 的下载目录
-  handle('settings:chooseDir', async (site?: Site) => {
+  // site 指定改哪个平台的下载目录，缺省 B站
+  handle('settings:chooseDir', async (site: Site = 'bili') => {
     const win = getMainWindow()
     const current = getSettings()
     const opts = {
       title: t('dialogs.chooseDownloadDir'),
-      defaultPath: site === 'youtube' ? current.youtube.downloadDir : current.downloadDir,
+      defaultPath: downloadDirOf(current, site),
       properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
     }
     const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
     if (r.canceled || !r.filePaths[0]) return getSettings()
-    return site === 'youtube'
-      ? updateSettings({ youtube: { ...current.youtube, downloadDir: r.filePaths[0] } })
-      : updateSettings({ downloadDir: r.filePaths[0] })
+    return updateSettings(downloadDirPatch(current, site, r.filePaths[0]))
   })
 
   handle('subs:list', () => subs.list())
   handle('subs:add', async (req: NewSubscription, accountMid?: number) => {
-    // YouTube 订阅不绑 B站账号，检查时用当时的 YouTube 账号
-    if (req.kind === 'youtube') return subs.add(req)
+    // 其他平台的订阅不绑 B站账号，检查时用当时那个平台的账号
+    if (siteOfKind(req.kind) !== 'bili') return subs.add(req)
     if (accounts) return forAccount(accountMid, async () => {
       const verify = verifyView()
       await ensureLoggedIn()

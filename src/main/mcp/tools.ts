@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { downloadedMatcher } from '@shared/downloaded'
 import { joinList, t, translate, type Key } from '@shared/i18n'
 import { normalizeOptions } from '@shared/options'
-import { isSite, siteOf, siteOfKind } from '@shared/site'
+import { isSite, siteOf, siteOfKey, siteOfKind, SITES } from '@shared/site'
 import type { AuthState, HistoryEntry, MediaItem, ParseRecord, ParseResult, Settings, Site, TaskInfo } from '@shared/types'
 import { AuthExpiredError } from '../bili/http'
 import { lazyVideo } from '../bili/lists'
@@ -83,7 +83,7 @@ export interface McpDeps {
   youtube?: YoutubeMcpDeps
 }
 
-/** 这些工具可以按平台筛选：platform 为 bili 或 youtube，不传表示两边都算 */
+/** 这些工具可以按平台筛选：platform 为某个平台，不传表示全部 */
 const PLATFORM_TOOLS = new Set(['list_tasks', 'control_tasks', 'list_batches', 'list_download_history', 'list_parse_history', 'remove_watermark'])
 
 function withPlatformInput(def: ToolDefinition): ToolDefinition {
@@ -95,7 +95,7 @@ function withPlatformInput(def: ToolDefinition): ToolDefinition {
         ...def.inputSchema,
         properties: {
           ...schema.properties,
-          ui_platform: { type: 'string', enum: ['bili', 'youtube'], description: t('mcpYoutube.argUiPlatform') },
+          ui_platform: { type: 'string', enum: [...SITES], description: t('mcpYoutube.argUiPlatform') },
           youtube: {
             type: 'object',
             description: t('mcpYoutube.argYoutubeSettings'),
@@ -117,7 +117,7 @@ function withPlatformInput(def: ToolDefinition): ToolDefinition {
     ...def,
     inputSchema: {
       ...def.inputSchema,
-      properties: { ...schema.properties, platform: { type: 'string', enum: ['bili', 'youtube'], description: t('mcpYoutube.argPlatform') } }
+      properties: { ...schema.properties, platform: { type: 'string', enum: [...SITES], description: t('mcpYoutube.argPlatform') } }
     }
   }
 }
@@ -514,7 +514,7 @@ export class McpTools implements ToolSet {
       case 'logout_account': return this.changeAccount(name, requestedMid(args, true)!)
       case 'list_download_history': {
         const site = platformFilter(args)
-        return historyPage(args, this.deps.downloadRecords().filter((r) => inPlatform(site, r.key.startsWith('yt:') ? 'youtube' : 'bili')), this.deps.accounts)
+        return historyPage(args, this.deps.downloadRecords().filter((r) => inPlatform(site, siteOfKey(r.key))), this.deps.accounts)
       }
       case 'list_parse_history': {
         const site = platformFilter(args)
@@ -593,7 +593,7 @@ export class McpTools implements ToolSet {
       active_account_mid: registry?.snapshot().activeMid ?? null,
       login,
       queue: { total: tasks.length, ...counts, speed_bps: totalSpeed(tasks) },
-      queue_by_platform: this.yt ? (['bili', 'youtube'] as const).map((site) => {
+      queue_by_platform: this.yt ? SITES.map((site) => {
         const group = tasks.filter((task) => siteOf(task) === site)
         return { platform: site, total: group.length, ...countStatuses(group) }
       }) : undefined,

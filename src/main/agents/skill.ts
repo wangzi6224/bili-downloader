@@ -31,7 +31,12 @@ export const YT_SKILL_DESCRIPTION =
   ' Use it for YouTube video download (youtube downloader, download YouTube videos, Shorts, playlists, channels, YouTube Music, youtu.be links),' +
   ' YouTube search (videos, channels, sort by date / views / rating), video details, transcripts, chapters and comments.'
 
-export const SKILL_NAMES = [SKILL_NAME, YT_SKILL_NAME] as const
+/** 主 skill 以外、按平台单独写的 skill */
+const PLATFORM_SKILLS: { name: string; markdown: (version: string) => string }[] = [
+  { name: YT_SKILL_NAME, markdown: (version) => ytSkillMarkdown(version) }
+]
+
+export const SKILL_NAMES: readonly string[] = [SKILL_NAME, ...PLATFORM_SKILLS.map((s) => s.name)]
 
 export function ytSkillMarkdown(version: string): string {
   const appName = t('common.appName')
@@ -111,14 +116,17 @@ export function installedSkillVersion(root: string, name: string = SKILL_NAME): 
 
 export function writeSkill(root: string, version: string): void {
   writeTextAtomic(skillFile(root), skillMarkdown(version))
-  // 用户自己放了同名的 youtube-downloader 就不覆盖
-  if (installedSkillVersion(root, YT_SKILL_NAME) !== null) writeTextAtomic(skillFile(root, YT_SKILL_NAME), ytSkillMarkdown(version))
+  for (const { name, markdown } of PLATFORM_SKILLS) {
+    // 用户自己放了同名的 skill 就不覆盖
+    if (installedSkillVersion(root, name) !== null) writeTextAtomic(skillFile(root, name), markdown(version))
+  }
 }
 
 /** 只删我们生成的；返回主 skill 是否删了 */
 export function removeSkill(root: string): boolean {
-  const yt = installedSkillVersion(root, YT_SKILL_NAME)
-  if (typeof yt === 'string') rmSync(join(root, YT_SKILL_NAME), { recursive: true, force: true })
+  for (const { name } of PLATFORM_SKILLS) {
+    if (typeof installedSkillVersion(root, name) === 'string') rmSync(join(root, name), { recursive: true, force: true })
+  }
   const v = installedSkillVersion(root)
   if (v === undefined || v === null) return false
   rmSync(join(root, SKILL_NAME), { recursive: true, force: true })

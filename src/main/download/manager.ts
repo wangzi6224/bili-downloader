@@ -5,8 +5,8 @@ import { dirname, join } from 'node:path'
 import { joinList, t as tr } from '@shared/i18n'
 import { KIND_TYPE_LABEL, renderTemplate, type NamingValues } from '@shared/naming'
 import { normalizeOptions } from '@shared/options'
-import { siteOf, ytItemUrl } from '@shared/site'
-import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
+import { downloadDirOf, SITES, siteConcurrency, siteItemUrl, siteOf, siteOfKind } from '@shared/site'
+import type { EnqueueRequest, MediaItem, MediaMeta, ProcessingInfo, Settings, Site, TaskInfo, WatermarkMethod, WatermarkRegion } from '@shared/types'
 import { withWatermarkNote, WM_NOTE } from '@shared/watermark'
 import { AuthExpiredError, UnsupportedError } from '../bili/http'
 import { YtLoginRequiredError } from '../youtube/errors'
@@ -68,7 +68,7 @@ const swapCodec = (label: string | undefined, codec: 'h264' | 'hevc'): string | 
 function videoMeta(item: MediaItem): MediaMeta | undefined {
   if (!item.owner) return undefined
   const { owner, ownerMid, pubdate, desc, bvid } = item
-  return { owner, ownerMid, pubdate, desc, url: ytItemUrl(item) ?? (bvid && `https://www.bilibili.com/video/${bvid}`) }
+  return { owner, ownerMid, pubdate, desc, url: siteItemUrl(item) ?? (bvid && `https://www.bilibili.com/video/${bvid}`) }
 }
 
 /**
@@ -252,7 +252,7 @@ export class DownloadManager extends EventEmitter {
         meta: req.meta ?? videoMeta(item),
         series: episodic && multi,
         seriesCover: req.cover,
-        dir: req.dir ?? (req.kind === 'youtube' ? settings.youtube.downloadDir : settings.downloadDir),
+        dir: req.dir ?? downloadDirOf(settings, siteOfKind(req.kind)),
         batchId: req.batchId,
         status: req.paused ? 'paused' : 'queued',
         downloaded: 0,
@@ -406,20 +406,20 @@ export class DownloadManager extends EventEmitter {
     if (!this.authBlocked && !this.stopped) {
       const s = this.settings()
       const limit = s.concurrency
-      // YouTube 再单独限一个数：同时开太多容易触发机器人验证
-      const ytLimit = s.youtube?.concurrency ?? limit
-      let ytRunning = this.tasks.filter((t) => this.running.has(t.id) && siteOf(t) === 'youtube' && !t.processing?.manual).length
+      // 各平台再单独限一个数：YouTube 这类同时开太多容易触发机器人验证
+      const busy = Object.fromEntries(SITES.map((site) => [site, 0])) as Record<Site, number>
+      for (const t of this.tasks) if (this.running.has(t.id) && !t.processing?.manual) busy[siteOf(t)]++
       for (const t of this.tasks) {
         if (this.running.size >= limit) break
         // 暂停后立刻继续时，上一次 run 可能还卡在取流里没结束，等它结算后再启动
         if (t.status !== 'queued' || this.running.has(t.id)) continue
-        const yt = siteOf(t) === 'youtube'
-        if (yt && ytRunning >= ytLimit) continue
-        if (this.accounts && siteOf(t) === 'bili' && (t.accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(t.accountMid)))) {
+        const site = siteOf(t)
+        if (busy[site] >= siteConcurrency(s, site)) continue
+        if (this.accounts && site === 'bili' && (t.accountMid === undefined || ['expired', 'removed'].includes(this.accounts.status(t.accountMid)))) {
           this.patch(t, { status: 'waitingAuth', speed: 0 })
           continue
         }
-        if (yt) ytRunning++
+        busy[site]++
         void this.run(t)
       }
     }
@@ -452,7 +452,7 @@ export class DownloadManager extends EventEmitter {
   }
 
   private rootOf(t: TaskInfo): string {
-    return t.dir ?? (siteOf(t) === 'youtube' ? this.settings().youtube.downloadDir : this.settings().downloadDir)
+    return t.dir ?? downloadDirOf(this.settings(), siteOf(t))
   }
 
   /** 删除没下载完的部分：临时目录里的分片和附加内容、合并到一半的 .tmp */

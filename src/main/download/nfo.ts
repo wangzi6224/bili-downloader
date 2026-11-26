@@ -1,4 +1,5 @@
 // Kodi / Jellyfin / Emby 能识别的 NFO 元数据
+import { siteNfoId } from '@shared/site'
 import type { MediaItem, MediaMeta } from '@shared/types'
 
 const esc = (s: string): string =>
@@ -24,8 +25,7 @@ const xml = (root: string, body: string): string =>
 /** 普通视频、电影：每个文件一份 movie 结构 */
 export function movieNfo(item: MediaItem, meta: MediaMeta = {}, series?: string): string {
   const pub = item.pubdate ?? meta.pubdate
-  const yt = item.kind === 'youtube'
-  const id = yt ? (item.ytId ?? item.key) : (item.bvid ?? (item.epId ? `ep${item.epId}` : String(item.cid)))
+  const { type, id } = siteNfoId(item)
   return xml(
     'movie',
     [
@@ -40,7 +40,7 @@ export function movieNfo(item: MediaItem, meta: MediaMeta = {}, series?: string)
         ['director', meta.owner]
       ]),
       ...(meta.genres ?? []).map((g) => `  <genre>${esc(g)}</genre>`),
-      `  <uniqueid type="${yt ? 'youtube' : 'bilibili'}" default="true">${esc(id)}</uniqueid>`,
+      `  <uniqueid type="${type}" default="true">${esc(id)}</uniqueid>`,
       tags([['website', meta.url]])
     ]
       .filter(Boolean)

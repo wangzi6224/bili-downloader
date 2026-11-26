@@ -56,11 +56,15 @@ const windowStateFile = (): string => join(app.getPath('userData'), 'window.json
 const appIcon = (): string =>
   app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '../../build/icons/256x256.png')
 
-/** 界面平台对应的大图标（1024px）：程序坞和窗口图标跟着 B站 / YouTube 界面换 */
+/** 各平台大图标（1024px）的文件名：打包后在资源目录，开发时在 build/ */
+const SITE_ICONS: Record<Site, { packaged: string; dev: string }> = {
+  bili: { packaged: 'icon-bili.png', dev: 'icon.png' },
+  youtube: { packaged: 'icon-youtube.png', dev: 'icon-youtube.png' }
+}
+
+/** 界面平台对应的大图标：程序坞和窗口图标跟着界面平台换 */
 const siteIcon = (site: Site): string =>
-  app.isPackaged
-    ? join(process.resourcesPath, site === 'youtube' ? 'icon-youtube.png' : 'icon-bili.png')
-    : join(__dirname, '../../build', site === 'youtube' ? 'icon-youtube.png' : 'icon.png')
+  app.isPackaged ? join(process.resourcesPath, SITE_ICONS[site].packaged) : join(__dirname, '../../build', SITE_ICONS[site].dev)
 
 let iconSite: Site | undefined
 
@@ -94,8 +98,8 @@ function createWindow(): BrowserWindow {
     title: t('common.appName'),
     ...platformWindowOptions(),
     show: false,
-    // YouTube 界面用 YouTube 主题的图标（macOS 的程序坞图标由 applySiteIcon 换）
-    ...(!isMac && getSettings().uiSite === 'youtube' ? { icon: siteIcon('youtube') } : {}),
+    // 其他平台的界面用对应主题的图标（macOS 的程序坞图标由 applySiteIcon 换）
+    ...(!isMac && getSettings().uiSite !== 'bili' ? { icon: siteIcon(getSettings().uiSite) } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -527,7 +531,7 @@ async function start(): Promise<void> {
   buildMenu()
   // 打包后用 app 自带的 icon.icns；开发时程序坞默认是 Electron 图标
   // 开发时程序坞默认是 Electron 图标；打包后 B站界面用 .app 里的 icns，切到 YouTube 时才换
-  if (isDev || getSettings().uiSite === 'youtube') applySiteIcon(getSettings().uiSite)
+  if (isDev || getSettings().uiSite !== 'bili') applySiteIcon(getSettings().uiSite)
   createTray(updater)
   if (background) {
     // 只在托盘里待命；程序坞图标等用户打开窗口时再显示
@@ -543,7 +547,7 @@ async function start(): Promise<void> {
     void inAuthScope(activeScope(), async () => {
       const auth = await checkAuth()
       // YouTube 主题下不一启动就弹 B站登录（B站任务真要登录时还会提示）
-      if (!auth.loggedIn && getSettings().uiSite !== 'youtube') requireLogin()
+      if (!auth.loggedIn && getSettings().uiSite === 'bili') requireLogin()
     }).catch(() => {})
     setTimeout(() => updater.start(() => getSettings().autoCheckUpdate), 3000)
   })
