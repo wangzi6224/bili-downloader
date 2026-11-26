@@ -4,7 +4,7 @@
 
 # Bili Downloader
 
-**Your favorite bilibili videos, saved to your own drive.** Copy a link, paste it, hit download: videos, collections, anime and courses come down in one go, in up to 8K / Dolby Vision, with subtitles, danmaku and chapters saved alongside. Wipe watermarks with AI while you're at it, or let an AI agent do the legwork. Free and open source for Windows, macOS and Linux.
+**Your favorite videos from bilibili, YouTube and Douyin, saved to your own drive.** Copy a link, paste it, hit download: bilibili videos, collections, anime and courses come down in one go, in up to 8K / Dolby Vision, with subtitles, danmaku and chapters saved alongside, and YouTube videos and Douyin posts are just a link away too. Wipe watermarks with AI while you're at it, or let an AI agent do the legwork. Free and open source for Windows, macOS and Linux.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
@@ -43,10 +43,11 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | **Max out the quality** <br> 8K, Dolby Vision, HDR: if your account can watch it, you can download it. Pick AVC / HEVC / AV1, get audio up to Dolby Atmos and Hi-Res FLAC, and keep the original streams with no re-encoding by default. | **Just drop a link** <br> Single videos, multi-part videos, collections, anime, movies, courses, favorites, Watch Later, uploader pages, audio, rankings… whole lists parse in one go, and b23.tv short links and share text work too. |
 | **AI watermark removal** <br> Corner watermarks get spotted automatically, or draw a box yourself; turn on “AI refine” and it repaints what's underneath, frame by frame. | **Subtitles, danmaku, the lot** <br> CC subtitles as `.srt` or embedded in the video, danmaku as `.ass` / `.xml`, plus chapters, covers and NFO for Kodi / Jellyfin. |
 | **Queue it and walk away** <br> Resumable, multi-threaded downloads with speed limits, auto-retry and naming templates; subscribe to uploaders, favorites or collections and new uploads download themselves. | **Let AI do it for you** <br> A built-in local MCP server lets Claude and other AI clients search, parse links, queue downloads, remove watermarks and keep an eye on progress. |
-| **YouTube too** <br> Videos, Shorts, playlists, channels and YouTube Music, up to 8K / HDR, with manual and auto-generated subtitles, chapters, SponsorBlock segment marks, and channel subscriptions that download new videos for you. | **Switch platforms in one click** <br> Click at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y) to switch between Bilibili and YouTube: two interfaces, and downloads on either side keep running. |
+| **YouTube too** <br> Videos, Shorts, playlists, channels and YouTube Music, up to 8K / HDR, with manual and auto-generated subtitles, chapters, SponsorBlock segment marks, and channel subscriptions that download new videos for you. | **Douyin too** <br> Videos, photo posts, live photos, collections and short dramas, and creator pages; paste a share link or the whole share text. Downloads are watermark-free, in up to the 4K the source offers. |
+| **Likes and favorites included** <br> Sign in to Douyin to download your likes, favorites, folders, Watch later and watch history, and subscribe to creators, collections, likes or favorites so new posts download by themselves. | **Switch platforms in one click** <br> Click at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y to cycle through them) to switch between Bilibili, YouTube and Douyin: three themed interfaces, and downloads on every platform keep running. |
 
 > [!NOTE]
-> This is an unofficial project and is not affiliated with or endorsed by bilibili. Only download content your own account is allowed to watch, for personal use, and respect the rights of creators and bilibili's terms of service.
+> This is an unofficial project and is not affiliated with or endorsed by bilibili, YouTube or Douyin. Only download content your own account is allowed to watch, for personal use, and respect the rights of creators and each platform's terms of service.
 
 ## Get started in four steps
 
@@ -124,7 +125,7 @@ Uploader watermark stuck in the corner? There are two ways to get rid of it:
 
 ## YouTube downloads
 
-Click **YouTube** at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y) to switch to the YouTube interface, then paste a link. Switching only changes the interface: Bilibili and YouTube each have their own download list, parse history and subscriptions, downloads on the other side keep running, and the switcher shows how many are still going there.
+Click **YouTube** at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y to cycle through the platforms) to switch to the YouTube interface, then paste a link. Switching only changes the interface: Bilibili, YouTube and Douyin each have their own download list, parse history and subscriptions, downloads on the other platforms keep running, and a dot on the switcher marks the ones that are still downloading.
 
 - **Links**: videos (including youtu.be), Shorts, live replays, playlists, channels (@handle, /channel/…, with the Videos / Shorts / Live / Playlists tabs), YouTube Music; after importing a login, also Watch Later, Liked videos, Subscriptions and History
 - **Quality and formats**: up to 8K, HDR and 60 fps; codec priority AVC / VP9 / AV1; Opus or AAC audio; MP4 / MKV / WebM; audio only or video only
@@ -137,6 +138,25 @@ YouTube support is built on the open-source [yt-dlp](https://github.com/yt-dlp/y
 **Signing in** (optional): under **Settings → General → YouTube accounts**, import your YouTube login from a browser or paste cookies (`cookies.txt` or Cookie-Editor JSON). Signing in lets you download members-only and age-restricted videos and your own lists, and makes YouTube's “confirm you're not a bot” checks less likely. Only `youtube.com` cookies are kept, encrypted on your computer with the system's secure storage (macOS Keychain, Windows DPAPI).
 
 **Network**: the proxy under **Settings → Network & advanced** applies to YouTube as well. With the system proxy, YouTube's address is resolved on its own (so PAC rules that send Bilibili direct and YouTube through a proxy work), and a manual SOCKS proxy works for YouTube.
+
+## Douyin downloads
+
+Click **Douyin** at the top of the sidebar (or press ⌘⇧Y / Ctrl+Shift+Y until you get there), then paste a link, or the whole share text copied from the Douyin app. Douyin comes with its own theme and its own download list, parse history and subscriptions.
+
+- **Links**: single videos, photo posts, live photos, collections and short drama series, creator pages, v.douyin.com short links and full share texts; when signed in, also your Likes, Favorites, folders, Watch later and Watch history, and the Subscriptions page can open your saved collections and the creators you follow
+- **Quality and formats**: watermark-free downloads; quality is measured by the short side of the picture (a 1080×1920 portrait video counts as 1080p), up to the 4K the source offers; H.264 / H.265, or “Original” (the uploaded source file); MP4 / MKV, audio only or video only
+- **Photo posts**: each one is saved as a folder with its images, live photo clips and background music
+- **Extras**: covers, chapters, danmaku (ASS / XML), NFO
+- **Queue**: naming templates (with a new `{id}` variable), skipping downloaded items, resumable downloads and the speed limit all work; Douyin downloads one item at a time by default, three at most
+- **Subscriptions**: subscribe to creator pages, collections, your Likes, Favorites and more; new posts download automatically, with checks at least 3 hours apart
+
+Behind the scenes, the app uses the Douyin website's own request signing inside a hidden web page. Your sign-in is stored only on your computer.
+
+**Signing in**: scan a QR code inside the app (recommended), import the login from a browser, or paste cookies; multiple accounts are supported. Without signing in you can only download single public posts and collections, and creator pages show just the first page.
+
+**Security checks**: searching, loading comment replies and the like occasionally bring up Douyin's slider verification. The app tells you, and you complete it yourself in the window; the app never solves captchas for you.
+
+Bulk downloads and subscriptions put your account at some risk, so read [Limitations](#limitations) first.
 
 ## Let AI do the downloading (MCP)
 
@@ -219,6 +239,21 @@ YouTube tools (batch, task, settings and history tools are shared; pass `platfor
 | `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | List, switch or remove YouTube accounts; removing needs the user to confirm in a dialog |
 | `youtube_update_engine` | Install or update the YouTube component |
 
+Douyin tools (the shared batch, task, settings and history tools cover Douyin too; there is also a separate `douyin-downloader` skill):
+
+| Tool | Description |
+| --- | --- |
+| `douyin_get_status` | Sign-in, pending security checks or rate limits, and the Douyin queue. Call it first |
+| `douyin_parse_link` | Parse a link or share text: videos, photo posts, creator pages, collections and series, plus your personal lists when signed in; results can be read in pages |
+| `douyin_download_batch` | Download the posts in a link (`url` for a single post, with `ids` or `all` for lists) or a list of posts (`videos`) as one batch; `quality` is the short side in pixels, and `original=true` downloads the source file |
+| `douyin_search_videos` / `douyin_search_users` | Search posts (sorted by relevance, likes or date, filtered by date and length) and creators; sign-in required |
+| `douyin_get_video_info` | Details for up to 10 posts: likes, comments, favorites, shares, hashtags, music, chapters, downloadable qualities and collection |
+| `douyin_get_video_comments` | Read comments page by page; replies require signing in |
+| `douyin_get_download_quality` | Check which qualities can be downloaded signed out and with each Douyin account |
+| `douyin_start_login` / `douyin_get_login_status` | Open the QR sign-in window (default) or import a login from a browser, and follow its progress |
+| `douyin_list_accounts` / `douyin_switch_account` / `douyin_logout_account` | List, switch or remove Douyin accounts; removing needs the user to confirm in a dialog |
+| `douyin_open_verification` | When a security check is required, open the window so the user can complete it by hand; nothing is solved automatically |
+
 </details>
 
 Parsing, downloading, and Bilibili lookup tools accept `account_mid` and default to the sidebar account. Batch, task, and history queries show all accounts when the field is omitted. Pass `null` to find older records with unknown ownership. Download settings apply to all accounts.
@@ -289,7 +324,18 @@ The server listens only on `127.0.0.1` (the port is configurable), requires the 
 - Manual and auto-generated subtitles (choose languages), chapters, SponsorBlock segment marks, covers, NFO
 - Multiple YouTube accounts; compare downloadable quality per account
 - Subscribe to playlists and channels; separate download folder and simultaneous download limit
-- Switch between the Bilibili and YouTube interfaces in one click, downloads on both sides are unaffected
+- Switch between the Bilibili, YouTube and Douyin interfaces in one click, downloads on every platform are unaffected
+
+</details>
+
+<details>
+<summary>Douyin</summary>
+
+- Videos, photo posts, live photos, collections and short dramas, creator pages, short links and share texts; Likes, Favorites, folders, Watch later and Watch history when signed in
+- Watermark-free; quality by the short side, up to the 4K the source offers, H.264 / H.265 and “Original”; MP4 / MKV, audio only or video only
+- Covers, chapters, danmaku (ASS / XML), NFO, naming templates, skip downloaded, resumable downloads, speed limit
+- Sign in by QR code, browser import or pasted cookies; multiple accounts
+- Subscribe to creator pages, collections, Likes, Favorites and more, checked at most once every 3 hours
 
 </details>
 
@@ -310,7 +356,7 @@ The app checks the login state on launch, when you return to the window, while p
 
 - Your bilibili cookies are kept in the app's own data folder and are only sent to bilibili. They are never returned to AI clients over MCP.
 - Downloads, merging and watermark removal all run locally. There is no sign-up, no telemetry and no server of ours in between.
-- Besides bilibili, the app only contacts GitHub (to check for updates) and ModelScope or Hugging Face (to download the AI refine model once).
+- The app only contacts the platforms you use (Bilibili, YouTube, Douyin and their content delivery domains), GitHub (to check for updates and download the YouTube component) and ModelScope or Hugging Face (to download the AI refine model once). With SponsorBlock on, yt-dlp also queries the SponsorBlock service.
 - MCP clients can switch or sign out a specified account at your request. Adding an account or signing back in uses a QR code or an existing browser login. If a browser must be closed first (Windows locks the cookie database while the browser runs), the app asks you in a dialog and only you can approve it.
 
 ## FAQ
@@ -368,6 +414,8 @@ Yes. Since v0.13.0, the interface supports English, Simplified Chinese, Japanese
 
 - DRM-protected content, region-locked content, and content your account is not allowed to watch cannot be downloaded. Those tasks are marked as **无法下载** (cannot be downloaded) with the reason.
 - YouTube: DRM content such as YouTube Movies and Premium-only content are not supported; live streams can be downloaded after they end; auto-translated subtitles are often rate-limited by YouTube, retry later if they fail.
+- Douyin: live streams, search page links, sound pages and hashtag pages are not supported, and there are no subtitles or AI summaries.
+- Douyin risks: bulk downloads and subscriptions may trigger Douyin's security checks or get your account restricted, so use a secondary account and keep the pace moderate. Use it only for personal study and to back up content you have the right to download, follow the platform's terms of service and copyright law, and use it at your own risk. Douyin changes often, so these features may stop working at any time.
 - Windows x64, macOS x64 / arm64 and Linux x64 are supported. Windows and Linux ARM builds are not provided.
 
 ## Building from source

@@ -4,7 +4,7 @@
 
 # Bili Downloader
 
-**Vos vidéos bilibili préférées, direct sur votre disque.** Copiez un lien, collez-le, cliquez sur télécharger : vidéos, collections, animés et cours arrivent d'un coup, jusqu'en 8K / Dolby Vision, avec sous-titres, danmaku et chapitres enregistrés à côté. Effacez les filigranes par IA au passage, ou laissez un agent IA faire le boulot. Gratuit et open source, pour Windows, macOS et Linux.
+**Vos vidéos préférées de bilibili, YouTube et Douyin, direct sur votre disque.** Copiez un lien, collez-le, cliquez sur télécharger : les vidéos, collections, animés et cours de bilibili arrivent d'un coup, jusqu'en 8K / Dolby Vision, avec sous-titres, danmaku et chapitres enregistrés à côté, et pour les vidéos YouTube et les publications Douyin, un lien suffit aussi. Effacez les filigranes par IA au passage, ou laissez un agent IA faire le boulot. Gratuit et open source, pour Windows, macOS et Linux.
 
 [![Latest release](https://img.shields.io/github/v/release/wangzi6224/bili-downloader?sort=semver)](https://github.com/wangzi6224/bili-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/wangzi6224/bili-downloader/total)](https://github.com/wangzi6224/bili-downloader/releases)
@@ -43,10 +43,11 @@ https://github.com/user-attachments/assets/835dda86-4575-4311-808b-507c04bbd589
 | **La qualité à fond** <br> 8K, Dolby Vision, HDR : si votre compte peut le regarder, vous pouvez le télécharger. Choisissez AVC / HEVC / AV1, profitez d'un audio jusqu'au Dolby Atmos et au FLAC Hi-Res, et gardez par défaut les flux d'origine, sans réencodage. | **Un lien, et c'est tout** <br> Vidéos simples, vidéos en plusieurs parties, collections, animés, films, cours, favoris, « À regarder plus tard », pages de créateurs, audio, classements… les listes entières sont analysées d'un coup, et les liens courts b23.tv comme les textes de partage marchent aussi. |
 | **Suppression du filigrane par IA** <br> Les filigranes dans les coins sont repérés tout seuls, sinon tracez un cadre vous-même ; activez la « Retouche IA » et elle repeint ce qui se trouve dessous, image par image. | **Sous-titres, danmaku, et tout le reste** <br> Sous-titres CC en `.srt` ou intégrés à la vidéo, danmaku en `.ass` / `.xml`, plus chapitres, couvertures et NFO pour Kodi / Jellyfin. |
 | **Lancez la file et passez à autre chose** <br> Téléchargements reprenables et multithread, avec limite de débit, nouvelles tentatives automatiques et modèles de nommage ; abonnez-vous à des créateurs, des favoris ou des collections, et les nouvelles vidéos se téléchargent toutes seules. | **Laissez l'IA s'en charger** <br> Un serveur MCP local intégré permet à Claude et à d'autres clients IA de chercher, d'analyser des liens, d'ajouter des téléchargements à la file, de retirer des filigranes et de garder un œil sur la progression. |
-| **YouTube aussi** <br> Vidéos, Shorts, playlists, chaînes et YouTube Music, jusqu'en 8K / HDR, avec sous-titres manuels et générés automatiquement, chapitres, segments SponsorBlock marqués, et abonnements aux chaînes qui téléchargent les nouvelles vidéos pour vous. | **Changez de plateforme en un clic** <br> Cliquez en haut de la barre latérale (ou appuyez sur ⌘⇧Y / Ctrl+Shift+Y) pour passer de Bilibili à YouTube et inversement : deux interfaces, et les téléchargements continuent des deux côtés. |
+| **YouTube aussi** <br> Vidéos, Shorts, playlists, chaînes et YouTube Music, jusqu'en 8K / HDR, avec sous-titres manuels et générés automatiquement, chapitres, segments SponsorBlock marqués, et abonnements aux chaînes qui téléchargent les nouvelles vidéos pour vous. | **Douyin aussi** <br> Vidéos, publications photo, photos animées, collections et mini-séries, pages de créateurs ; collez un lien court de partage ou tout le texte de partage. Les téléchargements sont sans filigrane, jusqu'à la 4K proposée par la source. |
+| **Vos J'aime et favoris aussi** <br> Connectez-vous à Douyin pour télécharger vos mentions J'aime, favoris, dossiers, « À regarder plus tard » et votre historique, et abonnez-vous à des créateurs, des collections, vos J'aime ou vos favoris : les nouveautés se téléchargent toutes seules. | **Changez de plateforme en un clic** <br> Cliquez en haut de la barre latérale (ou appuyez sur ⌘⇧Y / Ctrl+Shift+Y pour les faire défiler) pour passer de Bilibili à YouTube ou Douyin : trois interfaces avec chacune son thème, et les téléchargements continuent sur toutes les plateformes. |
 
 > [!NOTE]
-> Ce projet est non officiel et n'est ni affilié à bilibili ni approuvé par bilibili. Ne téléchargez que des contenus que votre propre compte est autorisé à regarder, pour un usage personnel, en respectant les droits des créateurs et les conditions d'utilisation de bilibili.
+> Ce projet est non officiel et n'est ni affilié à bilibili, YouTube ou Douyin, ni approuvé par eux. Ne téléchargez que des contenus que votre propre compte est autorisé à regarder, pour un usage personnel, en respectant les droits des créateurs et les conditions d'utilisation de chaque plateforme.
 
 ## Lancez-vous en quatre étapes
 
@@ -124,7 +125,7 @@ Le filigrane du créateur squatte un coin de l'image ? Deux façons de s'en déb
 
 ## Téléchargements YouTube
 
-Cliquez sur **YouTube** en haut de la barre latérale (ou appuyez sur ⌘⇧Y / Ctrl+Shift+Y) pour passer à l'interface YouTube, puis collez un lien. Basculer ne change que l'interface : Bilibili et YouTube ont chacun leur liste de téléchargements, leur historique d'analyse et leurs abonnements, les téléchargements de l'autre côté continuent, et le sélecteur indique combien y sont encore en cours.
+Cliquez sur **YouTube** en haut de la barre latérale (ou appuyez sur ⌘⇧Y / Ctrl+Shift+Y pour faire défiler les plateformes) pour passer à l'interface YouTube, puis collez un lien. Basculer ne change que l'interface : Bilibili, YouTube et Douyin ont chacun leur liste de téléchargements, leur historique d'analyse et leurs abonnements, les téléchargements des autres plateformes continuent, et un point sur le sélecteur signale celles où il y en a encore en cours.
 
 - **Liens** : vidéos (y compris youtu.be), Shorts, rediffusions de directs, playlists, chaînes (@handle, /channel/…, avec les onglets Vidéos / Shorts / En direct / Playlists), YouTube Music ; après import d'une connexion, aussi « À regarder plus tard », « Vidéos “J’aime” », « Abonnements » et « Historique »
 - **Qualité et formats** : jusqu'en 8K, HDR et 60 i/s ; priorité des codecs AVC / VP9 / AV1 ; audio Opus ou AAC ; MP4 / MKV / WebM ; audio seul ou vidéo seule
@@ -137,6 +138,25 @@ La prise en charge de YouTube repose sur le projet open source [yt-dlp](https://
 **Connexion** (facultative) : dans **Réglages → Général → Comptes YouTube**, importez votre connexion YouTube depuis un navigateur ou collez des cookies (`cookies.txt` ou JSON de Cookie-Editor). Une fois connecté, vous pouvez télécharger les vidéos réservées aux membres ou soumises à une limite d'âge et vos propres listes, et YouTube vous demande moins souvent de « confirmer que vous n'êtes pas un robot ». Seuls les cookies de `youtube.com` sont conservés, chiffrés sur votre ordinateur avec le stockage sécurisé du système (trousseau macOS, DPAPI de Windows).
 
 **Réseau** : le proxy de **Réglages → Réseau et avancé** s'applique aussi à YouTube. En mode « Proxy du système », les règles PAC déterminent séparément le proxy à utiliser pour YouTube : elles peuvent donc prévoir une connexion sans proxy pour Bilibili et via un proxy pour YouTube. Un proxy SOCKS configuré manuellement fonctionne aussi pour YouTube.
+
+## Téléchargements Douyin
+
+Cliquez sur **Douyin** en haut de la barre latérale (ou appuyez sur ⌘⇧Y / Ctrl+Shift+Y jusqu'à y arriver), puis collez un lien, ou tout le texte de partage copié depuis l'application Douyin. Douyin a son propre thème, ainsi que sa liste de téléchargements, son historique d'analyse et ses abonnements.
+
+- **Liens** : vidéos seules, publications photo, photos animées, collections et mini-séries, pages de créateurs, liens courts v.douyin.com et textes de partage complets ; une fois connecté, aussi vos mentions J'aime, vos favoris, vos dossiers, « À regarder plus tard » et votre historique, et la page des abonnements permet d'ouvrir vos collections enregistrées et les créateurs que vous suivez
+- **Qualité et formats** : téléchargements sans filigrane ; la qualité se mesure sur le petit côté de l'image (une vidéo verticale en 1080×1920 compte comme du 1080p), jusqu'à la 4K proposée par la source ; H.264 / H.265, ou « Original » (le fichier source mis en ligne) ; MP4 / MKV, audio seul ou vidéo seule
+- **Publications photo** : chacune est enregistrée dans un dossier avec ses images, les clips des photos animées et la musique
+- **Extras** : couvertures, chapitres, danmaku (ASS / XML), NFO
+- **File d'attente** : modèles de nommage (avec la nouvelle variable `{id}`), contenus déjà téléchargés ignorés, reprise des téléchargements et limite de débit ; un seul téléchargement Douyin à la fois par défaut, trois au maximum
+- **Abonnements** : abonnez-vous à des pages de créateurs, des collections, vos J'aime, vos favoris, etc. ; les nouveautés se téléchargent automatiquement, avec au moins 3 heures entre deux vérifications
+
+En coulisses, l'application utilise, dans une page web cachée, la signature de requêtes du site web de Douyin lui-même. Vos informations de connexion ne sont enregistrées que sur votre ordinateur.
+
+**Connexion** : scannez un QR code dans l'application (recommandé), importez la connexion depuis un navigateur ou collez des cookies ; plusieurs comptes sont possibles. Sans connexion, seules les publications publiques à l'unité et les collections sont téléchargeables, et les pages de créateurs n'affichent que la première page.
+
+**Vérifications de sécurité** : la recherche, le chargement des réponses aux commentaires et d'autres actions déclenchent parfois une vérification à curseur. L'application vous prévient, et c'est vous qui la validez dans la fenêtre ; elle ne résout jamais les captchas à votre place.
+
+Les téléchargements en masse et les abonnements font courir un risque à votre compte : lisez d'abord les [Limitations](#limitations).
 
 ## Laissez l'IA télécharger pour vous (MCP)
 
@@ -216,6 +236,21 @@ Outils YouTube (les outils de lots, de tâches, de réglages et d'historique son
 | `youtube_list_accounts` / `youtube_switch_account` / `youtube_logout_account` | Liste, change ou retire des comptes YouTube ; un retrait doit être confirmé par l'utilisateur dans une boîte de dialogue |
 | `youtube_update_engine` | Installe ou met à jour le composant YouTube |
 
+Outils Douyin (les outils communs de lots, de tâches, de réglages et d'historique valent aussi pour Douyin ; il existe en plus une skill dédiée, `douyin-downloader`) :
+
+| Outil | Description |
+| --- | --- |
+| `douyin_get_status` | Connexion, vérifications de sécurité ou limitations en attente et file Douyin. À appeler en premier |
+| `douyin_parse_link` | Analyse un lien ou un texte de partage : vidéos, publications photo, pages de créateurs, collections et mini-séries, plus vos listes personnelles si vous êtes connecté ; les résultats se lisent par pages |
+| `douyin_download_batch` | Télécharge en un seul lot les publications d'un lien (`url` seul pour une publication, avec `ids` ou `all` pour une liste) ou une liste de publications (`videos`) ; `quality` est le petit côté de l'image en pixels, et `original=true` télécharge le fichier source |
+| `douyin_search_videos` / `douyin_search_users` | Recherche des publications (triées par pertinence, J'aime ou date, filtrées par date et durée) et des créateurs ; connexion requise |
+| `douyin_get_video_info` | Détails de 10 publications maximum : J'aime, commentaires, favoris, partages, hashtags, musique, chapitres, qualités téléchargeables et collection |
+| `douyin_get_video_comments` | Lit les commentaires page par page ; les réponses exigent une connexion |
+| `douyin_get_download_quality` | Vérifie les qualités téléchargeables sans connexion et avec chaque compte Douyin |
+| `douyin_start_login` / `douyin_get_login_status` | Ouvre la fenêtre de connexion par QR code (par défaut) ou importe la connexion depuis un navigateur, et suit sa progression |
+| `douyin_list_accounts` / `douyin_switch_account` / `douyin_logout_account` | Liste, change ou retire des comptes Douyin ; un retrait doit être confirmé par l'utilisateur dans une boîte de dialogue |
+| `douyin_open_verification` | Quand une vérification de sécurité est demandée, ouvre la fenêtre pour que l'utilisateur la fasse lui-même ; rien n'est résolu automatiquement |
+
 </details>
 
 Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le jeton Bearer et vérifie les en-têtes `Host` / `Origin` pour empêcher le DNS rebinding. Vous pouvez régénérer le jeton à tout moment.
@@ -284,7 +319,18 @@ Le serveur n'écoute que sur `127.0.0.1` (le port est configurable), exige le je
 - Sous-titres manuels et générés automatiquement (langues au choix), chapitres, segments SponsorBlock marqués, couvertures, NFO
 - Plusieurs comptes YouTube ; comparaison des qualités téléchargeables selon le compte
 - Abonnements aux playlists et aux chaînes ; dossier de téléchargement et limite de téléchargements simultanés propres à YouTube
-- Passage de l'interface Bilibili à l'interface YouTube en un clic, sans effet sur les téléchargements des deux côtés
+- Passage entre les interfaces Bilibili, YouTube et Douyin en un clic, sans effet sur les téléchargements des différentes plateformes
+
+</details>
+
+<details>
+<summary>Douyin</summary>
+
+- Vidéos, publications photo, photos animées, collections et mini-séries, pages de créateurs, liens courts et textes de partage ; mentions J'aime, favoris, dossiers, « À regarder plus tard » et historique une fois connecté
+- Sans filigrane ; qualité selon le petit côté, jusqu'à la 4K proposée par la source, H.264 / H.265 et « Original » ; MP4 / MKV, audio seul ou vidéo seule
+- Couvertures, chapitres, danmaku (ASS / XML), NFO, modèles de nommage, contenus déjà téléchargés ignorés, reprise, limite de débit
+- Connexion par QR code, import depuis un navigateur ou cookies collés ; plusieurs comptes
+- Abonnements aux pages de créateurs, collections, J'aime, favoris, etc., avec au moins 3 heures entre deux vérifications
 
 </details>
 
@@ -305,7 +351,7 @@ L'application vérifie l'état de connexion au lancement, au retour sur la fenê
 
 - Vos cookies bilibili sont conservés dans le dossier de données de l'application et ne sont envoyés qu'à bilibili. Ils ne sont jamais renvoyés aux clients IA via MCP.
 - Les téléchargements, le multiplexage et la suppression du filigrane s'exécutent tous en local. Pas d'inscription, pas de télémétrie, aucun serveur à nous entre les deux.
-- En dehors de bilibili, l'application ne contacte que GitHub (pour vérifier les mises à jour) et ModelScope ou Hugging Face (pour télécharger une seule fois le modèle de retouche IA).
+- L’application ne contacte que les plateformes que vous utilisez (bilibili, YouTube, Douyin et leurs domaines de diffusion), GitHub (mises à jour et composant YouTube) et ModelScope ou Hugging Face (téléchargement unique du modèle de retouche IA). Avec SponsorBlock activé, yt-dlp interroge aussi ce service.
 - Le client MCP peut changer de compte ou déconnecter un compte précis à votre demande. S'il faut d'abord fermer un navigateur (Windows verrouille la base de cookies tant que le navigateur tourne), l'application vous le demande dans une boîte de dialogue et vous seul pouvez l'accepter.
 
 ## FAQ
@@ -363,6 +409,8 @@ Oui. Depuis la v0.13.0, l'interface prend en charge le français et sept autres 
 
 - Les contenus protégés par DRM, soumis à des restrictions géographiques ou que votre compte n'est pas autorisé à regarder ne peuvent pas être téléchargés. Ces tâches sont marquées **无法下载** (téléchargement impossible) avec la raison.
 - YouTube : les contenus protégés par DRM, comme les films de la rubrique « Films et TV », et les contenus réservés à YouTube Premium ne sont pas pris en charge ; les directs se téléchargent une fois terminés ; YouTube limite souvent la fréquence des requêtes pour les sous-titres traduits automatiquement, réessayez plus tard en cas d'échec.
+- Douyin : les directs, les liens de pages de recherche, les pages de sons et les pages de hashtags ne sont pas pris en charge ; il n'y a ni sous-titres ni résumés IA.
+- Risques liés à Douyin : les téléchargements en masse et les abonnements peuvent déclencher les vérifications de sécurité de Douyin ou faire restreindre votre compte ; utilisez de préférence un compte secondaire et gardez un rythme modéré. À réserver à l'étude personnelle et à la sauvegarde de contenus que vous avez le droit de télécharger, dans le respect des conditions d'utilisation de la plateforme et du droit d'auteur, à vos risques et périls. Douyin évolue souvent : ces fonctions peuvent cesser de marcher à tout moment.
 - Windows x64, macOS x64 / arm64 et Linux x64 sont pris en charge. Aucune version ARM n'est fournie pour Windows ni pour Linux.
 
 ## Compiler depuis les sources
