@@ -111,7 +111,7 @@ describe('launchApp', () => {
     }
     const [cmd, args, opts] = spawnMock.mock.calls[0]
     expect(cmd).toBe('open')
-    expect(args).toEqual(['-n', '-g', '-a', '/Applications/B站下载器.app', '--args', '--background'])
+    expect(args).toEqual(['-n', '-g', '-j', '-a', '/Applications/B站下载器.app', '--args', '--background'])
     expect(opts.env.ELECTRON_RUN_AS_NODE).toBeUndefined()
     expect(opts.env.APPIMAGE).toBeUndefined()
     expect(opts).toMatchObject({ detached: true, stdio: 'ignore' })
@@ -128,7 +128,7 @@ describe('launchApp', () => {
     expect(spawnMock.mock.calls[1].slice(0, 2)).toEqual(['/opt/app/bili-downloader', ['--user-data-dir=/d', '--background']])
     // 开发版的 Electron.app 要带上项目目录
     launchApp('/x/Electron.app', ['/proj'], 'darwin')
-    expect(spawnMock.mock.calls[2][1]).toEqual(['-n', '-g', '-a', '/x/Electron.app', '--args', '/proj', '--background'])
+    expect(spawnMock.mock.calls[2][1]).toEqual(['-n', '-g', '-j', '-a', '/x/Electron.app', '--args', '/proj', '--background'])
     launchApp('/x/electron')
     expect(spawnMock.mock.calls[3][0]).toBe('/x/electron')
   })
@@ -210,12 +210,13 @@ describe('Bridge', () => {
       }, 40)
     })
     const out = await run(
-      [JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'a' }), JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'b' })],
+      [JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_status' } }), JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_status' } })],
       { launch, launchTimeoutMs: 2000 }
     )
     expect(launch).toHaveBeenCalledTimes(1)
     expect(launch).toHaveBeenCalledWith('/Apps/B站下载器.app', [])
-    expect(out.map((m) => m.result.ok).sort()).toEqual(['a', 'b'])
+    expect(out.map((m) => m.id).sort()).toEqual([1, 2])
+    expect(out.every((m) => m.result.ok === 'tools/call')).toBe(true)
     expect(seen.every((s) => s.headers.authorization === 'Bearer new')).toBe(true)
   })
 
@@ -240,7 +241,7 @@ describe('Bridge', () => {
       { jsonrpc: '2.0', id: 2, result: { tools: manifest.tools } },
       { jsonrpc: '2.0', id: 3, result: {} }
     ])
-    // 不认识的协议版本用最新的；批量请求和调用工具都要拉起应用
+    // 不认识的协议版本用最新的；只有调用工具才拉起应用
     const more = await run(
       [
         JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'initialize', params: {} }),
@@ -251,10 +252,41 @@ describe('Bridge', () => {
     )
     expect(more[0].result.protocolVersion).toBe('2025-06-18')
     expect(launch).toHaveBeenCalledTimes(1)
-    expect(more.slice(1).flat().map((m) => [m.id, m.error.message]).sort()).toEqual([
-      [5, MESSAGES.launchFailed],
-      [6, MESSAGES.launchFailed]
-    ])
+    expect(more.flat().find((m) => m.id === 5).result.tools).toEqual(manifest.tools)
+    expect(more.flat().find((m) => m.id === 6).error.message).toBe(MESSAGES.launchFailed)
+  })
+
+  it('资源发现及缺失缓存的握手都不启动桌面应用', async () => {
+    writeSettings({ enabled: true, port: await freePort(), token: 'tok' })
+    const launch = vi.fn()
+    const out = await run(['initialize', 'resources/list', 'resources/templates/list', 'prompts/list'].map(
+      (method, id) => JSON.stringify({ jsonrpc: '2.0', id, method })
+    ), { launch })
+    expect(launch).not.toHaveBeenCalled()
+    expect(out.map((m) => m.error.code).sort()).toEqual([-32000, -32601, -32601, -32601].sort())
+  })
+
+  it('优先用当前清单，文件丢失或损坏时用安装时的同版本清单', () => {
+    const fallback = { protocols: ['v1'], tools: [{ name: 'get_status' }], serverInfo: { name: 'bili', version: '1' }, instructions: 'default' }
+    writeFileSync(join(dir, 'mcp-bridge-default.json'), JSON.stringify(fallback))
+    expect(readManifest(dir)).toEqual(fallback)
+    for (const bad of ['{', '{"protocols":["v1"],"tools":[]}']) {
+      writeFileSync(join(dir, 'mcp-manifest.json'), bad)
+      expect(readManifest(dir)).toEqual(fallback)
+    }
+    const current = { ...fallback, instructions: 'current' }
+    writeFileSync(join(dir, 'mcp-manifest.json'), JSON.stringify(current))
+    expect(readManifest(dir)).toEqual(current)
+  })
+
+  it('无效工具调用返回参数错误，不启动下载器', async () => {
+    writeSettings({ enabled: true, port: await freePort(), token: 'tok' })
+    const launch = vi.fn()
+    const params = [undefined, {}, { name: ' ' }, { name: 3 }, { name: 'get_status', arguments: [] }]
+    const out = await run(params.map((p, id) => JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: p })), { launch })
+    expect(out).toHaveLength(params.length)
+    expect(out.every((reply) => reply.error.code === -32602)).toBe(true)
+    expect(launch).not.toHaveBeenCalled()
   })
 
   it('缓存文件缺字段或坏了就当作没有', () => {
@@ -268,9 +300,9 @@ describe('Bridge', () => {
   it('启动超时或启动出错时说明应用没能打开', async () => {
     const port = await freePort()
     writeSettings({ enabled: true, port, token: 'tok' })
-    const timeout = await run([JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'a' })], { launch: () => {} })
+    const timeout = await run([JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_status' } })], { launch: () => {} })
     expect(timeout[0].error.message).toBe(MESSAGES.launchFailed)
-    const thrown = await run([JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'a' })], {
+    const thrown = await run([JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_status' } })], {
       launch: () => {
         throw new Error('spawn failed')
       }
@@ -284,7 +316,7 @@ describe('Bridge', () => {
     server = createServer((req) => req.socket.destroy())
     await new Promise<void>((r) => server!.listen(port, '127.0.0.1', r))
     const launch = vi.fn()
-    const out = await run([JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'a' })], { launch })
+    const out = await run([JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_status' } })], { launch })
     expect(out[0].error.message).toMatch(/socket hang up|ECONNRESET/)
     expect(launch).not.toHaveBeenCalled()
   })

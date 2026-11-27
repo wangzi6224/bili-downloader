@@ -43,14 +43,16 @@ describe('installBridge', () => {
     try {
       const src = join(dir, 'bridge.js')
       writeFileSync(src, 'v1')
-      const dest = installBridge(src, join(dir, 'data'))
+      const manifest = { protocols: ['v1'], tools: [], serverInfo: { name: 'bili', version: '1' }, instructions: '' }
+      const dest = installBridge(src, join(dir, 'data'), manifest)
+      expect(JSON.parse(readFileSync(join(dir, 'data', 'mcp-bridge-default.json'), 'utf8'))).toEqual(manifest)
       expect(dest).toBe(join(dir, 'data', 'mcp-bridge.js'))
       expect(readFileSync(dest, 'utf8')).toBe('v1')
       const mtime = statSync(dest).mtimeMs
-      installBridge(src, join(dir, 'data'))
+      installBridge(src, join(dir, 'data'), manifest)
       expect(statSync(dest).mtimeMs).toBe(mtime)
       writeFileSync(src, 'v2')
-      installBridge(src, join(dir, 'data'))
+      installBridge(src, join(dir, 'data'), manifest)
       expect(readFileSync(dest, 'utf8')).toBe('v2')
     } finally {
       rmSync(dir, { recursive: true, force: true })

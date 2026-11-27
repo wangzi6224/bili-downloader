@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeTextAtomic } from '../store'
+import type { Manifest } from '../../bridge/bridge'
 import type { StdioEntry } from './configFile'
 
 /**
@@ -37,9 +38,15 @@ export function bridgeEntry({ platform, execPath, appImage, bridge, userData, ap
  * Linux AppImage 运行时挂载在每次都不一样的临时目录，应用退出后里面的 bridge.js 就找不到了；
  * 每次启动都核对一遍，应用升级后跟着更新
  */
-export function installBridge(source: string, dir: string): string {
+export function installBridge(source: string, dir: string, manifest: Manifest): string {
   const dest = join(dir, 'mcp-bridge.js')
   const code = readFileSync(source, 'utf8')
+  writeIfChanged(join(dir, 'mcp-bridge-default.json'), JSON.stringify(manifest))
+  writeIfChanged(dest, code)
+  return dest
+}
+
+function writeIfChanged(dest: string, code: string): void {
   let current: string | undefined
   try {
     current = readFileSync(dest, 'utf8')
@@ -47,5 +54,4 @@ export function installBridge(source: string, dir: string): string {
     // 第一次
   }
   if (current !== code) writeTextAtomic(dest, code)
-  return dest
 }

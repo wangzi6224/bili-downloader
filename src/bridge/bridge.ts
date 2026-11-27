@@ -60,13 +60,26 @@ export interface Manifest {
   tools: unknown[]
 }
 
-export function readManifest(userData: string): Manifest | undefined {
+function loadManifest(file: string): Manifest | undefined {
   try {
-    const m = JSON.parse(readFileSync(join(userData, 'mcp-manifest.json'), 'utf8'))
-    return Array.isArray(m?.protocols) && m.protocols.length && Array.isArray(m.tools) ? m : undefined
+    const m = JSON.parse(readFileSync(file, 'utf8'))
+    if (!Array.isArray(m?.protocols) || !m.protocols.length || !m.protocols.every((p: unknown) => typeof p === 'string' && p.length)) return undefined
+    if (typeof m.serverInfo?.name !== 'string' || typeof m.serverInfo.version !== 'string' || typeof m.instructions !== 'string') return undefined
+    if (!Array.isArray(m.tools) || !m.tools.every((tool: { name?: unknown } | null) => typeof tool?.name === 'string')) return undefined
+    return m
   } catch {
     return undefined
   }
+}
+
+export function readManifest(userData: string): Manifest | undefined {
+  return loadManifest(join(userData, 'mcp-manifest.json')) ?? loadManifest(join(userData, 'mcp-bridge-default.json'))
+}
+
+function validCallParams(params: unknown): boolean {
+  if (!params || typeof params !== 'object' || !('name' in params) || typeof params.name !== 'string' || !params.name.trim()) return false
+  if (!('arguments' in params)) return true
+  return params.arguments !== null && typeof params.arguments === 'object' && !Array.isArray(params.arguments)
 }
 
 /** 应用没开时能直接回答的请求；其他的（主要是 tools/call）才需要把应用拉起来 */
@@ -111,7 +124,7 @@ export function launchApp(app: string, extra: string[] = [], platform: NodeJS.Pl
   const env = { ...process.env }
   for (const k of ['ELECTRON_RUN_AS_NODE', 'APPDIR', 'APPIMAGE', 'ARGV0', 'OWD']) delete env[k]
   const appArgs = [...extra, '--background']
-  const [cmd, args] = platform === 'darwin' && app.endsWith('.app') ? ['open', ['-n', '-g', '-a', app, '--args', ...appArgs]] : [app, appArgs]
+  const [cmd, args] = platform === 'darwin' && app.endsWith('.app') ? ['open', ['-n', '-g', '-j', '-a', app, '--args', ...appArgs]] : [app, appArgs]
   const child = spawn(cmd, args, { detached: true, stdio: 'ignore', env, windowsHide: true })
   child.on('error', () => {})
   child.unref()
@@ -249,8 +262,21 @@ export class Bridge {
     }
     // 应用没开：agent 启动时的握手、列工具和通知不必拉起应用，调用工具时才拉
     if (!expectsReply) return { status: 202, body: '' }
-    const offline = answerOffline(msg, readManifest(this.deps.userData))
-    if (offline) return { status: 200, body: JSON.stringify(offline) }
+    const manifest = readManifest(this.deps.userData)
+    const requests = Array.isArray(msg) ? msg : [msg]
+    if (!requests.some((request) => request?.method === 'tools/call' && request.id !== undefined && validCallParams(request.params))) {
+      const replies = requests.filter((request) => request?.id !== undefined).map((request) => {
+        if (request.method === 'tools/call') return rpcError(request.id, 'Invalid tool call parameters', -32602)
+        if (request.method === 'ping') return { jsonrpc: '2.0', id: request.id, result: {} }
+        const cached = answerOffline(request, manifest)
+        if (cached) return cached
+        if (request.method === 'initialize' || request.method === 'tools/list') {
+          return rpcError(request.id, 'MCP manifest unavailable. Open Bili Downloader once to refresh it.')
+        }
+        return rpcError(request.id, 'Method not found', -32601)
+      })
+      return { status: 200, body: JSON.stringify(Array.isArray(msg) ? replies : replies[0]) }
+    }
     if (!(await this.ensureRunning(cfg.port))) throw new Error(MESSAGES.launchFailed)
     // 应用启动时可能改过端口或令牌（例如第一次启动才生成令牌），重新读一次
     const next = readMcpConfig(this.deps.userData) ?? cfg

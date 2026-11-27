@@ -49,6 +49,7 @@ const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 const isMac = process.platform === 'darwin'
 /** AI agent 调用工具时应用没开，由桥接进程带着 --background 拉起：只显示托盘，不打开窗口 */
 const background = process.argv.includes('--background')
+if (isMac && background) app.setActivationPolicy('accessory')
 /** ⌘Q、程序坞“退出”等真正退出（确认放行后）时，关窗口不再拦截 */
 let quitting = false
 const windowStateFile = (): string => join(app.getPath('userData'), 'window.json')
@@ -295,12 +296,13 @@ app.setName('B站下载器')
 if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.wangzi6224.bili-downloader' : process.execPath)
 
 // 只允许运行一个实例：再次打开时激活已有窗口
-if (!app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock({ background })) {
   app.quit()
 } else {
   // 桥接进程在应用已经开着时也可能再拉一次（例如刚好在启动中），这时不弹窗口
-  app.on('second-instance', (_e, argv) => {
-    if (!argv.includes('--background')) showMainWindow()
+  app.on('second-instance', (_e, argv, _cwd, data) => {
+    if (argv.includes('--background') || (data && typeof data === 'object' && 'background' in data && data.background === true)) return
+    showMainWindow()
   })
   app.whenReady().then(() => start())
 }
@@ -477,7 +479,7 @@ async function start(): Promise<void> {
         platform: process.platform,
         execPath: process.execPath,
         appImage: process.env.APPIMAGE,
-        bridge: (bridgeScript ??= installBridge(join(__dirname, 'bridge.js'), app.getPath('userData'))),
+        bridge: (bridgeScript ??= installBridge(join(__dirname, 'bridge.js'), app.getPath('userData'), mcp.manifest())),
         userData: app.getPath('userData'),
         // 开发版要告诉 Electron 项目在哪；用 --user-data-dir 启动的实例，拉起时也要用同一个数据目录
         appArgs: [
